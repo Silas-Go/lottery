@@ -1,0 +1,18 @@
+# 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 测试缓存
+*.test
+*.out
+
+# 日志目录
+log/
+
+# IDE
+.idea/
+.vscode/
+*.swp

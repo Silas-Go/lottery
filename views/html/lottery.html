@@ -1,0 +1,83 @@
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
+    <script src="http://code.jquery.com/jquery-latest.js"></script>
+    <script src="/js/lucky-canvas@1.7.25"></script>
+    <title>抽奖</title>
+    <style>
+        .center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="center" id="my-lucky"></div>
+    <script>
+        var giftMap = new Map();  //维护奖品ID和转盘里奖品index的对应关系
+        $(document).ready(function () {
+            $.ajax({
+                type: "GET",
+                url: "/gifts",
+                success: function (gifts) {
+                    var prizes = new Array();
+                    $.each(gifts, function (index, gift) {
+                        giftMap[gift.Id] = index;
+                        prizes[index] = { background: '#e9e8fe', fonts: [{ text: gift.Name }], imgs: [{ src: gift.Picture, top: 30, width: 80, height: 80 }] };
+                    })
+                    // 直接使用luch-canvas抽奖插件  https://100px.net/usage/js.html
+                    const myLucky = new LuckyCanvas.LuckyWheel('#my-lucky', {
+                        width: '600px',
+                        height: '600px',
+                        blocks: [{ padding: '10px', background: '#869cfa' }],
+                        prizes: prizes,
+                        buttons: [
+                            { radius: '40%', background: '#617df2' },
+                            { radius: '35%', background: '#afc8ff' },
+                            {
+                                radius: '30%', background: '#869cfa',
+                                pointer: true,
+                                fonts: [{ text: '抽奖', top: '-10px' }]
+                            },
+                        ],
+                        start: function () {
+                            $.ajax({
+                                type: "GET",
+                                url: "/lucky",
+                                success: function (giftId) {
+                                    if (giftId == "0") {
+                                        alert("抽奖结束")
+                                    } else {
+                                        myLucky.play();
+                                        idx = giftMap[giftId];
+                                        myLucky.stop(idx);
+                                    }
+                                }
+                            }).fail(function (result, result1, result2) {
+                                alert("出错了");
+                            });
+                        },
+                        end: function (prize) { // 游戏停止时触发
+                            if (prize.fonts[0].text == '谢谢参与') {
+                                alert(prize.fonts[0].text)
+                            } else {
+                                alert('恭喜中奖: ' + prize.fonts[0].text)
+                                window.location.replace("/result");  //跳转到支付页面
+                            }
+                        }
+                    })
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    alert(jqXHR.responseText);
+                }
+            }).fail(function (result, result1, result2) {
+                $('#my-lucky').html("数据加载失败");
+            });
+        });
+    </script>
+</body>

@@ -1,0 +1,105 @@
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <script src="http://code.jquery.com/jquery-latest.js"></script>
+    <script src="/js/my.js"></script>
+    <title>恭喜中奖</title>
+    <style>
+        .center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        button {
+            width: 250px;
+            height: 50px;
+            cursor: pointer;
+        }
+
+        input {
+            border: none !important;
+            outline: none;
+            text-align: center;
+            font-size: xx-large;
+            width: 100px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="center">
+        <table>
+            <tr>
+                <td colspan="2" style="font-size: xx-large;">
+                    恭喜你抽中<input type="text" id="gift_name"></input>,
+                    请支付<input type="text" id="gift_price"></input>元.
+                </td>
+            </tr>
+            <tr>
+                <td align="center"><button onclick="give_up();"
+                        style="background-color: aqua; font-size: xx-large;">放弃本次机会</button></td>
+                <td align="center"><button onclick="pay();"
+                        style="background-color: deeppink; font-size: xx-large;">立即支付</button> </td>
+            </tr>
+        </table>
+        <span id="msg" style="color: red;"></span>
+    </div>
+    <script>
+        function give_up() {
+            var uid = getCookie("uid");
+            var gid = getCookie("gid");
+            if (uid == null || gid == null) {
+                window.location.replace("/");  //跳转到首页
+            } else {
+                $.ajax({
+                    type: "POST",
+                    url: "/giveup",
+                    data: { "uid": uid, "gid": gid },
+                    success: function (result) {
+                        clearCookie();
+                        window.location.replace("/");  //跳转到首页
+                    },
+                }).fail(function (result, result1, result2) {
+                    $('#msg').html(result.responseText);
+                });
+            }
+        };
+        function pay() {
+            var uid = getCookie("uid");
+            var gid = getCookie("gid");
+            if (uid == null || gid == null) {
+                alert("支付已超时，请重新抢购");
+                window.location.replace("/");  //跳转到首页
+            } else {
+                $.ajax({
+                    type: "POST",
+                    url: "/pay",
+                    data: { "uid": uid, "gid": gid },
+                    success: function (result) {
+                        clearCookie();
+                        alert("支付成功！");
+                        window.location.replace("/");  //跳转到首页
+                    },
+                }).fail(function (result, result1, result2) {
+                    $('#msg').html(result.responseText);
+                    if (result.status == 403) {
+                        clearCookie();
+                    }
+                });
+            }
+        };
+        $(document).ready(function () {
+            $('#gift_name').val(getCookie("name"));
+            $('#gift_price').val(getCookie("price"));
+        })
+        function clearCookie() {
+            deleteCookie("uid");
+            deleteCookie("gid");
+            deleteCookie("name");
+            deleteCookie("price");
+        };
+    </script>
+</body>
