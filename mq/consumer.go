@@ -30,8 +30,9 @@ var (
 )
 
 func InitRocketLog() {
-	os.Setenv(rmq_client.CLIENT_LOG_ROOT, "D:/go_project/go_frame/log")
+	os.Setenv(rmq_client.CLIENT_LOG_ROOT, "./log")
 	os.Setenv(rmq_client.CLIENT_LOG_FILENAME, "rocket_lottery.log")
+	os.Setenv("rocketmq.client.logLevel", "warn")
 	rmq_client.ResetLogger()
 }
 
@@ -48,6 +49,7 @@ func GetConsumer() rmq_client.SimpleConsumer {
 				ConsumerGroup: CONSUMER_GROUP,
 				Credentials:   &credentials.SessionCredentials{},
 			},
+			rmq_client.WithClientFuncForSimpleConsumer(newRocketClient),
 			rmq_client.WithSimpleAwaitDuration(5*time.Second),
 			rmq_client.WithSimpleSubscriptionExpressions(map[string]*rmq_client.FilterExpression{
 				TOPIC: rmq_client.SUB_ALL, //订阅主题下的所有Tag

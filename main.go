@@ -27,7 +27,9 @@ func Init() {
 	database.ConnectGiftRedis("./conf", "redis", util.YAML)
 	mq.InitRocketLog()
 	go mq.ReceiveCancelOrder()
-	database.InitGiftInventory()
+	if err := database.InitGiftInventory(); err != nil {
+		slog.Error("init gift inventory failed", "error", err)
+	}
 }
 
 func ListenTermSignal() {
