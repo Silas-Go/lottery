@@ -6,28 +6,44 @@ import (
 	"log/slog"
 	"os"
 	"silas/database"
+	"silas/util"
 	"sync"
 	"time"
 
 	rmq_client "github.com/apache/rocketmq-clients/golang/v5" //注意：现在是v5
 	"github.com/apache/rocketmq-clients/golang/v5/credentials"
 	"github.com/bytedance/sonic"
-	"github.com/gofiber/fiber/v3/log"
 )
 
 const (
-	END_POINT = "localhost:8081"
 	// ./mqadmin.cmd updateTopic -n localhost:9876 -c DefaultCluster -t CANCEL_ORDER -a +message.type=DELAY
 	// ./mqadmin.cmd deleteTopic -n localhost:9876 -c DefaultCluster -t CANCEL_ORDER
-	TOPIC = "CANCEL_ORDER"
 	// ./mqadmin.cmd updateSubGroup -n localhost:9876 -c DefaultCluster -g lottery
-	CONSUMER_GROUP = "lottery"
+	defaultEndpoint      = "localhost:8081"
+	defaultTopic         = "CANCEL_ORDER"
+	defaultConsumerGroup = "lottery"
 )
 
 var (
 	simpleConsumer rmq_client.SimpleConsumer
-	conce          sync.Once
+	consumerMu     sync.Mutex
 )
+
+func Enabled() bool {
+	return util.EnvBool("LOTTERY_MQ_ENABLED", true)
+}
+
+func Endpoint() string {
+	return util.EnvString("LOTTERY_MQ_ENDPOINT", defaultEndpoint)
+}
+
+func Topic() string {
+	return util.EnvString("LOTTERY_MQ_TOPIC", defaultTopic)
+}
+
+func ConsumerGroup() string {
+	return util.EnvString("LOTTERY_MQ_CONSUMER_GROUP", defaultConsumerGroup)
+}
 
 func InitRocketLog() {
 	os.Setenv(rmq_client.CLIENT_LOG_ROOT, "./log")
@@ -36,41 +52,53 @@ func InitRocketLog() {
 	rmq_client.ResetLogger()
 }
 
-func GetConsumer() rmq_client.SimpleConsumer {
-	conce.Do(func() {
-		if simpleConsumer != nil {
-			return
-		}
-		var err error
-		// 创建consumer
-		simpleConsumer, err = rmq_client.NewSimpleConsumer(
-			&rmq_client.Config{
-				Endpoint:      END_POINT,
-				ConsumerGroup: CONSUMER_GROUP,
-				Credentials:   &credentials.SessionCredentials{},
-			},
-			rmq_client.WithClientFuncForSimpleConsumer(newRocketClient),
-			rmq_client.WithSimpleAwaitDuration(5*time.Second),
-			rmq_client.WithSimpleSubscriptionExpressions(map[string]*rmq_client.FilterExpression{
-				TOPIC: rmq_client.SUB_ALL, //订阅主题下的所有Tag
-			}),
-		)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// 启动Consumer
-		err = simpleConsumer.Start()
-		if err != nil {
-			log.Fatal(err)
-		}
-	})
-	return simpleConsumer
+func GetConsumer() (rmq_client.SimpleConsumer, error) {
+	consumerMu.Lock()
+	defer consumerMu.Unlock()
+
+	if simpleConsumer != nil {
+		return simpleConsumer, nil
+	}
+
+	endpoint := Endpoint()
+	topic := Topic()
+	consumer, err := rmq_client.NewSimpleConsumer(
+		&rmq_client.Config{
+			Endpoint:      endpoint,
+			ConsumerGroup: ConsumerGroup(),
+			Credentials:   &credentials.SessionCredentials{},
+		},
+		rmq_client.WithClientFuncForSimpleConsumer(newRocketClient),
+		rmq_client.WithSimpleAwaitDuration(5*time.Second),
+		rmq_client.WithSimpleSubscriptionExpressions(map[string]*rmq_client.FilterExpression{
+			topic: rmq_client.SUB_ALL, //订阅主题下的所有Tag
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := consumer.Start(); err != nil {
+		return nil, err
+	}
+
+	simpleConsumer = consumer
+	return simpleConsumer, nil
 }
 
 func ReceiveCancelOrder() {
-	consumer := GetConsumer()
+	if !Enabled() {
+		slog.Info("rocketmq consumer disabled")
+		return
+	}
 	ctx := context.Background()
 	for {
+		consumer, err := GetConsumer()
+		if err != nil {
+			slog.Error("rocketmq consumer init failed, retrying", "endpoint", Endpoint(), "topic", Topic(), "error", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
 		megs, err := consumer.Receive(ctx, 1, 10*time.Second)
 		if err != nil {
 			var e *rmq_client.ErrRpcStatus

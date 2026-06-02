@@ -148,10 +148,11 @@ func Lottery(ctx *gin.Context) {
 			return
 		}
 
-		ctx.SetCookie("name", inst.Name, PAY_DELAY, "/", "localhost", false, false)
-		ctx.SetCookie("price", strconv.Itoa(inst.Price), PAY_DELAY, "/", "localhost", false, false)
-		ctx.SetCookie("uid", strconv.Itoa(uid), PAY_DELAY, "/", "localhost", false, false)
-		ctx.SetCookie("gid", strconv.Itoa(giftId), PAY_DELAY, "/", "localhost", false, false)
+		cookieDomain := util.EnvString("LOTTERY_COOKIE_DOMAIN", "localhost")
+		ctx.SetCookie("name", inst.Name, PAY_DELAY, "/", cookieDomain, false, false)
+		ctx.SetCookie("price", strconv.Itoa(inst.Price), PAY_DELAY, "/", cookieDomain, false, false)
+		ctx.SetCookie("uid", strconv.Itoa(uid), PAY_DELAY, "/", cookieDomain, false, false)
+		ctx.SetCookie("gid", strconv.Itoa(giftId), PAY_DELAY, "/", cookieDomain, false, false)
 
 		slog.Info("lottery request success", "uid", uid, "gid", giftId, "gift", inst.Name, "try", try, "duration_ms", time.Since(start).Milliseconds())
 		ctx.String(http.StatusOK, strconv.Itoa(giftId))

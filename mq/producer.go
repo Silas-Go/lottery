@@ -31,17 +31,19 @@ func GetProducer() (rmq_client.Producer, error) {
 		return producer, nil
 	}
 
-	slog.Info("rocketmq producer initializing", "endpoint", END_POINT, "topic", TOPIC)
+	endpoint := Endpoint()
+	topic := Topic()
+	slog.Info("rocketmq producer initializing", "endpoint", endpoint, "topic", topic)
 	p, err := rmq_client.NewProducer(
 		&rmq_client.Config{
-			Endpoint:    END_POINT,
+			Endpoint:    endpoint,
 			Credentials: &credentials.SessionCredentials{},
 		},
 		rmq_client.WithClientFunc(newRocketClient),
-		rmq_client.WithTopics(TOPIC),
+		rmq_client.WithTopics(topic),
 	)
 	if err != nil {
-		slog.Error("rocketmq producer create failed", "endpoint", END_POINT, "topic", TOPIC, "error", err)
+		slog.Error("rocketmq producer create failed", "endpoint", endpoint, "topic", topic, "error", err)
 		return nil, fmt.Errorf("create rocketmq producer: %w", err)
 	}
 
@@ -55,10 +57,10 @@ func GetProducer() (rmq_client.Producer, error) {
 		if err == nil {
 			break
 		}
-		slog.Error("rocketmq producer start failed", "endpoint", END_POINT, "topic", TOPIC, "error", err)
+		slog.Error("rocketmq producer start failed", "endpoint", endpoint, "topic", topic, "error", err)
 		return nil, fmt.Errorf("start rocketmq producer: %w", err)
 	case <-time.After(producerStartTimeout):
-		slog.Error("rocketmq producer start timeout", "endpoint", END_POINT, "topic", TOPIC, "timeout", producerStartTimeout)
+		slog.Error("rocketmq producer start timeout", "endpoint", endpoint, "topic", topic, "timeout", producerStartTimeout)
 		go func() {
 			if err := <-startErr; err == nil {
 				p.GracefulStop()
@@ -68,11 +70,16 @@ func GetProducer() (rmq_client.Producer, error) {
 	}
 
 	producer = p
-	slog.Info("rocketmq producer initialized", "endpoint", END_POINT, "topic", TOPIC)
+	slog.Info("rocketmq producer initialized", "endpoint", endpoint, "topic", topic)
 	return producer, nil
 }
 
 func SendCancelOrder(order database.Order, delay int) error {
+	if !Enabled() {
+		slog.Info("rocketmq producer disabled, skip cancel order message", "uid", order.UserId, "gid", order.GiftId)
+		return nil
+	}
+
 	content, err := sonic.Marshal(order)
 	if err != nil {
 		slog.Error("marshal cancel order failed", "uid", order.UserId, "gid", order.GiftId, "error", err)
@@ -85,7 +92,7 @@ func SendCancelOrder(order database.Order, delay int) error {
 	}
 
 	msg := &rmq_client.Message{
-		Topic: TOPIC,
+		Topic: Topic(),
 		Body:  content,
 	}
 	msg.SetDelayTimestamp(time.Now().Add(time.Duration(delay) * time.Second))
@@ -94,11 +101,11 @@ func SendCancelOrder(order database.Order, delay int) error {
 	defer cancel()
 
 	if _, err := producer.Send(ctx, msg); err != nil {
-		slog.Error("send cancel order failed", "uid", order.UserId, "gid", order.GiftId, "topic", TOPIC, "delay", delay, "error", err)
+		slog.Error("send cancel order failed", "uid", order.UserId, "gid", order.GiftId, "topic", Topic(), "delay", delay, "error", err)
 		return fmt.Errorf("send cancel order to rocketmq: %w", err)
 	}
 
-	slog.Info("send cancel order success", "uid", order.UserId, "gid", order.GiftId, "topic", TOPIC, "delay", delay)
+	slog.Info("send cancel order success", "uid", order.UserId, "gid", order.GiftId, "topic", Topic(), "delay", delay)
 	return nil
 }
 

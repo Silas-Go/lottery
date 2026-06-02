@@ -1,0 +1,123 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: lottery-mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: lottery
+      MYSQL_USER: tester
+      MYSQL_PASSWORD: "123456"
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: lottery-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 50s
+      retries: 30
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.2
+    container_name: lottery-rocketmq-namesrv
+    command: sh mqnamesrv
+    ports:
+      - "9876:9876"
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.2
+    container_name: lottery-rocketmq-broker
+    user: root
+    command: sh mqbroker -n rocketmq-namesrv:9876 --enable-proxy -c /home/rocketmq/rocketmq-5.3.2/conf/broker.conf
+    depends_on:
+      - rocketmq-namesrv
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "10909:10909"
+      - "10911:10911"
+      - "10912:10912"
+    volumes:
+      - ./docker/rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/broker.conf:ro
+      - rocketmq-logs:/home/rocketmq/logs
+      - rocketmq-store:/home/rocketmq/store
+    restart: on-failure
+
+  rocketmq-init:
+    image: apache/rocketmq:5.3.2
+    container_name: lottery-rocketmq-init
+    depends_on:
+      - rocketmq-broker
+    command:
+      - sh
+      - -c
+      - >-
+        for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+          output="$$(sh mqadmin updateTopic -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -t CANCEL_ORDER -a +message.type=DELAY 2>&1)";
+          echo "$$output";
+          echo "$$output" | grep -q "create topic" &&
+          sh mqadmin updateSubGroup -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -g lottery &&
+          exit 0;
+          sleep 2;
+        done;
+        exit 1
+
+  app:
+    build: .
+    container_name: lottery-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rocketmq-init:
+        condition: service_completed_successfully
+      rocketmq-broker:
+        condition: service_started
+    environment:
+      LOTTERY_HTTP_ADDR: :5678
+      LOTTERY_MYSQL_HOST: mysql
+      LOTTERY_MYSQL_PORT: 3306
+      LOTTERY_MYSQL_USER: tester
+      LOTTERY_MYSQL_PASSWORD: "123456"
+      LOTTERY_MYSQL_DATABASE: lottery
+      LOTTERY_REDIS_ADDR: redis:6379
+      LOTTERY_REDIS_DB: 2
+      LOTTERY_MQ_ENABLED: "true"
+      LOTTERY_MQ_ENDPOINT: rocketmq-broker:8081
+      LOTTERY_MQ_TOPIC: CANCEL_ORDER
+      LOTTERY_MQ_CONSUMER_GROUP: lottery
+      LOTTERY_COOKIE_DOMAIN: localhost
+      TZ: Asia/Shanghai
+    ports:
+      - "5678:5678"
+    volumes:
+      - app-log:/app/log
+    restart: on-failure
+
+volumes:
+  mysql-data:
+  redis-data:
+  rocketmq-logs:
+  rocketmq-store:
+  app-log:

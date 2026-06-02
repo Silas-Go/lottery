@@ -1,3 +1,5 @@
+set names utf8mb4 collate utf8mb4_unicode_ci;
+
 create table if not exists inventory(
     id int auto_increment comment '奖品id，自增',
     name varchar(20) not null comment '奖品名称',

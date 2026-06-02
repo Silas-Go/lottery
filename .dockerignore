@@ -1,0 +1,8 @@
+.git
+.gocache
+log
+*.test
+*.out
+docker-compose.yml
+README.md
+readme.md

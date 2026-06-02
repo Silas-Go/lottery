@@ -15,9 +15,9 @@ func ConnectGiftRedis(confDir, confFile, fileType string) {
 	viper := util.InitViper(confDir, confFile, fileType)
 
 	GiftRedis = redis.NewClient(&redis.Options{
-		Addr:     viper.GetString("addr"),
-		Password: viper.GetString("pass"),
-		DB:       viper.GetInt("db"),
+		Addr:     util.EnvString("LOTTERY_REDIS_ADDR", viper.GetString("addr")),
+		Password: util.EnvString("LOTTERY_REDIS_PASSWORD", viper.GetString("pass")),
+		DB:       util.EnvInt("LOTTERY_REDIS_DB", viper.GetInt("db")),
 	})
 	if err := GiftRedis.Ping().Err(); err != nil {
 		slog.Error("connect to redis failed", "error", err)

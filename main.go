@@ -26,7 +26,11 @@ func Init() {
 	database.ConnectGiftDB("./conf", "mysql", util.YAML, "./log/lottery.db.log")
 	database.ConnectGiftRedis("./conf", "redis", util.YAML)
 	mq.InitRocketLog()
-	go mq.ReceiveCancelOrder()
+	if mq.Enabled() {
+		go mq.ReceiveCancelOrder()
+	} else {
+		slog.Info("rocketmq disabled")
+	}
 	if err := database.InitGiftInventory(); err != nil {
 		slog.Error("init gift inventory failed", "error", err)
 	}
@@ -78,7 +82,7 @@ func main() {
 	})
 
 	server = &http.Server{
-		Addr:    "localhost:5678",
+		Addr:    util.EnvString("LOTTERY_HTTP_ADDR", "localhost:5678"),
 		Handler: engine,
 	}
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

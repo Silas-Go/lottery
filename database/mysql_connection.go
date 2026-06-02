@@ -26,7 +26,12 @@ func ConnectGiftDB(confDir, confFile, fileType, logDir string) {
 	port := viper.GetInt("lottery.port")
 	dbname := "lottery"
 	logFileName := viper.GetString("lottery.log")
-	DataSourceName := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, pass, host, port, dbname)
+	user = util.EnvString("LOTTERY_MYSQL_USER", user)
+	pass = util.EnvString("LOTTERY_MYSQL_PASSWORD", pass)
+	host = util.EnvString("LOTTERY_MYSQL_HOST", host)
+	port = util.EnvInt("LOTTERY_MYSQL_PORT", port)
+	dbname = util.EnvString("LOTTERY_MYSQL_DATABASE", dbname)
+	DataSourceName := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=True&loc=Local", user, pass, host, port, dbname)
 
 	//日志控制
 	logFile, _ := os.OpenFile(path.Join(logDir, logFileName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)

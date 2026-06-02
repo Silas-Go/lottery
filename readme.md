@@ -1,5 +1,7 @@
 ## 建表
 ```sql
+set names utf8mb4 collate utf8mb4_unicode_ci;
+
 create database lottery;
 grant all on lottery.* to tester;
 use lottery;
@@ -69,3 +71,46 @@ create table if not exists orders(
 
 ## 前端展现
 直接使用[lucky-canvas](https://100px.net/usage/js.html)抽奖插件。
+
+## Docker 一键部署
+
+项目已经提供 `Dockerfile` 和 `docker-compose.yml`，会一起启动 Go Web、MySQL、Redis、RocketMQ NameServer、Broker、Proxy，并自动初始化 `lottery` 数据库和 `CANCEL_ORDER` 延时消息 Topic。
+
+```bash
+docker compose up --build
+```
+
+启动后访问：
+
+```text
+http://localhost:5678/
+```
+
+常用命令：
+
+```bash
+docker compose logs -f app
+docker compose down
+docker compose down -v
+```
+
+注意：`docker compose down -v` 会删除 MySQL、Redis、RocketMQ 的数据卷，下一次启动会重新执行 `init.sql`。
+
+容器部署时主要通过环境变量覆盖默认配置：
+
+|变量|默认值|说明|
+| :--- | :--- | :--- |
+|`LOTTERY_HTTP_ADDR`|`localhost:5678`|Web 监听地址，Docker 中设置为 `:5678`|
+|`LOTTERY_MYSQL_HOST`|`conf/mysql.yaml` 中的 host|MySQL 主机|
+|`LOTTERY_MYSQL_PORT`|`conf/mysql.yaml` 中的 port|MySQL 端口|
+|`LOTTERY_MYSQL_USER`|`conf/mysql.yaml` 中的 user|MySQL 用户|
+|`LOTTERY_MYSQL_PASSWORD`|`conf/mysql.yaml` 中的 pass|MySQL 密码|
+|`LOTTERY_MYSQL_DATABASE`|`lottery`|MySQL 数据库名|
+|`LOTTERY_REDIS_ADDR`|`conf/redis.yaml` 中的 addr|Redis 地址|
+|`LOTTERY_REDIS_PASSWORD`|`conf/redis.yaml` 中的 pass|Redis 密码|
+|`LOTTERY_REDIS_DB`|`conf/redis.yaml` 中的 db|Redis DB|
+|`LOTTERY_MQ_ENABLED`|`true`|是否启用 RocketMQ 延时取消订单|
+|`LOTTERY_MQ_ENDPOINT`|`localhost:8081`|RocketMQ Proxy Endpoint|
+|`LOTTERY_MQ_TOPIC`|`CANCEL_ORDER`|取消订单消息 Topic|
+|`LOTTERY_MQ_CONSUMER_GROUP`|`lottery`|消费者组|
+|`LOTTERY_COOKIE_DOMAIN`|`localhost`|Cookie 域名|
