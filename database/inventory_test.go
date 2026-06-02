@@ -1,9 +1,9 @@
 package database_test
 
 import (
-	"dqq/go/frame/lottery/database"
-	"dqq/go/frame/lottery/util"
 	"fmt"
+	"silas/database"
+	"silas/util"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/log"
@@ -39,5 +39,5 @@ func TestUpdateInventory(t *testing.T) {
 	}
 }
 
-// go test -v ./lottery/database -run=^TestInitGiftInventory$ -count=1
-// go test -v ./lottery/database -run=^TestUpdateInventory$ -count=1
+// go test -v ./database -run=^TestInitGiftInventory$ -count=1
+// go test -v ./database -run=^TestUpdateInventory$ -count=1

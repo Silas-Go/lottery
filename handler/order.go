@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"dqq/go/frame/lottery/database"
 	"log/slog"
 	"net/http"
+	"silas/database"
 	"strconv"
 
 	"github.com/gin-gonic/gin"

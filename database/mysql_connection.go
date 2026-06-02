@@ -1,12 +1,12 @@
 package database
 
 import (
-	"dqq/go/frame/lottery/util"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
 	"path"
+	"silas/util"
 	"time"
 
 	"gorm.io/driver/mysql"

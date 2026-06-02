@@ -1,8 +1,8 @@
 package database
 
 import (
-	"dqq/go/frame/lottery/util"
 	"log/slog"
+	"silas/util"
 
 	"github.com/go-redis/redis"
 )

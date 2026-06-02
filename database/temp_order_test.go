@@ -1,7 +1,7 @@
 package database_test
 
 import (
-	"dqq/go/frame/lottery/database"
+	"silas/database"
 	"testing"
 )
 
@@ -38,5 +38,5 @@ func TestDeleteTempOrder(t *testing.T) {
 	}
 }
 
-// go test -v ./lottery/database -run=^TestCreateTempOrder$ -count=1
-// go test -v ./lottery/database -run=^TestDeleteTempOrder$ -count=1
+// go test -v ./database -run=^TestCreateTempOrder$ -count=1
+// go test -v ./database -run=^TestDeleteTempOrder$ -count=1

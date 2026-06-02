@@ -1,4 +1,4 @@
-module dqq/go/frame/lottery
+module silas
 
 go 1.25.5
 

@@ -2,15 +2,15 @@ package main
 
 import (
 	"context"
-	"dqq/go/frame/lottery/database"
-	"dqq/go/frame/lottery/handler"
-	"dqq/go/frame/lottery/mq"
-	"dqq/go/frame/lottery/util"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"silas/database"
+	"silas/handler"
+	"silas/mq"
+	"silas/util"
 	"syscall"
 	"time"
 

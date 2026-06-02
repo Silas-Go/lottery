@@ -1,14 +1,14 @@
 package handler
 
 import (
-	"dqq/go/frame/lottery/database"
-	"dqq/go/frame/lottery/mq"
-	"dqq/go/frame/lottery/util"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"silas/database"
+	"silas/mq"
+	"silas/util"
 	"strconv"
 	"time"
 
