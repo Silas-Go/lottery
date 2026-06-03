@@ -38,6 +38,9 @@ services:
   rocketmq-namesrv:
     image: apache/rocketmq:5.3.2
     container_name: lottery-rocketmq-namesrv
+    hostname: rocketmq-namesrv
+    environment:
+      JAVA_OPT_EXT: "-Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false"
     command: sh mqnamesrv
     ports:
       - "9876:9876"
@@ -45,11 +48,13 @@ services:
   rocketmq-broker:
     image: apache/rocketmq:5.3.2
     container_name: lottery-rocketmq-broker
+    hostname: rocketmq-broker
     user: root
     command: sh mqbroker -n rocketmq-namesrv:9876 --enable-proxy -c /home/rocketmq/rocketmq-5.3.2/conf/broker.conf
     depends_on:
       - rocketmq-namesrv
     environment:
+      JAVA_OPT_EXT: "-Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false"
       NAMESRV_ADDR: rocketmq-namesrv:9876
     ports:
       - "8080:8080"
@@ -66,6 +71,7 @@ services:
   rocketmq-init:
     image: apache/rocketmq:5.3.2
     container_name: lottery-rocketmq-init
+    hostname: rocketmq-init
     depends_on:
       - rocketmq-broker
     command:
