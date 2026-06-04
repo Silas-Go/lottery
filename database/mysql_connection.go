@@ -14,11 +14,15 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-var (
-	GiftDB *gorm.DB
-)
+type Store struct {
+	db *gorm.DB
+}
 
-func ConnectGiftDB(confDir, confFile, fileType, logDir string) {
+func NewStore(db *gorm.DB) *Store {
+	return &Store{db: db}
+}
+
+func ConnectGiftDB(confDir, confFile, fileType, logDir string) *Store {
 	viper := util.InitViper(confDir, confFile, fileType)
 	user := viper.GetString("lottery.user")
 	pass := viper.GetString("lottery.pass")
@@ -61,22 +65,22 @@ func ConnectGiftDB(confDir, confFile, fileType, logDir string) {
 	sqlDB.SetMaxOpenConns(100)
 	//一个连接最多可使用这么长时间，超时后连接会自动关闭（因为数据库本身可能也对NoActive连接设置了超时时间，我们的应对办法：定期ping，或者SetConnMaxLifetime）
 	sqlDB.SetConnMaxLifetime(time.Hour)
-	GiftDB = db
+	return NewStore(db)
 }
 
 // 定期ping，保持连接的活跃
-func PingGiftDB() {
-	if GiftDB != nil {
-		sqlDB, _ := GiftDB.DB()
+func (s *Store) PingGiftDB() {
+	if s != nil && s.db != nil {
+		sqlDB, _ := s.db.DB()
 		sqlDB.Ping()
 		slog.Info("ping post db")
 	}
 }
 
 // 关闭数据库连接
-func CloseGiftDB() {
-	if GiftDB != nil {
-		sqlDB, _ := GiftDB.DB()
+func (s *Store) CloseGiftDB() {
+	if s != nil && s.db != nil {
+		sqlDB, _ := s.db.DB()
 		sqlDB.Close()
 		slog.Info("close GiftDB")
 	}

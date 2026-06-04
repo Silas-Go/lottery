@@ -9,8 +9,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type OrderHandler struct {
+	store *database.Store
+}
+
+func NewOrderHandler(store *database.Store) *OrderHandler {
+	return &OrderHandler{store: store}
+}
+
 // 用户完成支付
-func Pay(ctx *gin.Context) {
+func (h *OrderHandler) Pay(ctx *gin.Context) {
 	uid, err := strconv.Atoi(ctx.PostForm("uid"))
 	if err != nil {
 		ctx.String(http.StatusBadRequest, err.Error())
@@ -30,7 +38,7 @@ func Pay(ctx *gin.Context) {
 	}
 
 	// 生成正式订单，删除临时订单
-	if database.CreateOrder(uid, gid) > 0 {
+	if h.store.CreateOrder(uid, gid) > 0 {
 		database.DeleteTempOrder(uid, gid)
 		slog.Info("支付成功，临时订单已删除", "uid", uid, "gid", gid)
 	} else {
@@ -39,7 +47,7 @@ func Pay(ctx *gin.Context) {
 }
 
 // 用户放弃抢到的商品
-func GiveUp(ctx *gin.Context) {
+func (h *OrderHandler) GiveUp(ctx *gin.Context) {
 	uid, err := strconv.Atoi(ctx.PostForm("uid"))
 	if err != nil {
 		ctx.String(http.StatusBadRequest, err.Error())

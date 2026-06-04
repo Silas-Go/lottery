@@ -20,14 +20,14 @@ func (Gift) TableName() string {
 }
 
 // 把inventory表里的数据全部取出来。当数量不多时可以直接select * from table
-func GetAllGifts() []*Gift {
-	gifts, _ := GetAllGiftsWithError()
+func (s *Store) GetAllGifts() []*Gift {
+	gifts, _ := s.GetAllGiftsWithError()
 	return gifts
 }
 
-func GetAllGiftsWithError() ([]*Gift, error) {
+func (s *Store) GetAllGiftsWithError() ([]*Gift, error) {
 	var gifts []*Gift
-	err := GiftDB.Select("*").Find(&gifts).Error
+	err := s.db.Select("*").Find(&gifts).Error
 	if err != nil {
 		slog.Error("scan table inventory failed", "error", err)
 		return nil, fmt.Errorf("scan inventory table: %w", err)
@@ -35,14 +35,14 @@ func GetAllGiftsWithError() ([]*Gift, error) {
 	return gifts, nil
 }
 
-func GetGift(id int) *Gift {
-	gift, _ := GetGiftWithError(id)
+func (s *Store) GetGift(id int) *Gift {
+	gift, _ := s.GetGiftWithError(id)
 	return gift
 }
 
-func GetGiftWithError(id int) (*Gift, error) {
+func (s *Store) GetGiftWithError(id int) (*Gift, error) {
 	gift := Gift{Id: id}
-	err := GiftDB.Select("*").Find(&gift).Error
+	err := s.db.Select("*").Find(&gift).Error
 	if err != nil {
 		slog.Error("get gift by id failed", "error", err, "gid", id)
 		return nil, fmt.Errorf("get gift by id %d: %w", id, err)

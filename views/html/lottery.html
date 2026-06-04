@@ -1,82 +1,180 @@
-<html lang="en">
+<!doctype html>
+<html lang="zh-CN">
 
 <head>
     <meta charset="utf-8" />
-    <script src="https://code.jquery.com/jquery-latest.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>秒杀系统实验室</title>
+    <link rel="stylesheet" href="/css/lottery.css" />
     <script src="/js/lucky-canvas.js"></script>
-    <title>抽奖</title>
-    <style>
-        .center {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-    </style>
 </head>
 
-<body>
-    <div class="center" id="my-lucky"></div>
-    <script>
-        var giftMap = new Map();  //维护奖品ID和转盘里奖品index的对应关系
-        $(document).ready(function () {
-            $.ajax({
-                type: "GET",
-                url: "/gifts",
-                success: function (gifts) {
-                    var prizes = new Array();
-                    $.each(gifts, function (index, gift) {
-                        giftMap[gift.Id] = index;
-                        prizes[index] = { background: '#e9e8fe', fonts: [{ text: gift.Name }], imgs: [{ src: gift.Picture, top: 30, width: 80, height: 80 }] };
-                    })
-                    // 直接使用luch-canvas抽奖插件  https://100px.net/usage/js.html
-                    const myLucky = new LuckyCanvas.LuckyWheel('#my-lucky', {
-                        width: '600px',
-                        height: '600px',
-                        blocks: [{ padding: '10px', background: '#869cfa' }],
-                        prizes: prizes,
-                        buttons: [
-                            { radius: '40%', background: '#617df2' },
-                            { radius: '35%', background: '#afc8ff' },
-                            {
-                                radius: '30%', background: '#869cfa',
-                                pointer: true,
-                                fonts: [{ text: '抽奖', top: '-10px' }]
-                            },
-                        ],
-                        start: function () {
-                            $.ajax({
-                                type: "GET",
-                                url: "/lucky",
-                                success: function (giftId) {
-                                    if (giftId == "0") {
-                                        alert("抽奖结束")
-                                    } else {
-                                        myLucky.play();
-                                        idx = giftMap[giftId];
-                                        myLucky.stop(idx);
-                                    }
-                                }
-                            }).fail(function (result, result1, result2) {
-                                alert("出错了");
-                            });
-                        },
-                        end: function (prize) { // 游戏停止时触发
-                            if (prize.fonts[0].text == '谢谢参与') {
-                                alert(prize.fonts[0].text)
-                            } else {
-                                alert('恭喜中奖: ' + prize.fonts[0].text)
-                                window.location.replace("/result");  //跳转到支付页面
-                            }
-                        }
-                    })
-                },
-                error: function (jqXHR, textStatus, errorThrown) {
-                    alert(jqXHR.responseText);
-                }
-            }).fail(function (result, result1, result2) {
-                $('#my-lucky').html("数据加载失败");
-            });
-        });
-    </script>
+<body class="lab-page">
+    <header class="app-header">
+        <div>
+            <p class="eyebrow">Seckill Architecture Lab</p>
+            <h1>秒杀系统实验室</h1>
+            <p class="subtitle">用一次抽奖，看清 Redis 预扣库存、MQ 排队、异步落库和超卖保护。</p>
+        </div>
+        <div class="status-strip" aria-label="系统状态">
+            <span class="status-pill is-live">活动进行中</span>
+            <span class="status-pill">Redis 预扣</span>
+            <span class="status-pill">RocketMQ 延迟取消</span>
+            <span class="status-pill">MySQL 最终落库</span>
+        </div>
+    </header>
+
+    <main class="lab-shell">
+        <section class="panel operation-panel" aria-labelledby="operation-title">
+            <div class="panel-header">
+                <div>
+                    <p class="eyebrow">User Operation</p>
+                    <h2 id="operation-title">用户操作区</h2>
+                </div>
+                <span id="api-status" class="badge">连接中</span>
+            </div>
+
+            <div class="activity-summary">
+                <div>
+                    <span class="summary-label">当前活动</span>
+                    <strong>限量奖品秒杀</strong>
+                </div>
+                <div>
+                    <span class="summary-label">库存模式</span>
+                    <strong>Redis 预扣 + MQ 补偿</strong>
+                </div>
+            </div>
+
+            <div class="wheel-card">
+                <div id="my-lucky" class="wheel-mount" aria-label="抽奖转盘"></div>
+                <button id="single-lottery" class="primary-action" type="button">参与秒杀 / 抽奖</button>
+                <p id="operation-message" class="helper-text">点击后只发起一次真实请求，右侧会同步展示链路变化。</p>
+            </div>
+
+            <div class="section-title-row">
+                <h3>压测模拟</h3>
+                <span class="soft-label">前端预演态</span>
+            </div>
+            <div class="stress-buttons">
+                <button class="stress-btn" type="button" data-concurrency="100" data-total="100">模拟 100 并发</button>
+                <button class="stress-btn" type="button" data-concurrency="1000" data-total="1000">模拟 1000 并发</button>
+                <button class="stress-btn" type="button" data-concurrency="5000" data-total="5000">模拟 5000 并发</button>
+                <button class="stress-btn" type="button" data-concurrency="10000" data-total="10000">模拟 10000 并发</button>
+            </div>
+            <p class="helper-text">下一步接入后端接口：POST /api/seckill/simulation/start，再用 SSE 或 WebSocket 推送真实进度。</p>
+
+            <div class="section-title-row">
+                <h3>奖品池</h3>
+                <span id="gift-count" class="soft-label">加载中</span>
+            </div>
+            <div id="gift-list" class="gift-grid" aria-live="polite"></div>
+        </section>
+
+        <section class="panel system-panel" aria-labelledby="system-title">
+            <div class="panel-header">
+                <div>
+                    <p class="eyebrow">Runtime Panel</p>
+                    <h2 id="system-title">系统运行面板</h2>
+                </div>
+                <span id="simulation-status" class="badge">等待请求</span>
+            </div>
+
+            <div class="metric-grid" aria-live="polite">
+                <article class="metric-card strong">
+                    <span>活动库存</span>
+                    <strong id="activity-stock">100</strong>
+                </article>
+                <article class="metric-card">
+                    <span>Redis 预扣库存剩余</span>
+                    <strong id="redis-stock">100</strong>
+                </article>
+                <article class="metric-card">
+                    <span>数据库最终库存</span>
+                    <strong id="db-stock">100 / 等待异步落库</strong>
+                </article>
+                <article class="metric-card">
+                    <span>当前请求数</span>
+                    <strong id="total-requests">0</strong>
+                </article>
+                <article class="metric-card success">
+                    <span>成功进入队列</span>
+                    <strong id="queue-success">0</strong>
+                </article>
+                <article class="metric-card warning">
+                    <span>被限流拦截</span>
+                    <strong id="rate-limited">0</strong>
+                </article>
+                <article class="metric-card danger">
+                    <span>库存不足失败</span>
+                    <strong id="stock-failed">0</strong>
+                </article>
+                <article class="metric-card">
+                    <span>MQ 待消费消息</span>
+                    <strong id="mq-pending">0</strong>
+                </article>
+                <article class="metric-card success">
+                    <span>已完成订单</span>
+                    <strong id="completed-orders">0</strong>
+                </article>
+                <article class="metric-card">
+                    <span>平均响应时间</span>
+                    <strong id="avg-latency">0ms</strong>
+                </article>
+                <article class="metric-card">
+                    <span>最大响应时间</span>
+                    <strong id="max-latency">0ms</strong>
+                </article>
+                <article class="metric-card success">
+                    <span>是否发生超卖</span>
+                    <strong id="oversold">否</strong>
+                </article>
+            </div>
+
+            <div class="simulation-board">
+                <div>
+                    <span class="summary-label">压测进度</span>
+                    <strong id="simulation-progress">0 / 0</strong>
+                </div>
+                <div>
+                    <span class="summary-label">QPS</span>
+                    <strong id="qps">0</strong>
+                </div>
+                <div>
+                    <span class="summary-label">P95</span>
+                    <strong id="p95">0ms</strong>
+                </div>
+                <div>
+                    <span class="summary-label">P99</span>
+                    <strong id="p99">0ms</strong>
+                </div>
+            </div>
+
+            <div class="section-title-row">
+                <h3>架构链路</h3>
+                <span class="soft-label">请求流向</span>
+            </div>
+            <div class="architecture-flow" aria-label="秒杀请求架构链路">
+                <div class="flow-node" data-step="browser">Browser</div>
+                <div class="flow-arrow">-></div>
+                <div class="flow-node" data-step="api">Gin API</div>
+                <div class="flow-arrow">-></div>
+                <div class="flow-node" data-step="redis">Redis 预扣</div>
+                <div class="flow-arrow">-></div>
+                <div class="flow-node" data-step="mq">RocketMQ</div>
+                <div class="flow-arrow">-></div>
+                <div class="flow-node" data-step="mysql">MySQL</div>
+            </div>
+
+            <div class="section-title-row">
+                <h3>实时事件</h3>
+                <button id="clear-events" class="ghost-btn" type="button">清空</button>
+            </div>
+            <ol id="event-log" class="event-log" aria-live="polite"></ol>
+        </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/js/seckill-lab.js"></script>
 </body>
+
+</html>

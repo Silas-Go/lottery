@@ -11,8 +11,8 @@ const (
 	INVENTORY_PREFIX = "gift_count_"
 )
 
-func InitGiftInventory() error {
-	gifts, err := GetAllGiftsWithError()
+func (s *Store) InitGiftInventory() error {
+	gifts, err := s.GetAllGiftsWithError()
 	if err != nil {
 		return err
 	}

@@ -9,14 +9,16 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 )
 
+var store *database.Store
+
 func init() {
 	util.InitSlog("../../log/lottery.log")
-	database.ConnectGiftDB("../conf", "mysql", util.YAML, "../../log/lottery.db.log")
+	store = database.ConnectGiftDB("../conf", "mysql", util.YAML, "../../log/lottery.db.log")
 	database.ConnectGiftRedis("../conf", "redis", util.YAML)
 }
 
 func TestInitGiftInventory(t *testing.T) {
-	database.InitGiftInventory()
+	store.InitGiftInventory()
 	for _, gift := range database.GetAllGiftInventory() {
 		fmt.Printf("%d %d\n", gift.Id, gift.Count)
 	}

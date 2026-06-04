@@ -28,7 +28,7 @@ func ConnectGiftRedis(confDir, confFile, fileType string) {
 
 // 关闭Redis连接
 func CloseGiftRedis() {
-	if GiftDB != nil {
+	if GiftRedis != nil {
 		GiftRedis.Close()
 		slog.Info("close redis")
 	}

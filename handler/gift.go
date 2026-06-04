@@ -19,6 +19,14 @@ const (
 	PAY_DELAY = 600
 )
 
+type GiftHandler struct {
+	store *database.Store
+}
+
+func NewGiftHandler(store *database.Store) *GiftHandler {
+	return &GiftHandler{store: store}
+}
+
 type apiErrorResponse struct {
 	Status  int    `json:"status"`
 	Code    string `json:"code"`
@@ -60,11 +68,11 @@ func rollbackInventory(giftId int, reason string) {
 	slog.Info("rollback inventory success", "gid", giftId, "reason", reason)
 }
 
-func GetAllGifts(ctx *gin.Context) {
+func (h *GiftHandler) GetAllGifts(ctx *gin.Context) {
 	start := time.Now()
 	slog.Info("get gifts request start", "client", ctx.ClientIP())
 
-	gifts, err := database.GetAllGiftsWithError()
+	gifts, err := h.store.GetAllGiftsWithError()
 	if err != nil {
 		writeAPIError(ctx, http.StatusServiceUnavailable, "GIFT_DB_READ_FAILED", "读取奖品列表失败", err)
 		return
@@ -87,7 +95,7 @@ func GetAllGifts(ctx *gin.Context) {
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", data)
 }
 
-func Lottery(ctx *gin.Context) {
+func (h *GiftHandler) Lottery(ctx *gin.Context) {
 	start := time.Now()
 	uid := 1
 	slog.Info("lottery request start", "uid", uid, "client", ctx.ClientIP())
@@ -126,7 +134,7 @@ func Lottery(ctx *gin.Context) {
 			continue
 		}
 
-		inst, err := database.GetGiftWithError(giftId)
+		inst, err := h.store.GetGiftWithError(giftId)
 		if err != nil {
 			rollbackInventory(giftId, "gift lookup failed")
 			writeAPIError(ctx, http.StatusInternalServerError, "GIFT_LOOKUP_FAILED", "查询中奖奖品详情失败", err, "uid", uid, "gid", giftId, "try", try)
