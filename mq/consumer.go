@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"silas/database"
+	"silas/metrics"
 	"silas/util"
 	"sync"
 	"time"
@@ -111,17 +112,28 @@ func ReceiveCancelOrder() {
 		}
 		for _, mg := range megs {
 			var order database.Order
+			timeoutRollback := false
 			err := sonic.Unmarshal(mg.GetBody(), &order)
 			if err == nil {
 				gid := database.GetTempOrder(order.UserId)
 				// 临时订单还在，说明用户没有完成支付
 				if gid == order.GiftId {
 					database.DeleteTempOrder(order.UserId, order.GiftId) //删除临时订单
-					database.IncreaseInventory(order.GiftId)             //库存加1
+					if err := database.IncreaseInventory(order.GiftId); err != nil {
+						metrics.RecordSystemError("MQ 超时回滚库存失败", err)
+					} else {
+						metrics.RecordInventoryRollback(order.GiftId, "pay timeout")
+						timeoutRollback = true
+					}
 					slog.Info("已超时，删除临时订单", "uid", order.UserId, "gid", order.GiftId)
 				}
+			} else {
+				metrics.RecordSystemError("解析 RocketMQ 消息失败", err)
 			}
-			consumer.Ack(ctx, mg)
+			if err := consumer.Ack(ctx, mg); err != nil {
+				metrics.RecordSystemError("RocketMQ Ack 失败", err)
+			}
+			metrics.RecordMQConsumed(timeoutRollback)
 		}
 	}
 }

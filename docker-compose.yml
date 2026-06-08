@@ -114,12 +114,29 @@ services:
       LOTTERY_MQ_TOPIC: CANCEL_ORDER
       LOTTERY_MQ_CONSUMER_GROUP: lottery
       LOTTERY_COOKIE_DOMAIN: localhost
+      LOTTERY_RATE_LIMIT_QPS: 800
       TZ: Asia/Shanghai
     ports:
       - "5678:5678"
     volumes:
       - app-log:/app/log
     restart: on-failure
+
+  wrk2:
+    build:
+      context: ./docker/wrk2
+    container_name: lottery-wrk2
+    profiles:
+      - loadtest
+    depends_on:
+      - app
+    environment:
+      TARGET_URL: http://app:5678/lucky
+      RATE: 500
+      DURATION: 30s
+      THREADS: 4
+      CONNECTIONS: 128
+      TIMEOUT: 2s
 
 volumes:
   mysql-data:

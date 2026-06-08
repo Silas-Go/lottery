@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"silas/database"
 	"silas/handler"
+	"silas/metrics"
 	"silas/mq"
 	"silas/util"
 	"syscall"
@@ -33,6 +34,16 @@ func Init() *database.Store {
 	}
 	if err := store.InitGiftInventory(); err != nil {
 		slog.Error("init gift inventory failed", "error", err)
+	} else if gifts, err := database.GetAllGiftInventoryWithError(); err != nil {
+		slog.Error("load gift inventory metrics failed", "error", err)
+	} else {
+		var total int64
+		for _, gift := range gifts {
+			if gift.Count > 0 {
+				total += int64(gift.Count)
+			}
+		}
+		metrics.InitInventory(total)
 	}
 	return store
 }
@@ -81,6 +92,8 @@ func main() {
 	engine.GET("/lucky", giftHandler.Lottery)     //点击抽奖按钮
 	engine.POST("/giveup", orderHandler.GiveUp)
 	engine.POST("/pay", orderHandler.Pay)
+	engine.GET("/api/metrics/snapshot", handler.GetMetricsSnapshot)
+	engine.GET("/api/metrics/stream", handler.StreamMetrics)
 	engine.GET("/result", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "pay.html", nil)
 	})

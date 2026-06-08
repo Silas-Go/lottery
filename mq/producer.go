@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"silas/database"
+	"silas/metrics"
 	"sync"
 	"time"
 
@@ -105,6 +106,7 @@ func SendCancelOrder(order database.Order, delay int) error {
 		return fmt.Errorf("send cancel order to rocketmq: %w", err)
 	}
 
+	metrics.RecordMQEnqueued()
 	slog.Info("send cancel order success", "uid", order.UserId, "gid", order.GiftId, "topic", Topic(), "delay", delay)
 	return nil
 }

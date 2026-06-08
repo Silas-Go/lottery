@@ -2,6 +2,7 @@
 .gocache/
 
 # 编译产物
+.tmp/
 *.exe
 *.exe~
 *.dll

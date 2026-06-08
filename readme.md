@@ -68,6 +68,8 @@ create table if not exists orders(
 |/giveup|POST|uid和gid|不支付，放弃这次抽中的机会|  
 |/pay|POST|uid和gid|完成支付|  
 |/result|GET||抽奖成功页面|  
+|/api/metrics/snapshot|GET||返回当前秒杀指标快照|
+|/api/metrics/stream|GET||通过 SSE 实时推送秒杀指标|
 
 ## 前端展现
 直接使用[lucky-canvas](https://100px.net/usage/js.html)抽奖插件。
@@ -96,6 +98,55 @@ docker compose down -v
 
 注意：`docker compose down -v` 会删除 MySQL、Redis、RocketMQ 的数据卷，下一次启动会重新执行 `init.sql`。
 
+## wrk2 固定 QPS 压测
+
+项目内置了 `wrk2` 压测容器，用于演示固定流量进入秒杀接口时，Redis 预扣库存和 RocketMQ 延时取消如何保护系统。
+
+先启动业务服务：
+
+```bash
+docker compose up --build -d
+```
+
+默认以 500 QPS 压测 `/lucky` 30 秒：
+
+```bash
+docker compose --profile loadtest run --rm wrk2
+```
+
+调整压测参数：
+
+```bash
+docker compose --profile loadtest run --rm \
+  -e RATE=1000 \
+  -e DURATION=60s \
+  -e THREADS=4 \
+  -e CONNECTIONS=256 \
+  wrk2
+```
+
+`wrk2` 会通过 Lua 脚本给每个请求追加不同的 `uid`，实际请求形如：
+
+```text
+GET /lucky?uid=123456000001
+```
+
+压测结果中的 `Requests/sec`、延迟分布和错误数用于观察外部压力；页面右侧会通过 SSE 实时展示服务端埋点，包括限流数、库存不足数、MQ 待消费数、是否超卖等业务指标。
+
+注意：官方 `giltene/wrk2` 依赖的老 LuaJIT 对 arm64 支持不好，项目中的 Dockerfile 默认使用 `AmpereTravis/wrk2-aarch64` fork，方便 Apple Silicon 机器原生构建和运行。
+
+页面会通过 SSE 订阅实时指标：
+
+```text
+GET /api/metrics/stream
+```
+
+也可以直接查看当前快照：
+
+```text
+GET /api/metrics/snapshot
+```
+
 容器部署时主要通过环境变量覆盖默认配置：
 
 |变量|默认值|说明|
@@ -114,3 +165,4 @@ docker compose down -v
 |`LOTTERY_MQ_TOPIC`|`CANCEL_ORDER`|取消订单消息 Topic|
 |`LOTTERY_MQ_CONSUMER_GROUP`|`lottery`|消费者组|
 |`LOTTERY_COOKIE_DOMAIN`|`localhost`|Cookie 域名|
+|`LOTTERY_RATE_LIMIT_QPS`|`0`|`/lucky` 固定窗口限流阈值，`0` 表示关闭；Docker 默认设置为 `800`|

@@ -3,8 +3,9 @@
     var gifts = [];
     var wheel = null;
     var spinning = false;
-    var simulationTimer = null;
     var toastTimer = null;
+    var metricsSource = null;
+    var liveMetrics = false;
 
     var state = {
         baseStock: 100,
@@ -61,6 +62,32 @@
         setText("p99", state.p99 + "ms");
     }
 
+    function applyMetricsSnapshot(snapshot) {
+        if (!snapshot) {
+            return;
+        }
+        liveMetrics = true;
+        state.baseStock = snapshot.activityStock || 0;
+        state.redisStock = snapshot.redisStock || 0;
+        state.dbStock = snapshot.dbStock || "0 / 未初始化";
+        state.totalRequests = snapshot.totalRequests || 0;
+        state.queueSuccess = snapshot.queueSuccess || 0;
+        state.rateLimited = snapshot.rateLimited || 0;
+        state.stockFailed = snapshot.stockFailed || 0;
+        state.mqPending = snapshot.mqPending || 0;
+        state.completedOrders = snapshot.completedOrders || 0;
+        state.avgLatency = snapshot.avgLatency || 0;
+        state.maxLatency = snapshot.maxLatency || 0;
+        state.oversold = snapshot.oversold ? "是" : "否";
+        state.simulationTotal = snapshot.simulationTotal || state.totalRequests;
+        state.simulationDone = snapshot.simulationDone || state.totalRequests;
+        state.qps = snapshot.qps || 0;
+        state.p95 = snapshot.p95 || 0;
+        state.p99 = snapshot.p99 || 0;
+        updateMetrics();
+        renderServerEvents(snapshot.events || []);
+    }
+
     function setBadge(id, text, className) {
         var badge = el(id);
         if (!badge) {
@@ -74,11 +101,7 @@
         setText("operation-message", text);
     }
 
-    function pushEvent(title, detail, tone) {
-        var list = el("event-log");
-        if (!list) {
-            return;
-        }
+    function appendEventItem(list, timeText, title, detail, tone) {
         var item = document.createElement("li");
         var time = document.createElement("span");
         var content = document.createElement("div");
@@ -88,7 +111,7 @@
         item.className = "event-item" + (tone ? " " + tone : "");
         time.className = "event-time";
         content.className = "event-content";
-        time.textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+        time.textContent = timeText;
         strong.textContent = title;
         span.textContent = detail;
 
@@ -96,11 +119,33 @@
         content.appendChild(span);
         item.appendChild(time);
         item.appendChild(content);
+        list.appendChild(item);
+    }
+
+    function pushEvent(title, detail, tone) {
+        var list = el("event-log");
+        if (!list) {
+            return;
+        }
+        var temp = document.createElement("ol");
+        appendEventItem(temp, new Date().toLocaleTimeString("zh-CN", { hour12: false }), title, detail, tone);
+        var item = temp.firstElementChild;
         list.prepend(item);
 
         while (list.children.length > 16) {
             list.removeChild(list.lastElementChild);
         }
+    }
+
+    function renderServerEvents(events) {
+        var list = el("event-log");
+        if (!list) {
+            return;
+        }
+        list.innerHTML = "";
+        events.forEach(function (event) {
+            appendEventItem(list, event.time || "--:--:--", event.title || "系统事件", event.detail || "", event.tone || "");
+        });
     }
 
     function showToast(text) {
@@ -332,103 +377,31 @@
         }
     }
 
-    function resetSimulation(total) {
-        state.baseStock = 100;
-        state.redisStock = 100;
-        state.dbStock = "100 / 等待异步落库";
-        state.totalRequests = 0;
-        state.queueSuccess = 0;
-        state.rateLimited = 0;
-        state.stockFailed = 0;
-        state.mqPending = 0;
-        state.completedOrders = 0;
-        state.avgLatency = 0;
-        state.maxLatency = 0;
-        state.oversold = "否";
-        state.simulationTotal = total;
-        state.simulationDone = 0;
-        state.qps = 0;
-        state.p95 = 0;
-        state.p99 = 0;
-        state.latencySamples = [];
-        updateMetrics();
-    }
-
-    function easeOut(value) {
-        return 1 - Math.pow(1 - value, 3);
-    }
-
     function setActiveStressButton(activeButton) {
         document.querySelectorAll(".stress-btn").forEach(function (button) {
             button.classList.toggle("is-active", button === activeButton);
-            button.disabled = Boolean(activeButton) && button !== activeButton;
         });
     }
 
-    function finishSimulationButtons() {
-        document.querySelectorAll(".stress-btn").forEach(function (button) {
-            button.classList.remove("is-active");
-            button.disabled = false;
-        });
+    function buildLoadtestCommand(rate, connections) {
+        return "docker compose --profile loadtest run --rm -e RATE=" + rate +
+            " -e CONNECTIONS=" + connections + " wrk2";
     }
 
-    function startSimulation(total, concurrency, button) {
-        window.clearInterval(simulationTimer);
-        resetSimulation(total);
+    function prepareLoadtest(rate, connections, button) {
+        var command = buildLoadtestCommand(rate, connections);
+        setText("loadtest-command", command);
         setActiveStressButton(button);
-        setBadge("simulation-status", "压测进行中", "is-warn");
-        setOperationMessage("前端正在演示压测指标流，不会从浏览器发起海量请求。");
-        pushEvent("启动压测模拟", "计划请求 " + formatNumber(total) + "，并发 " + formatNumber(concurrency) + "。");
-
-        var startedAt = performance.now();
-        var duration = Math.min(4800, Math.max(1600, total / 2.5));
-        var successTarget = Math.min(state.baseStock, total);
-        var rateLimitedTarget = total <= state.baseStock ? 0 : Math.round((total - successTarget) * (total >= 5000 ? 0.72 : 0.58));
-        var stockFailedTarget = Math.max(0, total - successTarget - rateLimitedTarget);
-
-        simulationTimer = window.setInterval(function () {
-            var elapsed = performance.now() - startedAt;
-            var ratio = Math.min(1, elapsed / duration);
-            var eased = easeOut(ratio);
-            var completed = Math.min(total, Math.round(total * eased));
-
-            state.simulationDone = completed;
-            state.totalRequests = completed;
-            state.queueSuccess = Math.min(successTarget, Math.round(successTarget * Math.min(1, eased * 1.08)));
-            state.rateLimited = Math.min(rateLimitedTarget, Math.round(rateLimitedTarget * eased));
-            state.stockFailed = Math.max(0, completed - state.queueSuccess - state.rateLimited);
-            if (ratio === 1) {
-                state.stockFailed = stockFailedTarget;
-            }
-            state.redisStock = Math.max(0, state.baseStock - state.queueSuccess);
-            state.completedOrders = Math.min(state.queueSuccess, Math.round(state.queueSuccess * Math.min(1, eased * 0.72)));
-            state.mqPending = Math.max(0, state.queueSuccess - state.completedOrders);
-            state.dbStock = ratio < 1 ? "100 / 等待异步落库" : (state.baseStock - state.completedOrders) + " / 已异步落库";
-            state.qps = elapsed > 0 ? Math.round(completed / (elapsed / 1000)) : 0;
-            state.avgLatency = Math.round(12 + concurrency / 760 + eased * 10);
-            state.maxLatency = Math.round(state.avgLatency * 3.8 + Math.min(150, concurrency / 70));
-            state.p95 = Math.round(state.avgLatency * 2.4 + Math.min(80, concurrency / 160));
-            state.p99 = Math.round(state.avgLatency * 3.1 + Math.min(130, concurrency / 100));
-            state.oversold = state.redisStock < 0 ? "是" : "否";
-
-            if (completed > 0) {
-                pulseStep("api");
-            }
-            if (state.queueSuccess > 0) {
-                pulseStep("redis");
-                pulseStep("mq");
-            }
-            updateMetrics();
-
-            if (ratio === 1) {
-                window.clearInterval(simulationTimer);
-                simulationTimer = null;
-                setBadge("simulation-status", "压测完成", "is-ok");
-                setOperationMessage("压测预演完成：成功数不超过库存，超卖为否。");
-                pushEvent("压测完成", "成功 " + formatNumber(successTarget) + "，限流 " + formatNumber(rateLimitedTarget) + "，库存不足 " + formatNumber(stockFailedTarget) + "，超卖：否。", "success");
-                finishSimulationButtons();
-            }
-        }, 90);
+        if (liveMetrics) {
+            setBadge("simulation-status", "等待 wrk2", "is-ok");
+            setOperationMessage("真实指标流已连接。在终端运行左侧命令，右侧会用后端埋点实时刷新。");
+            pushEvent("准备真实压测", command, "success");
+            showToast("已生成 wrk2 命令");
+            return;
+        }
+        setBadge("simulation-status", "指标未连接", "is-warn");
+        setOperationMessage("SSE 指标流暂未连接。请先确认服务运行，再执行 wrk2 命令。");
+        pushEvent("指标流未连接", "不会展示前端假数据；真实结果只来自服务端埋点。", "warning");
     }
 
     async function loadGifts() {
@@ -449,6 +422,43 @@
         }
     }
 
+    async function loadMetricsSnapshot() {
+        try {
+            var response = await fetch("/api/metrics/snapshot");
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+            applyMetricsSnapshot(await response.json());
+            setBadge("simulation-status", "实时指标中", "is-ok");
+        } catch (error) {
+            setBadge("simulation-status", "指标未连接", "is-warn");
+        }
+    }
+
+    function connectMetricsStream() {
+        if (!window.EventSource) {
+            loadMetricsSnapshot();
+            return;
+        }
+        if (metricsSource) {
+            metricsSource.close();
+        }
+
+        metricsSource = new EventSource("/api/metrics/stream");
+        metricsSource.addEventListener("metrics", function (event) {
+            try {
+                applyMetricsSnapshot(JSON.parse(event.data));
+                setBadge("simulation-status", "实时指标中", "is-ok");
+            } catch (error) {
+                setBadge("simulation-status", "指标解析失败", "is-error");
+            }
+        });
+        metricsSource.onerror = function () {
+            liveMetrics = false;
+            setBadge("simulation-status", "指标流重连中", "is-warn");
+        };
+    }
+
     function bindEvents() {
         var single = el("single-lottery");
         if (single) {
@@ -457,7 +467,7 @@
 
         document.querySelectorAll(".stress-btn").forEach(function (button) {
             button.addEventListener("click", function () {
-                startSimulation(Number(button.dataset.total), Number(button.dataset.concurrency), button);
+                prepareLoadtest(Number(button.dataset.rate), Number(button.dataset.connections), button);
             });
         });
 
@@ -475,7 +485,8 @@
     document.addEventListener("DOMContentLoaded", function () {
         updateMetrics();
         bindEvents();
-        pushEvent("系统面板就绪", "当前指标为教学面板演示数据，真实压测接口下一步接入。");
+        pushEvent("系统面板就绪", "正在连接服务端真实指标流。");
         loadGifts();
+        connectMetricsStream();
     });
 })();

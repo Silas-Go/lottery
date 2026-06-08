@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>秒杀系统实验室</title>
-    <link rel="stylesheet" href="/css/lottery.css" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260608-real-metrics" />
     <script src="/js/lucky-canvas.js"></script>
 </head>
 
@@ -52,16 +52,17 @@
             </div>
 
             <div class="section-title-row">
-                <h3>压测模拟</h3>
-                <span class="soft-label">前端预演态</span>
+                <h3>真实压测</h3>
+                <span class="soft-label">wrk2 固定 QPS</span>
             </div>
             <div class="stress-buttons">
-                <button class="stress-btn" type="button" data-concurrency="100" data-total="100">模拟 100 并发</button>
-                <button class="stress-btn" type="button" data-concurrency="1000" data-total="1000">模拟 1000 并发</button>
-                <button class="stress-btn" type="button" data-concurrency="5000" data-total="5000">模拟 5000 并发</button>
-                <button class="stress-btn" type="button" data-concurrency="10000" data-total="10000">模拟 10000 并发</button>
+                <button class="stress-btn" type="button" data-rate="500" data-connections="128">准备 500 QPS</button>
+                <button class="stress-btn" type="button" data-rate="1000" data-connections="256">准备 1000 QPS</button>
+                <button class="stress-btn" type="button" data-rate="5000" data-connections="512">准备 5000 QPS</button>
+                <button class="stress-btn" type="button" data-rate="10000" data-connections="768">准备 10000 QPS</button>
             </div>
-            <p class="helper-text">下一步接入后端接口：POST /api/seckill/simulation/start，再用 SSE 或 WebSocket 推送真实进度。</p>
+            <p class="helper-text">按钮只生成 wrk2 命令，不会在浏览器里伪造压测数据。右侧面板只展示服务端真实指标。</p>
+            <code id="loadtest-command" class="command-box">docker compose --profile loadtest run --rm wrk2</code>
 
             <div class="section-title-row">
                 <h3>奖品池</h3>
@@ -132,7 +133,7 @@
 
             <div class="simulation-board">
                 <div>
-                    <span class="summary-label">压测进度</span>
+                    <span class="summary-label">已处理请求</span>
                     <strong id="simulation-progress">0 / 0</strong>
                 </div>
                 <div>
@@ -174,7 +175,7 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js"></script>
+    <script src="/js/seckill-lab.js?v=20260608-real-metrics"></script>
 </body>
 
 </html>

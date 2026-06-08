@@ -90,6 +90,10 @@ func ReduceInventory(GiftId int) error {
 	if n < 0 {
 		msg := fmt.Sprintf("gift %d inventory is exhausted", GiftId)
 		slog.Error(msg, "key", key, "count", n)
+		if _, err := GiftRedis.Incr(key).Result(); err != nil {
+			slog.Error("rollback negative inventory failed", "key", key, "error", err)
+			return fmt.Errorf("%s and rollback failed: %w", msg, err)
+		}
 		return errors.New(msg)
 	}
 	return nil
