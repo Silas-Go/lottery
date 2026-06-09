@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"silas/database"
-	"silas/metrics"
+	"silas/internal/database"
+	"silas/internal/metrics"
 	"sync"
 	"time"
 

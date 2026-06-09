@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"silas/metrics"
+	"silas/internal/metrics"
 	"time"
 
 	"github.com/gin-gonic/gin"

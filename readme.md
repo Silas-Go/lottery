@@ -35,6 +35,22 @@ http://localhost:5678/
 .\scripts\stop-infra.ps1
 ```
 
+## 代码分层
+
+后端代码按 Go 项目常见边界收进 `internal`，入口文件只负责启动应用：
+
+```text
+main.go                 # 程序入口，只调用 app.New().Run()
+internal/app            # 组装日志、数据库、Redis、MQ、HTTP Server 和优雅退出
+internal/router         # Gin 路由、静态资源、页面入口注册
+internal/handler        # HTTP 入参/出参、Cookie、状态码和错误响应
+internal/service        # 抽奖、支付、放弃支付等业务流程
+internal/database       # MySQL / Redis 数据访问
+internal/mq             # RocketMQ producer / consumer
+internal/metrics        # 秒杀指标采集和快照
+internal/util           # 配置、日志、抽奖算法和环境变量工具
+```
+
 ## 建表
 ```sql
 set names utf8mb4 collate utf8mb4_unicode_ci;

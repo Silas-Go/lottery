@@ -81,4 +81,4 @@ func TestLottery(t *testing.T) {
 	}
 }
 
-// go test -v ./handler/test -run=^TestLottery$ -count=1
+// go test -v ./internal/handler/test -run=^TestLottery$ -count=1

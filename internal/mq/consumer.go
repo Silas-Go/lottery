@@ -5,9 +5,9 @@ import (
 	"errors"
 	"log/slog"
 	"os"
-	"silas/database"
-	"silas/metrics"
-	"silas/util"
+	"silas/internal/database"
+	"silas/internal/metrics"
+	"silas/internal/util"
 	"sync"
 	"time"
 

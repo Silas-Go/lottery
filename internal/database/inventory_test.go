@@ -2,8 +2,8 @@ package database_test
 
 import (
 	"fmt"
-	"silas/database"
-	"silas/util"
+	"silas/internal/database"
+	"silas/internal/util"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/log"
@@ -13,8 +13,8 @@ var store *database.Store
 
 func init() {
 	util.InitSlog("../../log/lottery.log")
-	store = database.ConnectGiftDB("../conf", "mysql", util.YAML, "../../log/lottery.db.log")
-	database.ConnectGiftRedis("../conf", "redis", util.YAML)
+	store = database.ConnectGiftDB("../../conf", "mysql", util.YAML, "../../log/lottery.db.log")
+	database.ConnectGiftRedis("../../conf", "redis", util.YAML)
 }
 
 func TestInitGiftInventory(t *testing.T) {
@@ -41,5 +41,5 @@ func TestUpdateInventory(t *testing.T) {
 	}
 }
 
-// go test -v ./database -run=^TestInitGiftInventory$ -count=1
-// go test -v ./database -run=^TestUpdateInventory$ -count=1
+// go test -v ./internal/database -run=^TestInitGiftInventory$ -count=1
+// go test -v ./internal/database -run=^TestUpdateInventory$ -count=1

@@ -2,7 +2,7 @@ package database
 
 import (
 	"log/slog"
-	"silas/util"
+	"silas/internal/util"
 
 	"github.com/go-redis/redis"
 )

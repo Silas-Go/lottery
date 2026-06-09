@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
-	"silas/util"
+	"silas/internal/util"
 	"time"
 
 	"gorm.io/driver/mysql"
