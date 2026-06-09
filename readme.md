@@ -1,3 +1,40 @@
+## 快速启动
+
+项目默认采用“依赖跑 Docker，Go app 本机跑”的开发结构：
+
+- Docker：MySQL、Redis、RocketMQ、wrk2 压测工具
+- 本机：Go Web 进程
+
+启动依赖：
+
+```powershell
+.\scripts\start-infra.ps1
+```
+
+启动 Go app：
+
+```powershell
+.\scripts\run-local-app.ps1
+```
+
+访问页面：
+
+```text
+http://localhost:5678/
+```
+
+本机压测：
+
+```powershell
+.\scripts\run-local-loadtest.ps1 -Rate 500 -Duration 30s -Connections 128
+```
+
+停止依赖：
+
+```powershell
+.\scripts\stop-infra.ps1
+```
+
 ## 建表
 ```sql
 set names utf8mb4 collate utf8mb4_unicode_ci;
