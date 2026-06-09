@@ -4,4 +4,4 @@ $ErrorActionPreference = "Stop"
 
 Set-Location -Path (Resolve-Path "$PSScriptRoot\..")
 
-docker compose stop app rocketmq-init rocketmq-broker rocketmq-namesrv redis mysql
+docker compose stop rocketmq-init rocketmq-broker rocketmq-namesrv redis mysql

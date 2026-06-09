@@ -1,4 +1,4 @@
-# Run wrk2 against the host Go app without starting the app container.
+# Run wrk2 against the host Go app.
 
 param(
     [int]$Rate = 500,
@@ -24,7 +24,7 @@ Write-Host "Rate=$Rate Duration=$Duration Threads=$Threads Connections=$Connecti
 
 $composeArgs = @(
     "--profile", "loadtest",
-    "run", "--rm", "--no-deps",
+    "run", "--rm",
     "-e", "TARGET_URL=$TargetUrl",
     "-e", "RATE=$Rate",
     "-e", "DURATION=$Duration",

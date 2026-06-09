@@ -6,8 +6,11 @@ Set-Location -Path (Resolve-Path "$PSScriptRoot\..")
 
 & "$PSScriptRoot\start-infra.ps1"
 
-# Free localhost:5678 if the old containerized app is still around.
-docker compose stop app | Out-Null
+# Free localhost:5678 if an old containerized app is still around.
+$oldAppContainer = docker ps -aq --filter "name=^/lottery-app$"
+if ($oldAppContainer) {
+    docker stop lottery-app | Out-Null
+}
 
 if (-not (Test-Path ".\log")) {
     New-Item -ItemType Directory -Path ".\log" | Out-Null

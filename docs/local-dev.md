@@ -2,7 +2,7 @@
 
 开发时不要把 Go app 放进 Docker 里反复 build。Docker 只负责 MySQL、Redis、RocketMQ，Go app 在本机直接运行。
 
-这套本地开发方式通过脚本只启动依赖容器。不要直接执行 `docker compose up -d`，那会按主 compose 启动完整容器栈，包括 Go app 容器。
+主 `docker-compose.yml` 只保留依赖服务和压测工具，不再包含 Go app 服务。也就是说，普通的 `docker compose up -d` 只会启动 MySQL、Redis、RocketMQ，不会 build 或启动 Go app 容器。
 
 ## 启动依赖
 
@@ -32,7 +32,7 @@ http://localhost:5678/
 
 ## 本机 Go app 压测
 
-远程最新的真实压测能力已经合进来了。完整容器部署时，页面生成的默认 wrk2 命令会打到 `app` 容器；本机 Go app 模式下，用下面这个脚本，它会把 wrk2 的目标改成宿主机的 `localhost:5678`，并且加 `--no-deps`，不会顺手启动 Go app 容器：
+远程最新的真实压测能力已经合进来了。现在 `wrk2` 默认打到宿主机上的 `localhost:5678`，不会启动 Go app 容器：
 
 ```powershell
 .\scripts\run-local-loadtest.ps1 -Rate 500 -Duration 30s -Connections 128
@@ -48,12 +48,10 @@ http://localhost:5678/
 
 这只会停止容器，不会删除 MySQL、Redis、RocketMQ 的数据卷。
 
-## 完整容器部署
+## 默认启动
 
-只有真正要验证完整 Docker 部署时才 build app 镜像：
+如果你只是本机开发，不需要 build Go app 镜像。现在默认部署就是：
 
 ```powershell
-docker compose up -d --build
+docker compose up -d
 ```
-
-平时开发不要用这条命令，否则会再次碰到 Docker Hub 基础镜像拉取问题。

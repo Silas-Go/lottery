@@ -5,6 +5,12 @@ $ErrorActionPreference = "Stop"
 
 Set-Location -Path (Resolve-Path "$PSScriptRoot\..")
 
+$oldAppContainer = docker ps -aq --filter "name=^/lottery-app$"
+if ($oldAppContainer) {
+    Write-Host "Removing old app container: lottery-app"
+    docker rm -f lottery-app | Out-Null
+}
+
 function Wait-ContainerHealthy {
     param(
         [Parameter(Mandatory = $true)]

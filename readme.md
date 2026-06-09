@@ -74,12 +74,26 @@ create table if not exists orders(
 ## 前端展现
 直接使用[lucky-canvas](https://100px.net/usage/js.html)抽奖插件。
 
-## Docker 一键部署
+## 依赖容器 + 本机 Go
 
-项目已经提供 `Dockerfile` 和 `docker-compose.yml`，会一起启动 Go Web、MySQL、Redis、RocketMQ NameServer、Broker、Proxy，并自动初始化 `lottery` 数据库和 `CANCEL_ORDER` 延时消息 Topic。
+项目的默认运行方式是：Docker 只启动 MySQL、Redis、RocketMQ NameServer、Broker、Proxy，并自动初始化 `lottery` 数据库和 `CANCEL_ORDER` 延时消息 Topic；Go app 在本机直接运行。
 
-```bash
-docker compose up --build
+启动依赖容器：
+
+```powershell
+docker compose up -d
+```
+
+或使用脚本等待依赖就绪：
+
+```powershell
+.\scripts\start-infra.ps1
+```
+
+启动本机 Go app：
+
+```powershell
+.\scripts\run-local-app.ps1
 ```
 
 启动后访问：
@@ -90,8 +104,9 @@ http://localhost:5678/
 
 常用命令：
 
-```bash
-docker compose logs -f app
+```powershell
+docker compose ps
+docker compose logs -f rocketmq-broker
 docker compose down
 docker compose down -v
 ```
@@ -102,26 +117,26 @@ docker compose down -v
 
 项目内置了 `wrk2` 压测容器，用于演示固定流量进入秒杀接口时，Redis 预扣库存和 RocketMQ 延时取消如何保护系统。
 
-先启动业务服务：
+先启动依赖容器和本机 Go app：
 
-```bash
-docker compose up --build -d
+```powershell
+.\scripts\run-local-app.ps1
 ```
 
 默认以 500 QPS 压测 `/lucky` 30 秒：
 
-```bash
+```powershell
 docker compose --profile loadtest run --rm wrk2
 ```
 
 调整压测参数：
 
-```bash
-docker compose --profile loadtest run --rm \
-  -e RATE=1000 \
-  -e DURATION=60s \
-  -e THREADS=4 \
-  -e CONNECTIONS=256 \
+```powershell
+docker compose --profile loadtest run --rm `
+  -e RATE=1000 `
+  -e DURATION=60s `
+  -e THREADS=4 `
+  -e CONNECTIONS=256 `
   wrk2
 ```
 
@@ -147,11 +162,11 @@ GET /api/metrics/stream
 GET /api/metrics/snapshot
 ```
 
-容器部署时主要通过环境变量覆盖默认配置：
+本机 Go app 主要通过环境变量覆盖默认配置：
 
 |变量|默认值|说明|
 | :--- | :--- | :--- |
-|`LOTTERY_HTTP_ADDR`|`localhost:5678`|Web 监听地址，Docker 中设置为 `:5678`|
+|`LOTTERY_HTTP_ADDR`|`localhost:5678`|Web 监听地址|
 |`LOTTERY_MYSQL_HOST`|`conf/mysql.yaml` 中的 host|MySQL 主机|
 |`LOTTERY_MYSQL_PORT`|`conf/mysql.yaml` 中的 port|MySQL 端口|
 |`LOTTERY_MYSQL_USER`|`conf/mysql.yaml` 中的 user|MySQL 用户|
@@ -165,4 +180,4 @@ GET /api/metrics/snapshot
 |`LOTTERY_MQ_TOPIC`|`CANCEL_ORDER`|取消订单消息 Topic|
 |`LOTTERY_MQ_CONSUMER_GROUP`|`lottery`|消费者组|
 |`LOTTERY_COOKIE_DOMAIN`|`localhost`|Cookie 域名|
-|`LOTTERY_RATE_LIMIT_QPS`|`0`|`/lucky` 固定窗口限流阈值，`0` 表示关闭；Docker 默认设置为 `800`|
+|`LOTTERY_RATE_LIMIT_QPS`|`0`|`/lucky` 固定窗口限流阈值，`0` 表示关闭；本机脚本默认设置为 `800`|
