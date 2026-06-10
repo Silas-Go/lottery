@@ -6,6 +6,8 @@ const (
 	CodeGiftDBReadFailed       = "GIFT_DB_READ_FAILED"
 	CodeNoGiftsConfigured      = "NO_GIFTS_CONFIGURED"
 	CodeRateLimited            = "SECKILL_RATE_LIMITED"
+	CodeDuplicateParticipation = "DUPLICATE_PARTICIPATION"
+	CodeAdmissionFailed        = "ADMISSION_FAILED"
 	CodeRedisInventoryReadFail = "REDIS_INVENTORY_READ_FAILED"
 	CodeLotteryAlgoFailed      = "LOTTERY_ALGO_FAILED"
 	CodeGiftLookupFailed       = "GIFT_LOOKUP_FAILED"

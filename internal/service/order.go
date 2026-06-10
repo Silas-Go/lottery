@@ -15,27 +15,38 @@ func NewOrderService(store *database.Store) *OrderService {
 }
 
 func (s *OrderService) Pay(uid int, gid int) *AppError {
-	tempOrderGid := database.GetTempOrder(uid)
-	if tempOrderGid != gid {
+	claimed, err := database.ClaimLotteryAdmission(uid, gid)
+	if err != nil {
+		metrics.RecordSystemError("支付资格确认失败", err)
+		return NewAppError(CodeAdmissionFailed, "支付资格确认失败，请稍后重试", err, "uid", uid, "gid", gid)
+	}
+	if !claimed {
 		return NewAppError(CodeOrderNotOwned, "您没有抢到该商品，或支付时限已过", nil, "uid", uid, "gid", gid)
 	}
 
 	if s.store.CreateOrder(uid, gid) <= 0 {
 		metrics.RecordSystemError("创建正式订单失败", nil)
+		if err := database.IncreaseInventory(gid); err != nil {
+			metrics.RecordSystemError("正式订单失败后库存回滚失败", err)
+		} else {
+			metrics.RecordInventoryRollback(gid, "order create failed")
+		}
 		return NewAppError(CodeOrderCreateFailed, "抱歉，系统出错，请联系客服", nil, "uid", uid, "gid", gid)
 	}
 
-	database.DeleteTempOrder(uid, gid)
 	metrics.RecordOrderCompleted(gid)
 	slog.Info("支付成功，临时订单已删除", "uid", uid, "gid", gid)
 	return nil
 }
 
 func (s *OrderService) GiveUp(uid int, gid int) *AppError {
-	database.DeleteTempOrder(uid, gid)
-	if err := database.IncreaseInventory(gid); err != nil {
+	released, err := database.ReleaseLotteryAdmission(uid, gid)
+	if err != nil {
 		metrics.RecordSystemError("用户放弃后库存回滚失败", err)
 		return NewAppError(CodeGiveUpRollbackFailed, "库存回滚失败，请联系客服", err, "uid", uid, "gid", gid)
+	}
+	if !released {
+		return NewAppError(CodeOrderNotOwned, "您没有抢到该商品，或支付时限已过", nil, "uid", uid, "gid", gid)
 	}
 
 	metrics.RecordInventoryRollback(gid, "user give up")

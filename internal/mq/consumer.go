@@ -115,16 +115,12 @@ func ReceiveCancelOrder() {
 			timeoutRollback := false
 			err := sonic.Unmarshal(mg.GetBody(), &order)
 			if err == nil {
-				gid := database.GetTempOrder(order.UserId)
-				// 临时订单还在，说明用户没有完成支付
-				if gid == order.GiftId {
-					database.DeleteTempOrder(order.UserId, order.GiftId) //删除临时订单
-					if err := database.IncreaseInventory(order.GiftId); err != nil {
-						metrics.RecordSystemError("MQ 超时回滚库存失败", err)
-					} else {
-						metrics.RecordInventoryRollback(order.GiftId, "pay timeout")
-						timeoutRollback = true
-					}
+				released, err := database.ReleaseLotteryAdmission(order.UserId, order.GiftId)
+				if err != nil {
+					metrics.RecordSystemError("MQ 超时回滚库存失败", err)
+				} else if released {
+					metrics.RecordInventoryRollback(order.GiftId, "pay timeout")
+					timeoutRollback = true
 					slog.Info("已超时，删除临时订单", "uid", order.UserId, "gid", order.GiftId)
 				}
 			} else {

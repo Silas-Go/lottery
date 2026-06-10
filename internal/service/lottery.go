@@ -8,6 +8,7 @@ import (
 	"silas/internal/metrics"
 	"silas/internal/mq"
 	"silas/internal/util"
+	"time"
 )
 
 const PayDelaySeconds = 600
@@ -88,30 +89,30 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 		}
 
 		giftID := ids[index]
-		if err := database.ReduceInventory(giftID); err != nil {
-			slog.Warn("reduce inventory failed, retrying lottery", "uid", uid, "gid", giftID, "try", try, "error", err)
+		status, err := database.TryAcquireLotteryAdmission(uid, giftID, time.Duration(PayDelaySeconds)*time.Second)
+		switch status {
+		case database.AdmissionAcquired:
+			metrics.RecordRedisPreDeduct(giftID)
+		case database.AdmissionDuplicate:
+			metrics.RecordStockFailed("用户重复参与")
+			return nil, NewAppError(CodeDuplicateParticipation, "请勿重复参与秒杀", err, "uid", uid, "gid", giftID, "try", try)
+		case database.AdmissionSoldOut:
+			slog.Warn("admission sold out, retrying lottery", "uid", uid, "gid", giftID, "try", try)
 			continue
+		default:
+			metrics.RecordSystemError("Redis 原子准入失败", err)
+			return nil, NewAppError(CodeAdmissionFailed, "秒杀准入失败，请稍后重试", err, "uid", uid, "gid", giftID, "try", try)
 		}
-		metrics.RecordRedisPreDeduct(giftID)
 
 		gift, err := s.store.GetGiftWithError(giftID)
 		if err != nil {
-			rollbackInventory(giftID, "gift lookup failed")
+			rollbackAdmission(uid, giftID, "gift lookup failed")
 			metrics.RecordSystemError("查询中奖奖品详情失败", err)
 			return nil, NewAppError(CodeGiftLookupFailed, "查询中奖奖品详情失败", err, "uid", uid, "gid", giftID, "try", try)
 		}
 
-		if err := database.CreateTempOrder(uid, giftID); err != nil {
-			rollbackInventory(giftID, "temp order create failed")
-			metrics.RecordSystemError("创建临时订单失败", err)
-			return nil, NewAppError(CodeTempOrderCreateFailed, "创建临时订单失败", err, "uid", uid, "gid", giftID, "try", try)
-		}
-
 		if err := mq.SendCancelOrder(database.Order{UserId: uid, GiftId: giftID}, PayDelaySeconds); err != nil {
-			if n := database.DeleteTempOrder(uid, giftID); n < 0 {
-				slog.Error("rollback temp order failed", "uid", uid, "gid", giftID)
-			}
-			rollbackInventory(giftID, "rocketmq send failed")
+			rollbackAdmission(uid, giftID, "rocketmq send failed")
 			metrics.RecordSystemError("发送延时取消订单消息失败", err)
 			return nil, NewAppError(CodeMQSendFailed, "发送延时取消订单消息失败", err, "uid", uid, "gid", giftID, "try", try)
 		}
@@ -131,11 +132,16 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 	return nil, NewAppError(CodeInventoryRetryExhaust, "库存扣减冲突，请稍后重试", errors.New("reduce inventory failed after 10 attempts"), "uid", uid)
 }
 
-func rollbackInventory(giftID int, reason string) {
-	if err := database.IncreaseInventory(giftID); err != nil {
-		slog.Error("rollback inventory failed", "gid", giftID, "reason", reason, "error", err)
+func rollbackAdmission(uid int, giftID int, reason string) {
+	released, err := database.ReleaseLotteryAdmission(uid, giftID)
+	if err != nil {
+		slog.Error("rollback admission failed", "uid", uid, "gid", giftID, "reason", reason, "error", err)
+		return
+	}
+	if !released {
+		slog.Warn("rollback admission skipped", "uid", uid, "gid", giftID, "reason", reason)
 		return
 	}
 	metrics.RecordInventoryRollback(giftID, reason)
-	slog.Info("rollback inventory success", "gid", giftID, "reason", reason)
+	slog.Info("rollback admission success", "uid", uid, "gid", giftID, "reason", reason)
 }
