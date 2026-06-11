@@ -235,4 +235,4 @@ GET /api/metrics/snapshot
 |`LOTTERY_MQ_TOPIC`|`CANCEL_ORDER`|取消订单消息 Topic|
 |`LOTTERY_MQ_CONSUMER_GROUP`|`lottery`|消费者组|
 |`LOTTERY_COOKIE_DOMAIN`|`localhost`|Cookie 域名|
-|`LOTTERY_RATE_LIMIT_QPS`|`0`|`/lucky` 固定窗口限流阈值，`0` 表示关闭；本机脚本默认设置为 `800`|
+|`LOTTERY_RATE_LIMIT_QPS`|`0`|`/lucky` 令牌桶限流速率，表示每秒补充的令牌数；`0` 表示关闭；本机脚本默认设置为 `800`|

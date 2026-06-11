@@ -35,10 +35,11 @@ internal/service/limiter.go
 internal/service/lottery.go
 ```
 
-当前限流是 Go 进程内固定窗口限流：
+当前限流是 Go 进程内令牌桶限流：
 
 ```text
-同一个 app 进程内，/lucky 每秒最多放行 N 个请求
+同一个 app 进程内，/lucky 按 N token/s 补充令牌
+请求拿到令牌才会继续进入 Redis / MQ 链路
 ```
 
 它保证的是：
@@ -58,7 +59,7 @@ internal/service/lottery.go
 ```text
 它是单机内存限流，不是分布式限流。
 多 app 实例部署时，每个实例都会各自限流。
-固定窗口也会有窗口边界突刺。
+桶容量默认等于 QPS，允许短时小突发，但持续流量会被压回配置速率。
 ```
 
 生产中通常还会在网关层增加全局限流、IP 限流、用户限流和黑名单策略。

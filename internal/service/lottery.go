@@ -15,7 +15,7 @@ const PayDelaySeconds = 600
 
 type LotteryService struct {
 	store   *database.Store
-	limiter *fixedWindowLimiter
+	limiter *tokenBucketLimiter
 }
 
 type LotteryOptions struct {
@@ -33,7 +33,7 @@ type LotteryResult struct {
 func NewLotteryService(store *database.Store, opts LotteryOptions) *LotteryService {
 	return &LotteryService{
 		store:   store,
-		limiter: newFixedWindowLimiter(opts.RateLimitQPS),
+		limiter: newTokenBucketLimiter(opts.RateLimitQPS),
 	}
 }
 
