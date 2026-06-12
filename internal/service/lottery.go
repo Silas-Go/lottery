@@ -13,15 +13,22 @@ import (
 
 const PayDelaySeconds = 600
 
+// LotteryService 编排抽奖主链路。
+// 业务规则集中放在 service 层，是为了让 handler 只处理 HTTP 入参/出参，
+// Redis、MQ、MySQL 的协作关系也不会散落到路由或页面逻辑里。
 type LotteryService struct {
 	store   *database.Store
 	limiter *tokenBucketLimiter
 }
 
+// LotteryOptions 定义抽奖服务启动时的可调参数。
+// 当前只暴露 QPS 限流配置，避免压测时把本机依赖打爆后误判为业务逻辑错误。
 type LotteryOptions struct {
 	RateLimitQPS int
 }
 
+// LotteryResult 表示一次抽奖成功后需要返回给前端的临时资格信息。
+// 这里返回的是“待支付资格”，不是最终订单；最终结果以支付后写入 MySQL 为准。
 type LotteryResult struct {
 	UID      int
 	GiftID   int
@@ -30,13 +37,19 @@ type LotteryResult struct {
 	Delay    int
 }
 
+// NewLotteryService 创建抽奖服务并初始化入口限流器。
+// 限流放在业务入口处，是为了保护 Redis Lua 准入和 MQ 入队链路，
+// 否则压测流量可能把依赖打满，导致演示结果变成基础设施故障。
 func NewLotteryService(store *database.Store, opts LotteryOptions) *LotteryService {
+	slog.Info("lottery service initialized", "rate_limit_qps", opts.RateLimitQPS)
 	return &LotteryService{
 		store:   store,
 		limiter: newTokenBucketLimiter(opts.RateLimitQPS),
 	}
 }
 
+// ListGifts 读取奖品列表供转盘展示。
+// 转盘只需要展示奖品配置，不代表真实库存；真实可抢库存以 Redis 中的预扣库存为准。
 func (s *LotteryService) ListGifts() ([]*database.Gift, *AppError) {
 	gifts, err := s.store.GetAllGiftsWithError()
 	if err != nil {
@@ -49,12 +62,27 @@ func (s *LotteryService) ListGifts() ([]*database.Gift, *AppError) {
 	for _, gift := range gifts {
 		gift.Count = 1
 	}
+	slog.Info("gift list loaded for wheel", "count", len(gifts))
 	return gifts, nil
 }
 
+// Draw 执行一次抽奖和临时资格发放。
+//
+// 抽奖流程：
+//
+// 1. 入口限流，保护本机演示环境
+// 2. 从 Redis 读取当前可用库存作为权重
+// 3. 按库存权重选出候选奖品
+// 4. 通过 Redis Lua 原子完成防重复、扣库存、写临时资格
+// 5. 读取 MySQL 奖品详情用于页面展示
+// 6. 发送 RocketMQ 延时消息，作为支付超时后的库存补偿
+//
+// 注意这里创建的是临时资格，不是最终订单；用户必须在支付接口中认领资格后，
+// 才会写入 MySQL 正式订单。
 func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 	if !s.limiter.Allow() {
 		metrics.RecordRateLimited()
+		slog.Warn("lottery request rate limited", "uid", uid)
 		return nil, NewAppError(CodeRateLimited, "请求过多，请稍后重试", nil, "uid", uid)
 	}
 
@@ -89,12 +117,18 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 		}
 
 		giftID := ids[index]
+		slog.Info("lottery candidate selected", "uid", uid, "gid", giftID, "try", try, "candidate_count", len(ids))
+		// 权重抽奖只决定候选奖品，真正的并发边界在 Redis Lua。
+		// 如果不把防重复、扣库存、写临时资格绑在同一个脚本里，
+		// 高并发下就可能出现重复参与或库存检查通过后被其他请求抢先扣光。
 		status, err := database.TryAcquireLotteryAdmission(uid, giftID, time.Duration(PayDelaySeconds)*time.Second)
 		switch status {
 		case database.AdmissionAcquired:
 			metrics.RecordRedisPreDeduct(giftID)
+			slog.Info("lottery admission acquired", "uid", uid, "gid", giftID, "try", try, "ttl_seconds", PayDelaySeconds)
 		case database.AdmissionDuplicate:
 			metrics.RecordStockFailed("用户重复参与")
+			slog.Warn("lottery admission duplicate", "uid", uid, "gid", giftID, "try", try, "error", err)
 			return nil, NewAppError(CodeDuplicateParticipation, "请勿重复参与秒杀", err, "uid", uid, "gid", giftID, "try", try)
 		case database.AdmissionSoldOut:
 			slog.Warn("admission sold out, retrying lottery", "uid", uid, "gid", giftID, "try", try)
@@ -110,13 +144,17 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 			metrics.RecordSystemError("查询中奖奖品详情失败", err)
 			return nil, NewAppError(CodeGiftLookupFailed, "查询中奖奖品详情失败", err, "uid", uid, "gid", giftID, "try", try)
 		}
+		slog.Info("lottery gift detail loaded", "uid", uid, "gid", giftID, "gift", gift.Name, "price", gift.Price, "try", try)
 
 		if err := mq.SendCancelOrder(database.Order{UserId: uid, GiftId: giftID}, PayDelaySeconds); err != nil {
+			// 用户不能在没有超时补偿消息的情况下持有库存。
+			// 如果 MQ 入队失败，必须立即释放 Redis 临时资格，否则这份库存会被长期占用。
 			rollbackAdmission(uid, giftID, "rocketmq send failed")
 			metrics.RecordSystemError("发送延时取消订单消息失败", err)
 			return nil, NewAppError(CodeMQSendFailed, "发送延时取消订单消息失败", err, "uid", uid, "gid", giftID, "try", try)
 		}
 		metrics.RecordQueueSuccess(giftID)
+		slog.Info("lottery cancel message queued", "uid", uid, "gid", giftID, "delay_seconds", PayDelaySeconds, "try", try)
 
 		slog.Info("lottery request success", "uid", uid, "gid", giftID, "gift", gift.Name, "try", try)
 		return &LotteryResult{
@@ -129,10 +167,13 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 	}
 
 	metrics.RecordStockFailed("库存扣减冲突重试耗尽")
+	slog.Warn("lottery retry exhausted", "uid", uid, "max_try", 10)
 	return nil, NewAppError(CodeInventoryRetryExhaust, "库存扣减冲突，请稍后重试", errors.New("reduce inventory failed after 10 attempts"), "uid", uid)
 }
 
 func rollbackAdmission(uid int, giftID int, reason string) {
+	// 回滚复用用户放弃和 MQ 超时的同一个 Lua 释放路径。
+	// 这样即使支付、超时补偿、失败回滚同时竞争同一份资格，也只有仍持有资格的一方能回补库存。
 	released, err := database.ReleaseLotteryAdmission(uid, giftID)
 	if err != nil {
 		slog.Error("rollback admission failed", "uid", uid, "gid", giftID, "reason", reason, "error", err)

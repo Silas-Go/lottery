@@ -14,12 +14,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GiftHandler 处理奖品展示和抽奖 HTTP 请求。
+// 它只负责 HTTP 适配和 cookie 写入，抽奖准入、库存、MQ 补偿等业务规则都交给 service。
 type GiftHandler struct {
 	lottery *service.LotteryService
 }
 
 var autoLotteryUID int64 = time.Now().UnixNano() % 1000000000
 
+// NewGiftHandler 创建奖品相关的 HTTP handler。
+// handler 通过依赖注入拿到 LotteryService，便于保持路由层和业务层解耦。
 func NewGiftHandler(lottery *service.LotteryService) *GiftHandler {
 	return &GiftHandler{lottery: lottery}
 }
@@ -36,6 +40,8 @@ func lotteryUID(ctx *gin.Context) int {
 	return uid
 }
 
+// GetAllGifts 返回转盘展示用的奖品列表。
+// 展示列表不承担库存真实性保证，真实可抢库存会在抽奖时重新从 Redis 读取。
 func (h *GiftHandler) GetAllGifts(ctx *gin.Context) {
 	start := time.Now()
 	slog.Info("get gifts request start", "client", ctx.ClientIP())
@@ -56,6 +62,9 @@ func (h *GiftHandler) GetAllGifts(ctx *gin.Context) {
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", data)
 }
 
+// Lottery 处理一次抽奖请求。
+// 成功抢到时会把临时资格写入 cookie，支付页再用 uid/gid 完成资格认领；
+// 如果没有库存则保持历史协议返回 "0"，避免旧前端误判为系统错误。
 func (h *GiftHandler) Lottery(ctx *gin.Context) {
 	start := time.Now()
 	defer func() {
@@ -63,12 +72,14 @@ func (h *GiftHandler) Lottery(ctx *gin.Context) {
 	}()
 
 	uid := lotteryUID(ctx)
+	slog.Info("lottery http request accepted", "uid", uid, "client", ctx.ClientIP(), "method", ctx.Request.Method, "path", ctx.Request.URL.Path)
 	result, appErr := h.lottery.Draw(uid)
 	if appErr != nil {
 		writeServiceError(ctx, appErr)
 		return
 	}
 	if result.GiftID == 0 {
+		slog.Info("lottery http response no stock", "uid", uid, "status", http.StatusOK, "duration_ms", time.Since(start).Milliseconds())
 		ctx.String(http.StatusOK, "0")
 		return
 	}

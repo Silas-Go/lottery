@@ -17,6 +17,8 @@ func newTokenBucketLimiter(qps int) *tokenBucketLimiter {
 	if qps <= 0 {
 		return &tokenBucketLimiter{}
 	}
+	// 桶容量设置为一秒的 QPS，允许短时间抖动通过。
+	// 但持续流量仍会被限制在 LOTTERY_RATE_LIMIT_QPS 附近，避免压测时把 Redis/MQ 打满。
 	burst := float64(qps)
 	return &tokenBucketLimiter{
 		rate:       float64(qps),

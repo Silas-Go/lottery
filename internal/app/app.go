@@ -20,25 +20,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Application 持有应用运行期需要统一关闭的资源。
+// 把 HTTP server、数据库和外部客户端收口到这里，是为了让启动和退出流程可追踪，
+// 避免资源初始化散落在 main 或 handler 里。
 type Application struct {
 	store  *database.Store
 	server *http.Server
 }
 
+// New 初始化依赖并创建 HTTP 应用。
+// 这里集中完成基础设施和路由装配，main.go 只负责启动，方便后续排查启动阶段失败点。
 func New() *Application {
 	store := initInfrastructure()
 	engine := initHTTP(store)
+	addr := util.EnvString("LOTTERY_HTTP_ADDR", "localhost:5678")
+	slog.Info("application initialized", "http_addr", addr)
 
 	return &Application{
 		store: store,
 		server: &http.Server{
-			Addr:    util.EnvString("LOTTERY_HTTP_ADDR", "localhost:5678"),
+			Addr:    addr,
 			Handler: engine,
 		},
 	}
 }
 
+// Run 启动 HTTP server 并等待退出信号。
+// HTTP 服务运行在 goroutine 中，主 goroutine 同时监听启动错误和系统信号；
+// 如果不这样收口，Ctrl+C 或容器停止时容易跳过资源关闭流程。
 func (a *Application) Run() error {
+	slog.Info("http server starting", "addr", a.server.Addr)
+	// errCh 用来把 ListenAndServe 的异步结果带回主 goroutine。
+	// 这样启动失败能立刻返回，收到退出信号时也能等待 server 正常关闭。
 	errCh := make(chan error, 1)
 	go func() {
 		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -48,12 +61,19 @@ func (a *Application) Run() error {
 		errCh <- nil
 	}()
 
+	// stopCh 只接收进程级退出信号。
+	// 收到信号后走 Shutdown，保证 Redis、MySQL、MQ client 都有机会释放资源。
 	stopCh := make(chan os.Signal, 1)
 	signal.Notify(stopCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(stopCh)
 
 	select {
 	case err := <-errCh:
+		if err != nil {
+			slog.Error("http server stopped with error", "error", err)
+		} else {
+			slog.Info("http server stopped")
+		}
 		return err
 	case sig := <-stopCh:
 		slog.Info("receive term signal " + sig.String() + ", going to exit")
@@ -64,8 +84,11 @@ func (a *Application) Run() error {
 	}
 }
 
+// Shutdown 按顺序关闭 HTTP server 和外部依赖。
+// 先停 HTTP 入口，再关闭数据库、Redis 和 MQ，避免新请求进入后依赖已经被提前释放。
 func (a *Application) Shutdown(ctx context.Context) {
 	if a.server != nil {
+		slog.Info("http server shutting down")
 		_ = a.server.Shutdown(ctx)
 	}
 
@@ -75,31 +98,38 @@ func (a *Application) Shutdown(ctx context.Context) {
 	database.CloseGiftRedis()
 	mq.StopConsumer()
 	mq.StopProducter()
+	slog.Info("application resources closed")
 }
 
 func initInfrastructure() *database.Store {
 	util.InitSlog("./log/lottery.log")
+	slog.Info("application infrastructure initializing")
 	store := database.ConnectGiftDB("./conf", "mysql", util.YAML, "./log/lottery.db.log")
 	database.ConnectGiftRedis("./conf", "redis", util.YAML)
 
 	mq.InitRocketLog()
 	if mq.Enabled() {
+		// MQ consumer 必须后台运行，才能在用户未支付时消费延时补偿消息。
+		// 如果不启动这个 goroutine，Redis 预扣库存会一直等到 TTL 自然过期或无法回补。
 		go mq.ReceiveCancelOrder()
 	} else {
 		slog.Info("rocketmq disabled")
 	}
 
 	initInventoryMetrics(store)
+	slog.Info("application infrastructure initialized")
 	return store
 }
 
 func initHTTP(store *database.Store) *gin.Engine {
 	gin.DefaultWriter = io.Discard
 
+	rateLimitQPS := util.EnvInt("LOTTERY_RATE_LIMIT_QPS", 0)
 	lotteryService := service.NewLotteryService(store, service.LotteryOptions{
-		RateLimitQPS: util.EnvInt("LOTTERY_RATE_LIMIT_QPS", 0),
+		RateLimitQPS: rateLimitQPS,
 	})
 	orderService := service.NewOrderService(store)
+	slog.Info("http dependencies initialized", "rate_limit_qps", rateLimitQPS)
 
 	return router.New(router.Handlers{
 		Gift:  handler.NewGiftHandler(lotteryService),
@@ -126,4 +156,5 @@ func initInventoryMetrics(store *database.Store) {
 		}
 	}
 	metrics.InitInventory(total)
+	slog.Info("inventory metrics initialized", "gift_count", len(gifts), "total_stock", total)
 }

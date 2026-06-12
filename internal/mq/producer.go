@@ -24,6 +24,9 @@ var (
 	producerMu sync.Mutex
 )
 
+// GetProducer 获取全局 RocketMQ producer。
+// producer 复用可以避免每次抽奖成功都重新建连接；这里用锁保护初始化，
+// 防止并发抽奖时多个 goroutine 同时创建 SDK client。
 func GetProducer() (rmq_client.Producer, error) {
 	producerMu.Lock()
 	defer producerMu.Unlock()
@@ -75,6 +78,11 @@ func GetProducer() (rmq_client.Producer, error) {
 	return producer, nil
 }
 
+// SendCancelOrder 发送支付超时取消消息。
+//
+// MQ 消息不是最终订单，只是库存补偿触发器；如果用户在延时时间内没有支付，
+// consumer 会通过 Redis Lua 释放临时资格。发送失败时上层必须立即回滚 Redis，
+// 否则用户会占住库存但系统没有任何超时补偿入口。
 func SendCancelOrder(order database.Order, delay int) error {
 	if !Enabled() {
 		slog.Info("rocketmq producer disabled, skip cancel order message", "uid", order.UserId, "gid", order.GiftId)
@@ -96,6 +104,8 @@ func SendCancelOrder(order database.Order, delay int) error {
 		Topic: Topic(),
 		Body:  content,
 	}
+	// 延时消息是支付超时补偿的触发器。
+	// 到期后是否真的释放库存，还要由 Redis Lua 再确认临时资格是否仍然存在。
 	msg.SetDelayTimestamp(time.Now().Add(time.Duration(delay) * time.Second))
 
 	ctx, cancel := context.WithTimeout(context.Background(), producerSendTimeout)
@@ -111,6 +121,8 @@ func SendCancelOrder(order database.Order, delay int) error {
 	return nil
 }
 
+// StopProducter 停止全局 RocketMQ producer。
+// 函数名保留历史拼写，避免扩大调用方改动；后续可以单独做兼容重命名。
 func StopProducter() {
 	if producer != nil {
 		producer.GracefulStop()
