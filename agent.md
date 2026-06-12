@@ -288,6 +288,83 @@ internal/handler/errors.go
 4. 需要时在 `statusForCode` 中补状态码。
 5. 保持 `X-Error-Code` 响应头，方便前端和排错。
 
+## 日志和可观测性约定
+
+本项目演示的是高并发链路，不能出现“接口空返回、日志没有上下文、前端不知道状态码”的情况。新增或修改任何关键链路时，必须同步补齐：
+
+```text
+结构化日志
+业务错误码
+HTTP 状态码
+metrics 指标
+```
+
+日志使用 Go 标准库 `log/slog`，不要散落使用 `fmt.Println`。日志要带可定位字段：
+
+```text
+method      HTTP 方法
+path        请求路径
+status      HTTP 状态码
+code        业务错误码
+uid         用户 ID
+gid         奖品 ID
+try         重试次数
+duration_ms 耗时
+endpoint    MQ / 外部服务地址
+topic       MQ topic
+error       原始错误
+```
+
+handler 层要求：
+
+- 请求失败必须通过 `writeServiceError` 或 `writeAPIError` 输出。
+- 错误响应必须包含 JSON body、HTTP 状态码和 `X-Error-Code`。
+- 不要直接返回空 body 让前端猜。
+- 成功路径可以记录请求开始、请求完成、耗时和关键 ID。
+
+service 层要求：
+
+- 记录业务状态变化，例如准入成功、重复参与、库存不足、支付成功、放弃支付、MQ 发送失败。
+- 返回 `*service.AppError` 时带上 `uid`、`gid`、`try` 等 attrs，handler 会把这些写进日志。
+- 不要在 service 里直接写 HTTP 响应。
+
+database / mq 层要求：
+
+- Redis、MySQL、RocketMQ 出错时要 wrap 原始 error，并带 key、topic、endpoint、uid、gid 等上下文。
+- MQ 消费失败、Ack 失败、消息解析失败必须写日志并记录 metrics。
+- Redis Lua 返回未知状态时必须作为系统错误处理。
+
+metrics 要求：
+
+- 新增失败分支时考虑是否需要 `RecordSystemError`、`RecordStockFailed`、`RecordRateLimited`、`RecordInventoryRollback` 等指标。
+- 前端实验室面板展示的必须是服务端真实指标，不要用浏览器模拟数据替代。
+
+## 注释约定
+
+本项目是秒杀链路演示系统，注释要服务于“讲清楚为什么这样设计”，而不是机械解释代码在做什么。
+
+需要补注释的地方：
+
+- Redis Lua 脚本：说明原子边界、key / argv 含义、返回值语义。
+- 秒杀准入、释放、支付认领：说明为什么必须绑定库存和临时订单。
+- MQ 延时取消：说明为什么发延时消息，以及失败时如何回滚。
+- 支付和超时取消的竞态点：说明为什么 Lua claim / release 可以避免重复处理。
+- 指标埋点：说明这个指标用来观察什么问题，例如限流、库存不足、MQ 积压、超卖风险。
+- 非直观的兼容逻辑：例如 RocketMQ client id / 中文主机名 / gRPC header 兼容。
+- 非显然的配置或脚本：例如为什么 Go app 本机跑、wrk2 为什么打 `host.docker.internal`。
+
+不要写的注释：
+
+- 不要写“给变量赋值”“调用函数”“返回结果”这种重复代码本身的注释。
+- 不要写已经过期的实现说明。
+- 不要用注释掩盖混乱代码；能通过命名和拆函数讲清楚的，优先改结构。
+
+注释风格：
+
+- 短，但要解释原因。
+- 面向后来维护者和面试讲解。
+- 修改关键链路时，如果行为、边界或失败兜底变了，要同步更新注释和 `docs/reliability.md`。
+
 ## 配置和环境变量
 
 主要配置来源：
@@ -330,7 +407,9 @@ LOTTERY_RATE_LIMIT_QPS=800
 3. 业务流程优先改 service。
 4. Redis 原子动作优先改 `internal/database/admission.go`。
 5. HTTP 响应格式只在 handler 层处理。
-6. 跑 `go test ./... -run '^$'` 和 `docker compose config --quiet`。
+6. 新增链路必须补日志、业务错误码、HTTP 状态码和 metrics。
+7. 关键并发边界、MQ 补偿、Redis Lua、非直观兼容逻辑必须补注释。
+8. 跑 `go test ./... -run '^$'` 和 `docker compose config --quiet`。
 
 不要做的事：
 
