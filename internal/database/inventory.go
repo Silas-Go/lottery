@@ -11,23 +11,33 @@ const (
 	INVENTORY_PREFIX = "gift_count_"
 )
 
+// InitGiftInventory 从 MySQL 恢复 Redis 活动库存。
+// Redis 不能简单恢复成 inventory.count 初始值，必须扣掉当前活动已完成订单；
+// 否则服务重启后会把已经卖出的库存重新放回奖池，压测时看起来不超卖，长期运行却会超发。
 func (s *Store) InitGiftInventory() error {
 	gifts, err := s.GetAllGiftsWithError()
 	if err != nil {
 		return err
 	}
+	completedCounts, err := s.CompletedOrderCounts(DefaultActivityID)
+	if err != nil {
+		return err
+	}
 
 	for _, gift := range gifts {
-		if gift.Count <= 0 {
-			slog.Warn("gift count is zero", "id", gift.Id, "name", gift.Name)
-			continue
+		sold := completedCounts[gift.Id]
+		remaining := gift.Count - sold
+		if remaining < 0 {
+			slog.Error("completed orders exceed initial inventory", "activity_id", DefaultActivityID, "gift_id", gift.Id, "name", gift.Name, "initial", gift.Count, "sold", sold)
+			remaining = 0
 		}
 
 		key := INVENTORY_PREFIX + strconv.Itoa(gift.Id)
-		if err := GiftRedis.Set(key, gift.Count, 0).Err(); err != nil {
+		if err := GiftRedis.Set(key, remaining, 0).Err(); err != nil {
 			slog.Error("set gift count to redis failed", "gift_id", gift.Id, "key", key, "error", err)
 			return fmt.Errorf("set gift %d inventory to redis: %w", gift.Id, err)
 		}
+		slog.Info("gift inventory restored to redis", "activity_id", DefaultActivityID, "gift_id", gift.Id, "initial", gift.Count, "sold", sold, "remaining", remaining)
 	}
 
 	return nil

@@ -63,10 +63,13 @@ var defaultMeter = &meter{
 	secondBuckets: make(map[int64]int64),
 }
 
-func InitInventory(total int64) {
-	atomic.StoreInt64(&defaultMeter.activityStock, total)
-	atomic.StoreInt64(&defaultMeter.redisStock, total)
-	defaultMeter.addEvent("库存初始化", fmt.Sprintf("Redis 活动库存初始化为 %d。", total), "success")
+// InitInventory 初始化秒杀指标中的库存基线。
+// 活动初始库存和 Redis 当前库存必须分开记录；服务重启后 Redis 会按已完成订单恢复为剩余库存，
+// 如果把剩余库存当作初始库存，超卖判断和页面展示都会失真。
+func InitInventory(activityStock int64, redisStock int64) {
+	atomic.StoreInt64(&defaultMeter.activityStock, activityStock)
+	atomic.StoreInt64(&defaultMeter.redisStock, redisStock)
+	defaultMeter.addEvent("库存初始化", fmt.Sprintf("活动初始库存为 %d，Redis 可用库存恢复为 %d。", activityStock, redisStock), "success")
 }
 
 func RecordRequest(duration time.Duration) {

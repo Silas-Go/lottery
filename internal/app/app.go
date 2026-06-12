@@ -106,6 +106,10 @@ func initInfrastructure() *database.Store {
 	slog.Info("application infrastructure initializing")
 	store := database.ConnectGiftDB("./conf", "mysql", util.YAML, "./log/lottery.db.log")
 	database.ConnectGiftRedis("./conf", "redis", util.YAML)
+	if err := store.EnsureOrderSchema(); err != nil {
+		slog.Error("ensure order schema failed", "error", err)
+		panic(err)
+	}
 
 	mq.InitRocketLog()
 	if mq.Enabled() {
@@ -143,18 +147,29 @@ func initInventoryMetrics(store *database.Store) {
 		return
 	}
 
+	baseGifts, err := store.GetAllGiftsWithError()
+	if err != nil {
+		slog.Error("load base inventory metrics failed", "error", err)
+		return
+	}
 	gifts, err := database.GetAllGiftInventoryWithError()
 	if err != nil {
 		slog.Error("load gift inventory metrics failed", "error", err)
 		return
 	}
 
-	var total int64
-	for _, gift := range gifts {
+	var baseTotal int64
+	for _, gift := range baseGifts {
 		if gift.Count > 0 {
-			total += int64(gift.Count)
+			baseTotal += int64(gift.Count)
 		}
 	}
-	metrics.InitInventory(total)
-	slog.Info("inventory metrics initialized", "gift_count", len(gifts), "total_stock", total)
+	var redisTotal int64
+	for _, gift := range gifts {
+		if gift.Count > 0 {
+			redisTotal += int64(gift.Count)
+		}
+	}
+	metrics.InitInventory(baseTotal, redisTotal)
+	slog.Info("inventory metrics initialized", "gift_count", len(gifts), "base_stock", baseTotal, "redis_stock", redisTotal)
 }

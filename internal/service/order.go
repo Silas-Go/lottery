@@ -44,22 +44,21 @@ func (s *OrderService) Pay(uid int, gid int) *AppError {
 	}
 	slog.Info("pay admission claimed", "uid", uid, "gid", gid)
 
-	if s.store.CreateOrder(uid, gid) <= 0 {
-		metrics.RecordSystemError("创建正式订单失败", nil)
-		// 此时临时资格已经被支付认领删除。
-		// 如果正式订单创建失败但不显式回补库存，用户资格会消失，库存也不会回到奖池。
-		if err := database.IncreaseInventory(gid); err != nil {
-			metrics.RecordSystemError("正式订单失败后库存回滚失败", err)
-			slog.Error("pay order create failed and inventory rollback failed", "uid", uid, "gid", gid, "error", err)
-		} else {
-			metrics.RecordInventoryRollback(gid, "order create failed")
-			slog.Warn("pay order create failed, inventory rolled back", "uid", uid, "gid", gid)
-		}
-		return NewAppError(CodeOrderCreateFailed, "抱歉，系统出错，请联系客服", nil, "uid", uid, "gid", gid)
+	orderID, duplicated, err := s.store.CreateOrder(database.DefaultActivityID, uid, gid)
+	if err != nil {
+		metrics.RecordSystemError("创建正式订单失败", err)
+		rollbackClaimedInventory(uid, gid, "order create failed")
+		return NewAppError(CodeOrderCreateFailed, "抱歉，系统出错，请联系客服", err, "uid", uid, "gid", gid)
+	}
+	if duplicated {
+		// 唯一索引命中说明该用户在当前活动已经有正式订单。
+		// 这里必须回补本次已经 claim 的 Redis 库存，否则重复支付请求会消耗额外库存。
+		rollbackClaimedInventory(uid, gid, "duplicate order")
+		return NewAppError(CodeDuplicateParticipation, "请勿重复参与秒杀", nil, "uid", uid, "gid", gid, "activity_id", database.DefaultActivityID)
 	}
 
 	metrics.RecordOrderCompleted(gid)
-	slog.Info("支付成功，临时订单已删除", "uid", uid, "gid", gid)
+	slog.Info("支付成功，临时订单已删除", "uid", uid, "gid", gid, "order_id", orderID, "activity_id", database.DefaultActivityID)
 	return nil
 }
 
@@ -83,4 +82,16 @@ func (s *OrderService) GiveUp(uid int, gid int) *AppError {
 	metrics.RecordGiveUp(gid)
 	slog.Info("用户主动放弃支付", "uid", uid, "gid", gid)
 	return nil
+}
+
+func rollbackClaimedInventory(uid int, gid int, reason string) {
+	// 支付 claim 已经删除临时资格，不能再调用 ReleaseLotteryAdmission。
+	// 这里直接回补奖品库存，专门处理“claim 成功但正式订单没有落库”的失败兜底。
+	if err := database.IncreaseInventory(gid); err != nil {
+		metrics.RecordSystemError("正式订单失败后库存回滚失败", err)
+		slog.Error("pay order fallback inventory rollback failed", "uid", uid, "gid", gid, "reason", reason, "error", err)
+		return
+	}
+	metrics.RecordInventoryRollback(gid, reason)
+	slog.Warn("pay order fallback inventory rolled back", "uid", uid, "gid", gid, "reason", reason)
 }

@@ -71,11 +71,12 @@ func (s *LotteryService) ListGifts() ([]*database.Gift, *AppError) {
 // 抽奖流程：
 //
 // 1. 入口限流，保护本机演示环境
-// 2. 从 Redis 读取当前可用库存作为权重
-// 3. 按库存权重选出候选奖品
-// 4. 通过 Redis Lua 原子完成防重复、扣库存、写临时资格
-// 5. 读取 MySQL 奖品详情用于页面展示
-// 6. 发送 RocketMQ 延时消息，作为支付超时后的库存补偿
+// 2. 查询 MySQL 正式订单，阻止已完成订单的用户再次预扣库存
+// 3. 从 Redis 读取当前可用库存作为权重
+// 4. 按库存权重选出候选奖品
+// 5. 通过 Redis Lua 原子完成防重复、扣库存、写临时资格
+// 6. 读取 MySQL 奖品详情用于页面展示
+// 7. 发送 RocketMQ 延时消息，作为支付超时后的库存补偿
 //
 // 注意这里创建的是临时资格，不是最终订单；用户必须在支付接口中认领资格后，
 // 才会写入 MySQL 正式订单。
@@ -87,6 +88,16 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 	}
 
 	slog.Info("lottery request start", "uid", uid)
+	ordered, err := s.store.HasOrder(database.DefaultActivityID, uid)
+	if err != nil {
+		metrics.RecordSystemError("查询用户活动订单失败", err)
+		return nil, NewAppError(CodeGiftDBReadFailed, "查询用户参与记录失败", err, "uid", uid, "activity_id", database.DefaultActivityID)
+	}
+	if ordered {
+		metrics.RecordStockFailed("用户已完成订单")
+		slog.Warn("lottery request rejected, user already has order", "uid", uid, "activity_id", database.DefaultActivityID)
+		return nil, NewAppError(CodeDuplicateParticipation, "请勿重复参与秒杀", nil, "uid", uid, "activity_id", database.DefaultActivityID)
+	}
 
 	for try := 1; try <= 10; try++ {
 		gifts, err := database.GetAllGiftInventoryWithError()

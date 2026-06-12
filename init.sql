@@ -24,10 +24,12 @@ insert into inventory (name,picture,price,count) values
 
 create table if not exists orders(
     id int auto_increment comment '订单id，自增',
+    activity_id int not null default 1 comment '活动id',
     gift_id int not null comment '商品id',
     user_id int not null comment '用户id',
     count int not null default 1 comment '购买数量',
     create_time datetime default current_timestamp comment '订单创建时间',
     primary key (id),
-    key idx_user (user_id)
+    key idx_user (user_id),
+    unique key uk_activity_user (activity_id, user_id)
 )default charset=utf8mb4;
