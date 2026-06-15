@@ -5,7 +5,10 @@ import (
 	"sort"
 )
 
-// 抽奖。给定每个奖品被抽中的概率（无需要做归一化，但概率必须大于0），返回被抽中的奖品下标
+// Lottery 按权重返回被抽中的奖品下标。
+// probs 是 probability weights 的缩写，在本项目里传入的是 Redis 剩余库存数量，
+// 不需要提前归一化成百分比；库存越多，被选为候选奖品的概率越高。
+// 返回值是 probs 的下标，不是 gift id，调用方需要再用 ids[index] 转成奖品 ID。
 func Lottery(probs []float64) int {
 	if len(probs) == 0 {
 		return -1

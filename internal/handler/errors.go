@@ -15,10 +15,16 @@ type apiErrorResponse struct {
 	Detail  string `json:"detail,omitempty"`
 }
 
+// writeServiceError 将 service 层业务错误转换成 HTTP 状态码和 JSON 响应。
+// handler 不直接猜测底层错误类型，而是只依赖 AppError.Code，
+// 这样 Redis、MQ、MySQL 的失败都能稳定落到前端可识别的状态码上。
 func writeServiceError(ctx *gin.Context, err *service.AppError) {
 	writeAPIError(ctx, statusForCode(err.Code), err.Code, err.Message, err.Err, err.Attrs...)
 }
 
+// writeAPIError 统一输出接口错误响应和结构化日志。
+// 这里同时写 X-Error-Code 响应头，是为了浏览器 Network 面板即使响应体没展开，
+// 也能一眼看到失败原因，避免再次出现“接口空返回但不知道哪里坏了”的情况。
 func writeAPIError(ctx *gin.Context, status int, code string, message string, err error, attrs ...any) {
 	logAttrs := []any{
 		"status", status,
@@ -45,6 +51,9 @@ func writeAPIError(ctx *gin.Context, status int, code string, message string, er
 	ctx.JSON(status, resp)
 }
 
+// statusForCode 定义业务错误码到 HTTP 状态码的映射。
+// 映射放在 handler 层，是因为 HTTP 只是其中一种入口协议；
+// service 层只表达业务失败原因，不绑定具体的网络响应语义。
 func statusForCode(code string) int {
 	switch code {
 	case service.CodeNoGiftsConfigured:

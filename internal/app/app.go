@@ -106,6 +106,8 @@ func initInfrastructure() *database.Store {
 	slog.Info("application infrastructure initializing")
 	store := database.ConnectGiftDB("./conf", "mysql", util.YAML, "./log/lottery.db.log")
 	database.ConnectGiftRedis("./conf", "redis", util.YAML)
+	// 老数据卷不会重新执行 init.sql，所以应用启动时要补齐订单表结构。
+	// 这一步保证 activity_id + user_id 唯一索引存在，MySQL 才能兜住重复参与。
 	if err := store.EnsureOrderSchema(); err != nil {
 		slog.Error("ensure order schema failed", "error", err)
 		panic(err)
@@ -125,6 +127,8 @@ func initInfrastructure() *database.Store {
 	return store
 }
 
+// initHTTP 装配 HTTP 层依赖。
+// rateLimitQPS 是本进程秒杀入口限流值，QPS 表示每秒请求数；0 表示关闭限流。
 func initHTTP(store *database.Store) *gin.Engine {
 	gin.DefaultWriter = io.Discard
 
@@ -141,6 +145,9 @@ func initHTTP(store *database.Store) *gin.Engine {
 	})
 }
 
+// initInventoryMetrics 初始化 Redis 库存并建立指标基线。
+// baseTotal 是 MySQL 配置的活动初始库存，redisTotal 是扣除已完成订单后的 Redis 当前可用库存。
+// 这两个值不能混用，否则重启后页面会把剩余库存误当初始库存，导致超卖判断不准。
 func initInventoryMetrics(store *database.Store) {
 	if err := store.InitGiftInventory(); err != nil {
 		slog.Error("init gift inventory failed", "error", err)

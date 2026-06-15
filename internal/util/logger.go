@@ -13,9 +13,11 @@ import (
 // 避免平时压测产生过多低价值日志，又保留需要深挖时的观察入口。
 func InitSlog(logFile string) {
 	fout, err := rotatelogs.New(
-		logFile+".%Y%m%d%H",                      //指定日志文件的路径和名称，路径不存在时会创建
-		rotatelogs.WithRotationTime(1*time.Hour), //每隔1小时生成一份新的日志文件
-		rotatelogs.WithMaxAge(7*24*time.Hour),    //只留最近7天的日志，或使用WithRotationCount只保留最近的几份日志
+		// 按小时切分日志，避免压测时单个日志文件过大，排查某次压测窗口也更容易定位。
+		logFile+".%Y%m%d%H",
+		rotatelogs.WithRotationTime(1*time.Hour),
+		// 本项目主要用于本地演示和面试讲解，保留 7 天足够回看问题，同时不会长期占用磁盘。
+		rotatelogs.WithMaxAge(7*24*time.Hour),
 	)
 	if err != nil {
 		panic(err)
@@ -31,15 +33,18 @@ func InitSlog(logFile string) {
 		level = slog.LevelError
 	}
 
-	handler := slog.NewTextHandler( //json格式
-		fout, //指定输出到文件
+	handler := slog.NewTextHandler(
+		fout,
 		&slog.HandlerOptions{
-			AddSource: true,  //上报文件名和行号
-			Level:     level, //设置最低级别
+			// 打开源码位置是为了定位空返回、MQ 失败、Redis 脚本失败这类链路问题。
+			// 压测时日志量会变大，所以通过 LOTTERY_LOG_LEVEL 控制最低输出级别。
+			AddSource: true,
+			Level:     level,
 			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-				if a.Key == slog.TimeKey { //如果Key=="time"
+				if a.Key == slog.TimeKey {
 					t := a.Value.Time()
-					a.Value = slog.StringValue(t.Format("2006-01-02 15:04:05.000")) //替换Value
+					// 固定毫秒级时间格式，方便把 HTTP、Redis、MQ 三段日志按时间线串起来。
+					a.Value = slog.StringValue(t.Format("2006-01-02 15:04:05.000"))
 				}
 				return a
 			},

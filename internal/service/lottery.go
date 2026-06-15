@@ -11,7 +11,11 @@ import (
 	"time"
 )
 
-const PayDelaySeconds = 600
+const (
+	// PayDelaySeconds 是用户拿到临时资格后的支付窗口，单位秒。
+	// 这个值会同时用于 cookie 过期时间和 RocketMQ 延时取消消息；超过窗口未支付就释放资格并回补库存。
+	PayDelaySeconds = 600
+)
 
 // LotteryService 编排抽奖主链路。
 // 业务规则集中放在 service 层，是为了让 handler 只处理 HTTP 入参/出参，
@@ -24,17 +28,28 @@ type LotteryService struct {
 // LotteryOptions 定义抽奖服务启动时的可调参数。
 // 当前只暴露 QPS 限流配置，避免压测时把本机依赖打爆后误判为业务逻辑错误。
 type LotteryOptions struct {
+	// RateLimitQPS 表示本进程允许进入秒杀链路的每秒请求数。
+	// QPS 是 Queries Per Second 的缩写；0 表示关闭本地限流。
 	RateLimitQPS int
 }
 
 // LotteryResult 表示一次抽奖成功后需要返回给前端的临时资格信息。
 // 这里返回的是“待支付资格”，不是最终订单；最终结果以支付后写入 MySQL 为准。
 type LotteryResult struct {
-	UID      int
-	GiftID   int
+	// UID 是 user id，用户 ID；前端支付时会把它带回 /pay。
+	UID int
+
+	// GiftID 是 gift id，奖品 ID；前端支付和放弃时会把它带回服务端校验资格。
+	GiftID int
+
+	// GiftName 是奖品名称，只用于页面展示，不参与并发控制。
 	GiftName string
-	Price    int
-	Delay    int
+
+	// Price 是奖品价值，只用于页面展示。
+	Price int
+
+	// Delay 是支付窗口秒数，用来设置 cookie 过期时间和页面倒计时。
+	Delay int
 }
 
 // NewLotteryService 创建抽奖服务并初始化入口限流器。
@@ -78,8 +93,12 @@ func (s *LotteryService) ListGifts() ([]*database.Gift, *AppError) {
 // 6. 读取 MySQL 奖品详情用于页面展示
 // 7. 发送 RocketMQ 延时消息，作为支付超时后的库存补偿
 //
-// 注意这里创建的是临时资格，不是最终订单；用户必须在支付接口中认领资格后，
-// 才会写入 MySQL 正式订单。
+// 参数语义:
+//
+//	uid 是 user id，用户 ID，用来做重复参与判断和 Redis 临时资格 key。
+//
+// 注意这里创建的是 admission，即“临时抢购资格”，不是最终订单；用户必须在支付接口中 claim 资格后，
+// 才会写入 MySQL 正式订单。Redis Lua 只保证 Redis 内部原子性，不保证 MQ 发送和 MySQL 落库一定成功。
 func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 	if !s.limiter.Allow() {
 		metrics.RecordRateLimited()
@@ -183,7 +202,8 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 }
 
 func rollbackAdmission(uid int, giftID int, reason string) {
-	// 回滚复用用户放弃和 MQ 超时的同一个 Lua 释放路径。
+	// rollback 在本项目里表示“失败兜底回滚临时资格”。
+	// 回滚复用用户放弃和 MQ 超时的同一个 Lua release 释放路径。
 	// 这样即使支付、超时补偿、失败回滚同时竞争同一份资格，也只有仍持有资格的一方能回补库存。
 	released, err := database.ReleaseLotteryAdmission(uid, giftID)
 	if err != nil {

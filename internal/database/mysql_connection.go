@@ -14,14 +14,28 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// Store 封装 MySQL 连接。
+// service 层只依赖 Store 暴露的业务方法，不直接操作 gorm.DB，避免 SQL 细节泄漏到业务流程中。
 type Store struct {
 	db *gorm.DB
 }
 
+// NewStore 使用已有 gorm.DB 创建 Store。
+// 主要用于集中管理数据库访问边界，后续测试也可以注入替代连接。
 func NewStore(db *gorm.DB) *Store {
 	return &Store{db: db}
 }
 
+// ConnectGiftDB 连接抽奖系统使用的 MySQL 数据库。
+//
+// 参数语义:
+//
+//	confDir  配置文件目录，例如 ./conf。
+//	confFile 配置文件名，不带后缀，例如 mysql。
+//	fileType 配置文件类型，例如 util.YAML。
+//	logDir   GORM SQL 日志文件路径。
+//
+// 环境变量 LOTTERY_MYSQL_* 会覆盖配置文件，方便“依赖跑 Docker，Go app 本机跑”的本地开发模式。
 func ConnectGiftDB(confDir, confFile, fileType, logDir string) *Store {
 	viper := util.InitViper(confDir, confFile, fileType)
 	user := viper.GetString("lottery.user")
@@ -68,7 +82,8 @@ func ConnectGiftDB(confDir, confFile, fileType, logDir string) *Store {
 	return NewStore(db)
 }
 
-// 定期ping，保持连接的活跃
+// PingGiftDB 主动 ping MySQL，保持连接活跃。
+// 这个方法不是业务健康检查，只用于避免长时间空闲连接被数据库或网络层断开后才在请求中暴露问题。
 func (s *Store) PingGiftDB() {
 	if s != nil && s.db != nil {
 		sqlDB, _ := s.db.DB()
@@ -77,7 +92,8 @@ func (s *Store) PingGiftDB() {
 	}
 }
 
-// 关闭数据库连接
+// CloseGiftDB 关闭 MySQL 连接池。
+// 应用退出时先停止 HTTP 入口再关闭连接池，避免新请求进来后拿到已关闭的连接。
 func (s *Store) CloseGiftDB() {
 	if s != nil && s.db != nil {
 		sqlDB, _ := s.db.DB()

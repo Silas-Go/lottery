@@ -80,6 +80,11 @@ func GetProducer() (rmq_client.Producer, error) {
 
 // SendCancelOrder 发送支付超时取消消息。
 //
+// 参数语义:
+//
+//	order 消息体，只使用 UserId 和 GiftId。UserId 是用户 ID，GiftId 是奖品 ID。
+//	delay 延时秒数，表示用户支付窗口；超过该时间后消费者会检查是否需要释放库存。
+//
 // MQ 消息不是最终订单，只是库存补偿触发器；如果用户在延时时间内没有支付，
 // consumer 会通过 Redis Lua 释放临时资格。发送失败时上层必须立即回滚 Redis，
 // 否则用户会占住库存但系统没有任何超时补偿入口。

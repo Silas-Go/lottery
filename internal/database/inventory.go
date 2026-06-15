@@ -8,6 +8,8 @@ import (
 )
 
 const (
+	// INVENTORY_PREFIX 是 Redis 奖品库存 key 的前缀。
+	// 完整 key 形如 gift_count_3，表示 gift id 为 3 的奖品当前可抢库存。
 	INVENTORY_PREFIX = "gift_count_"
 )
 
@@ -43,11 +45,16 @@ func (s *Store) InitGiftInventory() error {
 	return nil
 }
 
+// GetAllGiftInventory 读取 Redis 中全部奖品实时库存。
+// 这是兼容旧调用的便捷方法，失败时返回空结果；关键链路应优先使用 GetAllGiftInventoryWithError。
 func GetAllGiftInventory() []*Gift {
 	gifts, _ := GetAllGiftInventoryWithError()
 	return gifts
 }
 
+// GetAllGiftInventoryWithError 读取 Redis 中全部奖品实时库存。
+// 返回的 Gift 只保证 Id 和 Count 有业务意义；名称、价格、图片仍应从 MySQL inventory 表读取。
+// 当前实现使用 KEYS 扫描 gift_count_*，奖品少时足够直观；大量活动或大量 key 时应改为活动维度 hash/MGET。
 func GetAllGiftInventoryWithError() ([]*Gift, error) {
 	if GiftRedis == nil {
 		return nil, errors.New("redis client is nil")
@@ -80,6 +87,8 @@ func GetAllGiftInventoryWithError() ([]*Gift, error) {
 	return gifts, nil
 }
 
+// GetGiftInventory 读取单个奖品的 Redis 实时库存。
+// GiftId 是 gift id，即奖品 ID；返回 -1 表示读取失败，调用方不能把 -1 当作真实库存。
 func GetGiftInventory(GiftId int) int {
 	key := INVENTORY_PREFIX + strconv.Itoa(GiftId)
 	count, err := GiftRedis.Get(key).Int()
@@ -90,6 +99,9 @@ func GetGiftInventory(GiftId int) int {
 	return -1
 }
 
+// ReduceInventory 直接扣减单个奖品 Redis 库存。
+// 该函数只保留给旧测试或非核心场景；秒杀主链路必须走 TryAcquireLotteryAdmission 的 Lua 原子准入，
+// 因为单独 DECR 不能同时保证防重复参与和写临时资格。
 func ReduceInventory(GiftId int) error {
 	key := INVENTORY_PREFIX + strconv.Itoa(GiftId)
 	n, err := GiftRedis.Decr(key).Result()
@@ -109,6 +121,9 @@ func ReduceInventory(GiftId int) error {
 	return nil
 }
 
+// IncreaseInventory 回补单个奖品的 Redis 库存。
+// GiftId 是 gift id，即奖品 ID；该函数不检查用户资格，只适合在支付 claim 已删除临时资格后做失败兜底。
+// 用户放弃和 MQ 超时释放仍应优先走 ReleaseLotteryAdmission，避免重复回补。
 func IncreaseInventory(GiftId int) error {
 	key := INVENTORY_PREFIX + strconv.Itoa(GiftId)
 	if _, err := GiftRedis.Incr(key).Result(); err != nil {

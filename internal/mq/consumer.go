@@ -43,12 +43,14 @@ func Endpoint() string {
 }
 
 // Topic 返回支付超时补偿消息使用的 topic。
+// topic 是 MQ 主题名；本项目的 CANCEL_ORDER 表示“支付超时取消检查”消息。
 // 该 topic 必须支持延时消息，否则用户未支付时库存无法按时释放。
 func Topic() string {
 	return util.EnvString("LOTTERY_MQ_TOPIC", defaultTopic)
 }
 
 // ConsumerGroup 返回超时补偿消费者组。
+// consumer group 是 RocketMQ 的消费者组名；同一组内消息会被负载均衡消费。
 // 使用固定消费者组可以避免同一条补偿消息被多个逻辑消费者重复释放库存。
 func ConsumerGroup() string {
 	return util.EnvString("LOTTERY_MQ_CONSUMER_GROUP", defaultConsumerGroup)
@@ -109,11 +111,12 @@ func GetConsumer() (rmq_client.SimpleConsumer, error) {
 // 补偿流程：
 //
 // 1. 拉取 RocketMQ 延时消息
-// 2. 解析出用户和奖品
+// 2. 从消息体解析出 UserId 和 GiftId，即用户 ID 和奖品 ID
 // 3. 通过 Redis Lua 释放仍未支付的临时资格
 // 4. 记录回补指标
 // 5. Ack 消息，避免同一补偿被重复投递
 //
+// Ack 是 acknowledgement 的缩写，表示消费者确认“这条消息已经处理完”。
 // 即使消息晚到也不能直接回补库存，必须先确认临时资格仍然存在；
 // 否则用户已经支付成功后，延时消息会把库存错误加回去。
 func ReceiveCancelOrder() {

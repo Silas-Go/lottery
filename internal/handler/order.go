@@ -27,11 +27,15 @@ func NewOrderHandler(order *service.OrderService) *OrderHandler {
 // 资格过期，还是正式订单创建失败。
 func (h *OrderHandler) Pay(ctx *gin.Context) {
 	start := time.Now()
+	// uid 是 user id，来自支付页 cookie 回填的表单字段。
+	// 服务端仍会到 Redis 校验 porder_{uid}，不能只相信前端传参。
 	uid, err := strconv.Atoi(ctx.PostForm("uid"))
 	if err != nil {
 		writeAPIError(ctx, http.StatusBadRequest, "INVALID_UID", "uid 参数必须是正整数", err, "raw_uid", ctx.PostForm("uid"))
 		return
 	}
+	// gid 是 gift id，表示用户准备支付的奖品 ID。
+	// 它必须和 Redis 临时资格中保存的 gift id 一致，才能完成 claim。
 	gid, err := strconv.Atoi(ctx.PostForm("gid"))
 	if err != nil {
 		writeAPIError(ctx, http.StatusBadRequest, "INVALID_GID", "gid 参数必须是正整数", err, "raw_gid", ctx.PostForm("gid"), "uid", uid)
@@ -51,6 +55,8 @@ func (h *OrderHandler) Pay(ctx *gin.Context) {
 // 主动放弃会释放 Redis 临时资格并回补库存；如果资格已支付或超时释放，会返回业务错误而不是重复回补。
 func (h *OrderHandler) GiveUp(ctx *gin.Context) {
 	start := time.Now()
+	// uid/gid 与支付接口含义一致，用来定位并校验 Redis 临时资格。
+	// 放弃不是删除前端 cookie 就结束，必须由服务端 release 回补库存。
 	uid, err := strconv.Atoi(ctx.PostForm("uid"))
 	if err != nil {
 		writeAPIError(ctx, http.StatusBadRequest, "INVALID_UID", "uid 参数必须是正整数", err, "raw_uid", ctx.PostForm("uid"))

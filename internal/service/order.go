@@ -27,7 +27,13 @@ func NewOrderService(store *database.Store) *OrderService {
 // 2. 认领成功后写入 MySQL 正式订单
 // 3. MySQL 写入失败时显式回补 Redis 库存
 //
-// 支付认领必须先于 MySQL 写入，否则 MQ 超时消息可能同时释放资格，
+// 参数语义:
+//
+//	uid 是 user id，用户 ID。
+//	gid 是 gift id，奖品 ID。
+//
+// claim 在本项目里表示“支付前认领临时资格”：确认 porder_{uid} 仍属于当前 gid。
+// 支付认领必须先于 MySQL 写入，否则 MQ 超时消息可能同时 release 释放资格，
 // 造成用户已经支付但库存又被回补的问题。
 func (s *OrderService) Pay(uid int, gid int) *AppError {
 	slog.Info("pay service start", "uid", uid, "gid", gid)
@@ -63,6 +69,7 @@ func (s *OrderService) Pay(uid int, gid int) *AppError {
 }
 
 // GiveUp 释放用户主动放弃的临时抢购资格。
+// release 在本项目里表示“删除临时资格并回补 Redis 库存”。
 // 主动放弃和 MQ 超时释放共用 Redis Lua，避免用户重复点击或超时消息随后到达时重复回补库存。
 func (s *OrderService) GiveUp(uid int, gid int) *AppError {
 	slog.Info("give up service start", "uid", uid, "gid", gid)

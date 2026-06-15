@@ -29,6 +29,8 @@ func NewGiftHandler(lottery *service.LotteryService) *GiftHandler {
 }
 
 func lotteryUID(ctx *gin.Context) int {
+	// uid 是 user id，优先来自 query 参数，其次来自 X-User-ID 请求头。
+	// 压测脚本会显式传 uid；浏览器手动点击时没有 uid，就自动生成一个临时用户 ID，方便演示。
 	raw := ctx.Query("uid")
 	if raw == "" {
 		raw = ctx.GetHeader("X-User-ID")
@@ -85,6 +87,8 @@ func (h *GiftHandler) Lottery(ctx *gin.Context) {
 	}
 
 	cookieDomain := util.EnvString("LOTTERY_COOKIE_DOMAIN", "localhost")
+	// cookie 中的 uid/gid 是支付页跨请求携带临时资格的轻量方式。
+	// 真正的资格归属仍以 Redis porder_{uid} 为准，前端 cookie 不能作为可信事实源。
 	ctx.SetCookie("name", result.GiftName, result.Delay, "/", cookieDomain, false, false)
 	ctx.SetCookie("price", strconv.Itoa(result.Price), result.Delay, "/", cookieDomain, false, false)
 	ctx.SetCookie("uid", strconv.Itoa(result.UID), result.Delay, "/", cookieDomain, false, false)

@@ -18,11 +18,21 @@ const (
 // Order 表示用户最终支付完成后的正式订单。
 // Redis 只负责高并发临时资格，最终是否中奖以 orders 中的记录为准。
 type Order struct {
-	Id         int
+	Id int
+
+	// ActivityId 表示活动 ID。
+	// 当前项目只有一个默认活动，但唯一约束必须包含活动维度，避免历史订单影响下一场活动。
 	ActivityId int
-	GiftId     int
-	UserId     int
-	Count      int
+
+	// GiftId 表示 gift id，即奖品 ID，对应 inventory.id。
+	GiftId int
+
+	// UserId 表示 user id，即参与秒杀的用户 ID。
+	UserId int
+
+	// Count 表示订单购买数量。
+	// 当前秒杀链路一次只发一份资格，所以固定为 1；保留字段是为了和库存聚合语义一致。
+	Count int
 }
 
 type giftOrderCount struct {
@@ -44,8 +54,16 @@ func (s *Store) EnsureOrderSchema() error {
 }
 
 // CreateOrder 写入用户在当前活动中的正式订单。
+//
+// 参数语义:
+//
+//	activityID 活动 ID，用来隔离不同秒杀活动的参与记录。
+//	userid     user id，用户 ID；当前活动内同一用户只能有一条正式订单。
+//	giftid     gift id，奖品 ID；表示用户最终获得哪个奖品。
+//
 // MySQL 唯一索引是 Redis 防重之外的最后兜底；如果并发或重试绕过了临时资格，
 // 唯一索引会拒绝同一用户在同一活动重复落库。
+// 返回值中的 duplicated 表示命中了唯一索引，调用方要把本次已经 claim 的 Redis 库存回补。
 func (s *Store) CreateOrder(activityID, userid, giftid int) (int, bool, error) {
 	order := Order{ActivityId: activityID, GiftId: giftid, UserId: userid, Count: 1}
 	if err := s.db.Create(&order).Error; err != nil {
@@ -60,6 +78,12 @@ func (s *Store) CreateOrder(activityID, userid, giftid int) (int, bool, error) {
 }
 
 // HasOrder 判断用户在当前活动中是否已经有正式订单。
+//
+// 参数语义:
+//
+//	activityID 活动 ID。
+//	userid     user id，用户 ID。
+//
 // 抽奖入口先查一次数据库，可以避免已支付用户再次进入 Redis 预扣库存；
 // MySQL 唯一索引仍然保留，负责兜住并发竞态和接口重试。
 func (s *Store) HasOrder(activityID, userid int) (bool, error) {
@@ -75,6 +99,8 @@ func (s *Store) HasOrder(activityID, userid int) (bool, error) {
 }
 
 // CompletedOrderCounts 统计当前活动每个奖品已经完成的订单数。
+//
+// 返回 map 的 key 是 gift id，value 是该奖品已完成订单数量。
 // Redis 库存恢复必须扣掉这些正式订单，否则应用重启会把已经卖出的库存重新放回 Redis。
 func (s *Store) CompletedOrderCounts(activityID int) (map[int]int, error) {
 	var rows []giftOrderCount
