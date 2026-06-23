@@ -116,12 +116,81 @@ create table if not exists orders(
 读库存和减库存都涉及到DB的操作，在大数据、高并发场景下(比如支付宝在春晚搞抽奖活动)Redis能承受的QPS比Mysql高一到两个数量级，所以实时库存放到Redis上去维护。
 库存量很低的时候考虑一个极端情况：奖品还剩1件库存，2个协程同时去读这个库存，发现还剩1件，刚好又都抽中了这个奖品。单个 Redis `DECR` 可以保证库存数字原子扣减，但秒杀资格不只是扣库存，还包括“防重复参与、扣库存、写临时订单”。当前项目把这几个 Redis 状态变化放进 Lua 脚本中一次执行，最终由 Redis Lua 原子准入返回 `OK / DUPLICATE / SOLD_OUT`。只有准入成功后才会发送 RocketMQ 延时取消消息并给前端返回抽奖结果。
 
+## 两种库存模式对决：预扣库存 vs 旁路缓存
+
+项目在**同一个抽奖场景**下实现了两套库存方案，可在页面左上角一键切换、用同一套压测对比，用来讲清"不同数据特征该选不同缓存策略"。
+
+| 维度 | 预扣库存（`/lucky`） | 旁路缓存 Cache-Aside（`/lucky/cacheaside`） |
+| :--- | :--- | :--- |
+| 库存权威源 | Redis（`gift_count_{id}`） | MySQL（`inventory.cache_stock` 列） |
+| 读路径 | 直接读 Redis 库存当权重 | 先读 Redis 聚合缓存，未命中回源 MySQL 回填 |
+| 写路径 | Redis Lua 原子扣减 | MySQL 行锁 `UPDATE ... WHERE cache_stock>0`，再删缓存 |
+| 一致性 | 最终一致（MQ 补偿 + 超时释放） | 强一致，**绝不超卖** |
+| 落库 | 异步，支付后写 orders | 扣减成功后直接写 orders（纯 DB 强一致路径） |
+| 高并发表现 | Redis 扛住，平稳、快 | 每次写都打 MySQL，行锁竞争 + 连接池排队，**慢、DB 是瓶颈** |
+| 适用场景 | 写极多、强一致的秒杀库存 | 读多写少的数据（如商品详情、用户信息） |
+
+**关键认知**：Cache-Aside 本身不会超卖——超卖是"读缓存值再扣"的误用，不是该模式的特征。它的真实代价是慢、DB 成为瓶颈。本项目 Cache-Aside 用 MySQL 行锁保证强一致，刻意暴露的是"写密集下缓存被频繁删除、近乎失效，链路退化为直接打 DB"的瓶颈。
+
+两个模式共享同一张 `inventory` 表但读写不同列：预扣模式把 `count` 当只读初始库存基线（重启时据此恢复 Redis），Cache-Aside 改用独立的 `cache_stock` 列，应用启动时自动建列（`EnsureCacheStockSchema`）并互不干扰。
+
+### 红灯预警与熔断降级
+
+为了让本机也能压出真实压力，Cache-Aside 链路用一个**受限并发闸门**（`LOTTERY_CACHEASIDE_DB_CONCURRENCY`，默认 10）模拟数据库连接池：超过上限的请求排队等待，等待时长计入响应耗时。
+
+链路接入了一个**压力感知熔断器**（Closed / Open / Half-Open），不靠错误率而靠系统压力指标驱动：
+
+- **绿灯 Closed**：DB 响应时间和连接池占用都在安全区，正常放行。
+- **黄灯预警**：压力升高（接近红线），或熔断器 Half-Open 试探恢复中。
+- **红灯 Open**：DB 响应超红线或连接池占满 → 熔断，fail-fast 拒绝新请求保护 MySQL；冷却期后 Half-Open 放少量试探，压力恢复则回到 Closed。
+
+预扣模式不接入熔断器（它本就不打 DB），同样压力下全程绿灯——这正是对决要展示的差异。
+
+### 怎么压测对比
+
+1. 启动依赖和本机 app，浏览器打开页面，用左上角**库存模式切换**选预扣或旁路缓存。
+2. 压测预扣模式（基准，全绿）：
+
+   ```powershell
+   docker compose --profile loadtest run --rm -e RATE=1000 -e CONNECTIONS=256 wrk2
+   ```
+
+3. 压测旁路缓存模式（观察红灯 + 熔断）：把 wrk2 目标路径改为 `/lucky/cacheaside` 后施压。页面右侧"旁路缓存压力监控"会实时显示 DB 响应时间飙升、连接池占用率拉满、缓存命中率跳水、熔断器变红、降级拒绝数上升。
+4. 重新压测前重置 Cache-Aside 库存（它会真实扣减 MySQL）：
+
+   ```sql
+   UPDATE inventory SET cache_stock = count;
+   ```
+
+### 验证不超卖与熔断
+
+```powershell
+# 熔断器状态机（纯逻辑，无需 DB）
+go test ./internal/service -run CircuitBreaker -v
+
+# Cache-Aside 并发不超卖（需要 MySQL/Redis 在线）
+go test ./internal/database -run "^TestCacheAsideNoOversell$" -count=1 -v
+```
+
+### 新增环境变量
+
+| 变量 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `LOTTERY_CACHEASIDE_DB_CONCURRENCY` | `10` | Cache-Aside 打到 MySQL 的并发上限（模拟连接池），调小更易压出红灯 |
+| `LOTTERY_CB_YELLOW_LATENCY_MS` | `30` | DB 响应预警黄线（毫秒） |
+| `LOTTERY_CB_RED_LATENCY_MS` | `100` | DB 响应熔断红线（毫秒） |
+| `LOTTERY_CB_RED_POOL_USAGE` | `80` | 连接池占用率熔断红线（百分比） |
+| `LOTTERY_CB_TRIP_THRESHOLD` | `5` | 连续过载多少次触发熔断 |
+| `LOTTERY_CB_COOLDOWN_MS` | `3000` | 熔断后到 Half-Open 试探的冷却时间（毫秒） |
+| `LOTTERY_CB_HALFOPEN_MAX` | `3` | Half-Open 最多放行的试探请求数 |
+
 ## 后端接口
 |请求路径|请求方式|请求参数|说明|
 | :--- | :--- | :--- | :--- |
 |/|GET||返回抽奖转盘页面|
 |/gifts|GET||返回所有奖品的详细信息，用于往转盘里填充内容|
-|/lucky|GET||返回抽中的奖品ID|  
+|/lucky|GET||预扣库存模式抽奖，返回抽中的奖品ID|  
+|/lucky/cacheaside|GET||旁路缓存模式抽奖，返回抽中的奖品ID|  
 |/giveup|POST|uid和gid|不支付，放弃这次抽中的机会|  
 |/pay|POST|uid和gid|完成支付|  
 |/result|GET||抽奖成功页面|  

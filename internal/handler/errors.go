@@ -69,7 +69,8 @@ func statusForCode(code string) int {
 		service.CodeAdmissionFailed,
 		service.CodeRedisInventoryReadFail,
 		service.CodeTempOrderCreateFailed,
-		service.CodeMQSendFailed:
+		service.CodeMQSendFailed,
+		service.CodeCacheAsideOverload:
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError

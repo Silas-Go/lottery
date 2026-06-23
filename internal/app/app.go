@@ -112,6 +112,14 @@ func initInfrastructure() *database.Store {
 		slog.Error("ensure order schema failed", "error", err)
 		panic(err)
 	}
+	// Cache-Aside 模式用独立的 cache_stock 列维护实时库存，与预扣模式的 count 基线隔离。
+	// 老数据卷同样需要在启动时补齐这一列，否则 Cache-Aside 链路读写会失败。
+	if err := store.EnsureCacheStockSchema(); err != nil {
+		slog.Error("ensure cache stock schema failed", "error", err)
+		panic(err)
+	}
+	// 限制 Cache-Aside 打到 MySQL 的并发上限（模拟受限连接池），调小才能在本机压出连接等待与红灯。
+	database.SetCacheAsideGateCapacity(util.EnvInt("LOTTERY_CACHEASIDE_DB_CONCURRENCY", 10))
 
 	mq.InitRocketLog()
 	if mq.Enabled() {
@@ -137,10 +145,11 @@ func initHTTP(store *database.Store) *gin.Engine {
 		RateLimitQPS: rateLimitQPS,
 	})
 	orderService := service.NewOrderService(store)
+	cacheAsideService := service.NewCacheAsideLotteryService(store)
 	slog.Info("http dependencies initialized", "rate_limit_qps", rateLimitQPS)
 
 	return router.New(router.Handlers{
-		Gift:  handler.NewGiftHandler(lotteryService),
+		Gift:  handler.NewGiftHandler(lotteryService, cacheAsideService),
 		Order: handler.NewOrderHandler(orderService),
 	})
 }

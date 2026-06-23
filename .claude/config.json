@@ -1,0 +1,4 @@
+{
+  "projectName": "lottery",
+  "description": "Go lottery/draw system with RocketMQ, Gin, and Redis"
+}

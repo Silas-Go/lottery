@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>秒杀系统实验室</title>
-    <link rel="stylesheet" href="/css/lottery.css?v=20260608-real-metrics" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260623-cacheaside" />
     <script src="/js/lucky-canvas.js"></script>
 </head>
 
@@ -41,8 +41,19 @@
                 </div>
                 <div>
                     <span class="summary-label">库存模式</span>
-                    <strong>Redis 预扣 + MQ 补偿</strong>
+                    <strong id="mode-label">Redis 预扣 + MQ 补偿</strong>
                 </div>
+            </div>
+
+            <div class="mode-switch" role="group" aria-label="库存模式切换">
+                <button id="mode-prededuct" class="mode-btn is-active" type="button" data-mode="prededuct">
+                    <strong>预扣库存（快）</strong>
+                    <span>Redis 权威 · Lua 原子 · MQ 补偿</span>
+                </button>
+                <button id="mode-cacheaside" class="mode-btn" type="button" data-mode="cacheaside">
+                    <strong>旁路缓存（慢但稳）</strong>
+                    <span>MySQL 权威 · 行锁不超卖 · 熔断降级</span>
+                </button>
             </div>
 
             <div class="wheel-card">
@@ -171,11 +182,54 @@
                 <button id="clear-events" class="ghost-btn" type="button">清空</button>
             </div>
             <ol id="event-log" class="event-log" aria-live="polite"></ol>
+
+            <div class="section-title-row">
+                <h3>旁路缓存压力监控</h3>
+                <div class="circuit-indicator">
+                    <span id="circuit-lamp" class="circuit-lamp green" aria-hidden="true"></span>
+                    <span id="circuit-state" class="soft-label">熔断器：正常</span>
+                </div>
+            </div>
+            <p class="helper-text" style="text-align:left">压测 <code>/lucky/cacheaside</code> 时这里实时反映 MySQL 压力：DB 响应时间、连接池占用率升高 → 黄灯预警 → 红灯熔断降级（fail-fast 保护数据库）。预扣模式不会触发。</p>
+            <div id="cacheaside-panel" class="metric-grid cacheaside-grid">
+                <article class="metric-card">
+                    <span>Cache-Aside QPS</span>
+                    <strong id="ca-qps">0</strong>
+                </article>
+                <article class="metric-card">
+                    <span>DB 响应(含排队)</span>
+                    <strong id="ca-db-avg">0ms</strong>
+                </article>
+                <article class="metric-card">
+                    <span>DB P95 响应</span>
+                    <strong id="ca-db-p95">0ms</strong>
+                </article>
+                <article class="metric-card">
+                    <span>连接池占用率</span>
+                    <strong id="ca-pool">0%</strong>
+                </article>
+                <article class="metric-card">
+                    <span>缓存命中率</span>
+                    <strong id="ca-hit-rate">0%</strong>
+                </article>
+                <article class="metric-card warning">
+                    <span>缓存击穿次数</span>
+                    <strong id="ca-miss">0</strong>
+                </article>
+                <article class="metric-card danger">
+                    <span>熔断降级拒绝</span>
+                    <strong id="ca-rejected">0</strong>
+                </article>
+                <article class="metric-card success">
+                    <span>完成订单</span>
+                    <strong id="ca-completed">0</strong>
+                </article>
+            </div>
         </section>
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260608-real-metrics"></script>
+    <script src="/js/seckill-lab.js?v=20260623-cacheaside"></script>
 </body>
 
 </html>

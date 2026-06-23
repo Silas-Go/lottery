@@ -7,6 +7,28 @@
     var metricsSource = null;
     var liveMetrics = false;
 
+    // 两种库存模式的前端配置：抽奖入口 URL、库存模式标签、请求提示与事件文案。
+    // 切换模式只改变请求走向和文案，转盘交互和 SSE 指标刷新逻辑两种模式共用。
+    var MODES = {
+        prededuct: {
+            url: "/lucky",
+            label: "Redis 预扣 + MQ 补偿",
+            requestHint: "正在请求 /lucky，观察右侧系统链路。",
+            requestEvent: ["Browser 发起请求", "GET /lucky，进入 Gin 预扣库存接口。"]
+        },
+        cacheaside: {
+            url: "/lucky/cacheaside",
+            label: "MySQL 权威 + 旁路缓存",
+            requestHint: "正在请求 /lucky/cacheaside，观察右侧 DB 压力与熔断状态。",
+            requestEvent: ["Browser 发起请求", "GET /lucky/cacheaside，进入 Cache-Aside 强一致接口。"]
+        }
+    };
+    var currentMode = "prededuct";
+
+    function modeConf() {
+        return MODES[currentMode];
+    }
+
     var state = {
         baseStock: 100,
         redisStock: 100,
@@ -86,6 +108,62 @@
         state.p99 = snapshot.p99 || 0;
         updateMetrics();
         renderServerEvents(snapshot.events || []);
+        applyCacheAsideSnapshot(snapshot.cacheAside);
+    }
+
+    // applyCacheAsideSnapshot 渲染旁路缓存压力面板。
+    // 这些指标只来自服务端真实埋点（snapshot.cacheAside），压测 /lucky/cacheaside 时才会变化。
+    function applyCacheAsideSnapshot(ca) {
+        if (!ca) {
+            return;
+        }
+        setText("ca-qps", formatNumber(ca.qps));
+        setText("ca-db-avg", (ca.dbAvgLatency || 0) + "ms");
+        setText("ca-db-p95", (ca.dbP95Latency || 0) + "ms");
+        setText("ca-pool", (ca.poolUsage || 0) + "% (" + (ca.poolInUse || 0) + "/" + (ca.poolCapacity || 0) + ")");
+        setText("ca-hit-rate", (ca.cacheHitRate || 0) + "%");
+        setText("ca-miss", formatNumber(ca.cacheMisses));
+        setText("ca-rejected", formatNumber(ca.rejected));
+        setText("ca-completed", formatNumber(ca.completed));
+        updateCircuitLamp(ca.circuitState || "green");
+    }
+
+    // updateCircuitLamp 根据熔断状态切换信号灯颜色与面板高亮。
+    // green=正常放行，yellow=压力预警/Half-Open 试探，red=熔断降级（fail-fast 拒绝新请求）。
+    function updateCircuitLamp(stateText) {
+        var tone = stateText === "red" ? "red" : (stateText === "yellow" ? "yellow" : "green");
+        var lamp = el("circuit-lamp");
+        if (lamp) {
+            lamp.className = "circuit-lamp " + tone;
+        }
+        var label = el("circuit-state");
+        if (label) {
+            var textMap = { green: "熔断器：正常", yellow: "熔断器：预警", red: "熔断器：熔断降级中" };
+            label.textContent = textMap[tone];
+        }
+        var panel = el("cacheaside-panel");
+        if (panel) {
+            panel.classList.toggle("is-overload", tone === "red");
+        }
+    }
+
+    // setMode 切换库存模式。切换只影响后续抽奖请求走向和文案，不打断正在进行的转盘。
+    function setMode(mode) {
+        if (!MODES[mode] || mode === currentMode || spinning) {
+            return;
+        }
+        currentMode = mode;
+        document.querySelectorAll(".mode-btn").forEach(function (button) {
+            button.classList.toggle("is-active", button.dataset.mode === mode);
+        });
+        setText("mode-label", MODES[mode].label);
+        if (mode === "cacheaside") {
+            setOperationMessage("已切换到旁路缓存模式：MySQL 行锁原子扣减、强一致不超卖，高并发时 DB 是瓶颈。");
+            pushEvent("切换库存模式", "旁路缓存（Cache-Aside）：慢但稳，过载时熔断降级。", "warning");
+        } else {
+            setOperationMessage("已切换到预扣库存模式：Redis 原子扣减 + MQ 补偿，扛高并发写。");
+            pushEvent("切换库存模式", "预扣库存：快，Redis 是权威源。", "success");
+        }
     }
 
     function setBadge(id, text, className) {
@@ -300,16 +378,23 @@
             return;
         }
 
-        state.queueSuccess += 1;
-        state.redisStock = Math.max(0, state.redisStock - 1);
-        state.mqPending += 1;
         state.simulationDone = state.totalRequests;
         recordLatency(latency);
+        if (currentMode === "cacheaside") {
+            setBadge("simulation-status", "已落库", "is-ok");
+            setOperationMessage("MySQL 行锁原子扣减成功，正式订单已强一致落库（绝不超卖）。");
+            pushEvent("MySQL 扣减成功", "UPDATE cache_stock WHERE >0，行锁原子扣减，售罄时影响行数为 0。", "success");
+            pushEvent("正式订单落库", "Cache-Aside 走纯 DB 强一致路径，无需临时资格和 MQ 补偿。", "success");
+        } else {
+            state.queueSuccess += 1;
+            state.redisStock = Math.max(0, state.redisStock - 1);
+            state.mqPending += 1;
+            setBadge("simulation-status", "已进入队列", "is-ok");
+            setOperationMessage("抢到资格，等待用户支付或 MQ 延迟取消。");
+            pushEvent("预扣库存成功", "Redis 库存扣减成功，临时订单已创建。", "success");
+            pushEvent("发送延迟消息", "RocketMQ 将在支付超时后检查并回滚库存。", "success");
+        }
         updateMetrics();
-        setBadge("simulation-status", "已进入队列", "is-ok");
-        setOperationMessage("抢到资格，等待用户支付或 MQ 延迟取消。");
-        pushEvent("预扣库存成功", "Redis 库存扣减成功，临时订单已创建。", "success");
-        pushEvent("发送延迟消息", "RocketMQ 将在支付超时后检查并回滚库存。", "success");
 
         var index = giftMap.get(String(giftId));
         if (typeof index === "number" && wheel) {
@@ -335,13 +420,13 @@
         state.totalRequests += 1;
         state.simulationTotal = Math.max(state.simulationTotal, state.totalRequests);
         setBadge("simulation-status", "请求中", "is-warn");
-        setOperationMessage("正在请求 /lucky，观察右侧系统链路。");
+        setOperationMessage(modeConf().requestHint);
         pulseRequestFlow();
-        pushEvent("Browser 发起请求", "GET /lucky，进入 Gin 秒杀接口。");
+        pushEvent(modeConf().requestEvent[0], modeConf().requestEvent[1]);
         updateMetrics();
 
         try {
-            var response = await fetch("/lucky", { method: "GET" });
+            var response = await fetch(modeConf().url, { method: "GET" });
             var giftId = await response.text();
             var latency = Math.max(1, Math.round(performance.now() - startedAt));
 
@@ -468,6 +553,12 @@
         document.querySelectorAll(".stress-btn").forEach(function (button) {
             button.addEventListener("click", function () {
                 prepareLoadtest(Number(button.dataset.rate), Number(button.dataset.connections), button);
+            });
+        });
+
+        document.querySelectorAll(".mode-btn").forEach(function (button) {
+            button.addEventListener("click", function () {
+                setMode(button.dataset.mode);
             });
         });
 

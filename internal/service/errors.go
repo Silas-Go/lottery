@@ -17,6 +17,7 @@ const (
 	CodeOrderNotOwned          = "ORDER_NOT_OWNED"
 	CodeOrderCreateFailed      = "ORDER_CREATE_FAILED"
 	CodeGiveUpRollbackFailed   = "GIVEUP_ROLLBACK_FAILED"
+	CodeCacheAsideOverload     = "CACHE_ASIDE_OVERLOAD"
 )
 
 // AppError 表示 service 层返回给 handler 的业务错误。

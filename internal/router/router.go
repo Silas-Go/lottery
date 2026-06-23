@@ -50,6 +50,7 @@ func registerPages(engine *gin.Engine) {
 func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/gifts", handlers.Gift.GetAllGifts)
 	engine.GET("/lucky", handlers.Gift.Lottery)
+	engine.GET("/lucky/cacheaside", handlers.Gift.LotteryCacheAside)
 	engine.POST("/giveup", handlers.Order.GiveUp)
 	engine.POST("/pay", handlers.Order.Pay)
 	engine.GET("/api/metrics/snapshot", handler.GetMetricsSnapshot)

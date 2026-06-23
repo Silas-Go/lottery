@@ -85,6 +85,10 @@ type Snapshot struct {
 
 	// Events 是最近的业务事件，用于页面解释系统状态变化。
 	Events []Event `json:"events"`
+
+	// CacheAside 是旁路缓存模式的压力指标快照，与上面的预扣模式指标并存。
+	// 两套指标同页并排，用于在相同压力下对比"预扣（快）"和"Cache-Aside（慢但稳）"的表现。
+	CacheAside CacheAsideSnapshot `json:"cacheAside"`
 }
 
 type meter struct {
@@ -283,6 +287,7 @@ func SnapshotNow() Snapshot {
 		SimulationTotal: totalRequests,
 		SimulationDone:  totalRequests,
 		Events:          events,
+		CacheAside:      SnapshotCacheAside(),
 	}
 }
 
