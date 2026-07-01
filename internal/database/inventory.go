@@ -11,11 +11,21 @@ const (
 	// INVENTORY_PREFIX 是 Redis 奖品库存 key 的前缀。
 	// 完整 key 形如 gift_count_3，表示 gift id 为 3 的奖品当前可抢库存。
 	INVENTORY_PREFIX = "gift_count_"
+
+	// INVENTORY_IDS_KEY 是奖品 ID 注册表（Redis SET）的 key，保存当前活动的全部 gift id。
+	// 读取实时库存时用 SMEMBERS 拿到 id 列表，再用一次 MGET 批量取库存，
+	// 取代原来的 KEYS gift_count_* 全库扫描。它由 InitGiftInventory 在启动时按 MySQL 配置重建，
+	// 是读取库存的权威来源：手动往 Redis 塞 gift_count_* 而不更新注册表的 key 不会被读到。
+	INVENTORY_IDS_KEY = "gift_ids"
 )
 
-// InitGiftInventory 从 MySQL 恢复 Redis 活动库存。
+// InitGiftInventory 从 MySQL 恢复 Redis 活动库存及奖品 ID 注册表。
 // Redis 不能简单恢复成 inventory.count 初始值，必须扣掉当前活动已完成订单；
 // 否则服务重启后会把已经卖出的库存重新放回奖池，压测时看起来不超卖，长期运行却会超发。
+//
+// 该函数同时用 MySQL 奖品配置重建 INVENTORY_IDS_KEY（gift_ids SET），
+// 供后续 GetAllGiftInventoryWithError 用 SMEMBERS + MGET 批量读取库存，
+// 不再需要在 /lucky 热路径上逐请求 KEYS 全库扫描。
 func (s *Store) InitGiftInventory() error {
 	gifts, err := s.GetAllGiftsWithError()
 	if err != nil {
@@ -26,6 +36,7 @@ func (s *Store) InitGiftInventory() error {
 		return err
 	}
 
+	ids := make([]any, 0, len(gifts))
 	for _, gift := range gifts {
 		sold := completedCounts[gift.Id]
 		remaining := gift.Count - sold
@@ -39,8 +50,24 @@ func (s *Store) InitGiftInventory() error {
 			slog.Error("set gift count to redis failed", "gift_id", gift.Id, "key", key, "error", err)
 			return fmt.Errorf("set gift %d inventory to redis: %w", gift.Id, err)
 		}
+		ids = append(ids, gift.Id)
 		slog.Info("gift inventory restored to redis", "activity_id", DefaultActivityID, "gift_id", gift.Id, "initial", gift.Count, "sold", sold, "remaining", remaining)
 	}
+
+	// 重建奖品 ID 注册表（全量替换，保证与 MySQL 配置一致）。
+	// 先用 DEL 清空旧注册表，再用 SADD 写入当前奖品 ID 集合；两步不是原子的，
+	// 但此函数只在启动初始化时调用一次，不存在并发写入竞争。
+	if err := GiftRedis.Del(INVENTORY_IDS_KEY).Err(); err != nil {
+		slog.Error("clear gift id registry failed", "key", INVENTORY_IDS_KEY, "error", err)
+		return fmt.Errorf("clear gift id registry: %w", err)
+	}
+	if len(ids) > 0 {
+		if err := GiftRedis.SAdd(INVENTORY_IDS_KEY, ids...).Err(); err != nil {
+			slog.Error("create gift id registry failed", "key", INVENTORY_IDS_KEY, "count", len(ids), "error", err)
+			return fmt.Errorf("create gift id registry: %w", err)
+		}
+	}
+	slog.Info("gift id registry rebuilt", "key", INVENTORY_IDS_KEY, "count", len(ids))
 
 	return nil
 }
@@ -52,36 +79,64 @@ func GetAllGiftInventory() []*Gift {
 	return gifts
 }
 
-// GetAllGiftInventoryWithError 读取 Redis 中全部奖品实时库存。
-// 返回的 Gift 只保证 Id 和 Count 有业务意义；名称、价格、图片仍应从 MySQL inventory 表读取。
-// 当前实现使用 KEYS 扫描 gift_count_*，奖品少时足够直观；大量活动或大量 key 时应改为活动维度 hash/MGET。
+// GetAllGiftInventoryWithError 用一次 SMEMBERS + 一次 MGET 批量读取全部奖品库存。
+// 依赖 InitGiftInventory 在启动时建好的 INVENTORY_IDS_KEY 注册表拿到 id 列表，
+// 再用 MGET 一次拉回全部 gift_count_{id} 值，总往返固定 2 次，不随奖品数增长。
+//
+// 原来的实现用 KEYS gift_count_* 扫描 + 逐 key GET，在 /lucky 每次请求 + 10 次重试
+// 的热路径上会反复触发 O(N) keyspace 扫描并阻塞 Redis 单线程，压测越大越吃亏。
 func GetAllGiftInventoryWithError() ([]*Gift, error) {
 	if GiftRedis == nil {
 		return nil, errors.New("redis client is nil")
 	}
 
-	keys, err := GiftRedis.Keys(INVENTORY_PREFIX + "*").Result()
+	// 1. SMEMBERS 拿奖品 ID 列表（O(M)，M=奖品数，通常 10 个左右）
+	rawIDs, err := GiftRedis.SMembers(INVENTORY_IDS_KEY).Result()
 	if err != nil {
-		slog.Error("iterate all gift keys failed", "error", err)
-		return nil, fmt.Errorf("iterate redis inventory keys: %w", err)
+		slog.Error("read gift id registry failed", "key", INVENTORY_IDS_KEY, "error", err)
+		return nil, fmt.Errorf("read gift id registry: %w", err)
+	}
+	if len(rawIDs) == 0 {
+		return nil, nil
 	}
 
-	gifts := make([]*Gift, 0, len(keys))
-	for _, key := range keys {
-		idStr := key[len(INVENTORY_PREFIX):]
-		id, err := strconv.Atoi(idStr)
+	// 2. 拼出 gift_count_{id} key 列表，一次 MGET 取回全部库存
+	keys := make([]string, len(rawIDs))
+	for i, raw := range rawIDs {
+		keys[i] = INVENTORY_PREFIX + raw
+	}
+
+	values, err := GiftRedis.MGet(keys...).Result()
+	if err != nil {
+		slog.Error("mget gift inventory failed", "keys", keys, "error", err)
+		return nil, fmt.Errorf("mget gift inventory: %w", err)
+	}
+
+	gifts := make([]*Gift, 0, len(rawIDs))
+	for i, raw := range rawIDs {
+		giftID, err := strconv.Atoi(raw)
 		if err != nil {
-			slog.Error("gift id is not int", "key", key, "error", err)
-			return nil, fmt.Errorf("parse gift id from redis key %q: %w", key, err)
+			slog.Error("gift id in registry is not int", "raw", raw, "error", err)
+			return nil, fmt.Errorf("parse gift id from registry %q: %w", raw, err)
 		}
 
-		count, err := GiftRedis.Get(key).Int()
-		if err != nil {
-			slog.Error("gift count is not int", "key", key, "error", err)
-			return nil, fmt.Errorf("read redis inventory %q: %w", key, err)
+		count := 0
+		if v := values[i]; v != nil {
+			switch vv := v.(type) {
+			case string:
+				count, err = strconv.Atoi(vv)
+			case int64:
+				count = int(vv)
+			default:
+				err = fmt.Errorf("unexpected mget value type %T: %v", v, v)
+			}
+			if err != nil {
+				slog.Error("parse gift count failed", "key", keys[i], "value", v, "error", err)
+				return nil, fmt.Errorf("parse gift count %q: %w", keys[i], err)
+			}
 		}
 
-		gifts = append(gifts, &Gift{Id: id, Count: count})
+		gifts = append(gifts, &Gift{Id: giftID, Count: count})
 	}
 
 	return gifts, nil

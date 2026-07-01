@@ -125,6 +125,7 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 			return nil, NewAppError(CodeRedisInventoryReadFail, "读取奖品库存失败", err, "uid", uid, "try", try)
 		}
 
+		// 从当前库存快照中筛选有剩余库存的候选奖品 ID 及对应权重。
 		ids := make([]int, 0, len(gifts))
 		probs := make([]float64, 0, len(gifts))
 		for _, gift := range gifts {
@@ -139,61 +140,70 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 			return &LotteryResult{UID: uid, GiftID: 0}, nil
 		}
 
-		index := util.Lottery(probs)
-		if index < 0 || index >= len(ids) {
-			err := fmt.Errorf("lottery index %d out of range, candidates=%d", index, len(ids))
-			metrics.RecordSystemError("抽奖算法返回非法结果", err)
-			return nil, NewAppError(CodeLotteryAlgoFailed, "抽奖算法返回非法结果", err, "uid", uid, "try", try)
-		}
+		// 内层候选池：一次 Redis 库存快照可支撑多次准入尝试。
+		// 避免每遇到一个 SOLD_OUT 就重新读 Redis，减少 /lucky 热路径往返次数。
+		for attempt := 1; len(ids) > 0; attempt++ {
+			index := util.Lottery(probs)
+			if index < 0 || index >= len(ids) {
+				err := fmt.Errorf("lottery index %d out of range, candidates=%d", index, len(ids))
+				metrics.RecordSystemError("抽奖算法返回非法结果", err)
+				return nil, NewAppError(CodeLotteryAlgoFailed, "抽奖算法返回非法结果", err, "uid", uid, "try", try, "attempt", attempt)
+			}
 
-		giftID := ids[index]
-		slog.Info("lottery candidate selected", "uid", uid, "gid", giftID, "try", try, "candidate_count", len(ids))
-		// 权重抽奖只决定候选奖品，真正的并发边界在 Redis Lua。
-		// 如果不把防重复、扣库存、写临时资格绑在同一个脚本里，
-		// 高并发下就可能出现重复参与或库存检查通过后被其他请求抢先扣光。
-		status, err := database.TryAcquireLotteryAdmission(uid, giftID, time.Duration(PayDelaySeconds)*time.Second)
-		switch status {
-		case database.AdmissionAcquired:
-			metrics.RecordRedisPreDeduct(giftID)
-			slog.Info("lottery admission acquired", "uid", uid, "gid", giftID, "try", try, "ttl_seconds", PayDelaySeconds)
-		case database.AdmissionDuplicate:
-			metrics.RecordStockFailed("用户重复参与")
-			slog.Warn("lottery admission duplicate", "uid", uid, "gid", giftID, "try", try, "error", err)
-			return nil, NewAppError(CodeDuplicateParticipation, "请勿重复参与秒杀", err, "uid", uid, "gid", giftID, "try", try)
-		case database.AdmissionSoldOut:
-			slog.Warn("admission sold out, retrying lottery", "uid", uid, "gid", giftID, "try", try)
-			continue
-		default:
-			metrics.RecordSystemError("Redis 原子准入失败", err)
-			return nil, NewAppError(CodeAdmissionFailed, "秒杀准入失败，请稍后重试", err, "uid", uid, "gid", giftID, "try", try)
-		}
+			giftID := ids[index]
+			slog.Info("lottery candidate selected", "uid", uid, "gid", giftID, "try", try, "attempt", attempt, "candidate_count", len(ids))
+			// 权重抽奖只决定候选奖品，真正的并发边界在 Redis Lua。
+			// 如果不把防重复、扣库存、写临时资格绑在同一个脚本里，
+			// 高并发下就可能出现重复参与或库存检查通过后被其他请求抢先扣光。
+			status, err := database.TryAcquireLotteryAdmission(uid, giftID, time.Duration(PayDelaySeconds)*time.Second)
+			switch status {
+			case database.AdmissionAcquired:
+				metrics.RecordRedisPreDeduct(giftID)
+				slog.Info("lottery admission acquired", "uid", uid, "gid", giftID, "try", try, "attempt", attempt, "ttl_seconds", PayDelaySeconds)
+			case database.AdmissionDuplicate:
+				metrics.RecordStockFailed("用户重复参与")
+				slog.Warn("lottery admission duplicate", "uid", uid, "gid", giftID, "try", try, "attempt", attempt, "error", err)
+				return nil, NewAppError(CodeDuplicateParticipation, "请勿重复参与秒杀", err, "uid", uid, "gid", giftID, "try", try)
+			case database.AdmissionSoldOut:
+				// 同一库存快照内有并发请求抢光了这个奖品。
+				// 从本地候选池剔除该 giftID，用剩余奖品继续抽，无需立刻重读 Redis。
+				slog.Warn("admission sold out, retrying with remaining candidates", "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
+				ids = append(ids[:index], ids[index+1:]...)
+				probs = append(probs[:index], probs[index+1:]...)
+				continue
+			default:
+				metrics.RecordSystemError("Redis 原子准入失败", err)
+				return nil, NewAppError(CodeAdmissionFailed, "秒杀准入失败，请稍后重试", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
+			}
 
-		gift, err := s.store.GetGiftWithError(giftID)
-		if err != nil {
-			rollbackAdmission(uid, giftID, "gift lookup failed")
-			metrics.RecordSystemError("查询中奖奖品详情失败", err)
-			return nil, NewAppError(CodeGiftLookupFailed, "查询中奖奖品详情失败", err, "uid", uid, "gid", giftID, "try", try)
-		}
-		slog.Info("lottery gift detail loaded", "uid", uid, "gid", giftID, "gift", gift.Name, "price", gift.Price, "try", try)
+			gift, err := s.store.GetGiftWithError(giftID)
+			if err != nil {
+				rollbackAdmission(uid, giftID, "gift lookup failed")
+				metrics.RecordSystemError("查询中奖奖品详情失败", err)
+				return nil, NewAppError(CodeGiftLookupFailed, "查询中奖奖品详情失败", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
+			}
+			slog.Info("lottery gift detail loaded", "uid", uid, "gid", giftID, "gift", gift.Name, "price", gift.Price, "try", try, "attempt", attempt)
 
-		if err := mq.SendCancelOrder(database.Order{UserId: uid, GiftId: giftID}, PayDelaySeconds); err != nil {
-			// 用户不能在没有超时补偿消息的情况下持有库存。
-			// 如果 MQ 入队失败，必须立即释放 Redis 临时资格，否则这份库存会被长期占用。
-			rollbackAdmission(uid, giftID, "rocketmq send failed")
-			metrics.RecordSystemError("发送延时取消订单消息失败", err)
-			return nil, NewAppError(CodeMQSendFailed, "发送延时取消订单消息失败", err, "uid", uid, "gid", giftID, "try", try)
-		}
-		metrics.RecordQueueSuccess(giftID)
-		slog.Info("lottery cancel message queued", "uid", uid, "gid", giftID, "delay_seconds", PayDelaySeconds, "try", try)
+			if err := mq.SendCancelOrder(database.Order{UserId: uid, GiftId: giftID}, PayDelaySeconds); err != nil {
+				// 用户不能在没有超时补偿消息的情况下持有库存。
+				// 如果 MQ 入队失败，必须立即释放 Redis 临时资格，否则这份库存会被长期占用。
+				rollbackAdmission(uid, giftID, "rocketmq send failed")
+				metrics.RecordSystemError("发送延时取消订单消息失败", err)
+				return nil, NewAppError(CodeMQSendFailed, "发送延时取消订单消息失败", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
+			}
+			metrics.RecordQueueSuccess(giftID)
+			slog.Info("lottery cancel message queued", "uid", uid, "gid", giftID, "delay_seconds", PayDelaySeconds, "try", try, "attempt", attempt)
 
-		slog.Info("lottery request success", "uid", uid, "gid", giftID, "gift", gift.Name, "try", try)
-		return &LotteryResult{
-			UID:      uid,
-			GiftID:   giftID,
-			GiftName: gift.Name,
-			Price:    gift.Price,
-			Delay:    PayDelaySeconds,
-		}, nil
+			slog.Info("lottery request success", "uid", uid, "gid", giftID, "gift", gift.Name, "try", try, "attempt", attempt)
+			return &LotteryResult{
+				UID:      uid,
+				GiftID:   giftID,
+				GiftName: gift.Name,
+				Price:    gift.Price,
+				Delay:    PayDelaySeconds,
+			}, nil
+		}
+		// 内层候选池耗尽（当前快照里的奖品都被并发抢完），外层重新读 Redis 库存。
 	}
 
 	metrics.RecordStockFailed("库存扣减冲突重试耗尽")
