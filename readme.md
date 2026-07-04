@@ -1,309 +1,436 @@
-## 快速启动
+# Silas · 高并发秒杀 / 抽奖架构对比实验台
 
-项目默认采用“依赖跑 Docker，Go app 本机跑”的开发结构：
+> 用同一套抽奖业务，落地**两套完全不同的库存扣减方案**，一键切换、用同一套压测拉到极限，用实时数据看它们在高并发下到底差在哪。
 
-- Docker：MySQL、Redis、RocketMQ、wrk2 压测工具
-- 本机：Go Web 进程
+这不是一个功能完整的抽奖 App，而是一个**面向真实系统核心链路的架构对比实验台**——聚焦「高并发下库存怎么扣才既不超卖、又不拖垮数据库」这一个最硬的工程问题。
 
-启动依赖：
+## 它解决什么问题
 
-```powershell
-.\scripts\start-infra.ps1
-```
+秒杀 / 抽奖类业务的入口，本质是**高并发写库存**。这里有一个被反复误解的点：
 
-启动 Go app：
+- **误区**：旁路缓存（Cache-Aside）扣库存会超卖。
+- **事实**：Cache-Aside 用数据库行锁扣减**根本不会超卖**——它真正的代价是**慢**，高并发写会把缓存频繁击穿、请求直打 MySQL，数据库成为瓶颈。
 
-```powershell
-.\scripts\run-local-app.ps1
-```
+本项目把两种主流答案（**Redis 预扣库存** vs **Cache-Aside 旁路缓存**）实现在同一个抽奖场景下，共享同一张库存表、跑同一套压测，用一块实时指标面板把「快多少、几秒熔断、能否自愈、极限下一致性是否出问题」这些光看文章答不出的问题，变成可复现的数据。
 
-访问页面：
+## 核心亮点
 
-```text
-http://localhost:5678/
-```
+- **Redis Lua 原子准入**：把「防重复参与 + 查库存 + 扣库存 + 写临时资格」绑定进单个 Lua 脚本，彻底消灭「查的时候有、扣的时候没了」的经典竞态，只返回 `OK / DUPLICATE / SOLD_OUT` 三态。
+- **RocketMQ 延时补偿**：抢到资格但超时未支付，靠延时消息把库存悄悄还回 Redis；支付、主动放弃、超时释放三条路径共用同一份临时资格作为并发边界，保证同一份库存只被消费一次。
+- **压力感知熔断器**：不看错误率，而是盯 **DB 响应时间 + 连接池占用率**，三态机（Closed/Open/Half-Open）在过载时 fail-fast 保护 MySQL，冷却后自动试探恢复。
+- **可观测**：SSE 一秒一推的实时面板——QPS、P95/P99、DB 响应、连接池占用、缓存命中率、熔断器信号灯、是否超卖，全程可见。
+- **工程化细节**：优雅退出（信号驱动、按序释放依赖）、启动自愈建表（老数据卷自动补齐订单唯一索引与 `cache_stock` 列）、清晰分层（handler / service / database 边界严格）、结构化日志 + 业务错误码 + HTTP 状态码 + 指标四位一体。
 
-本机压测：
+---
 
-```powershell
-.\scripts\run-local-loadtest.ps1 -Rate 500 -Duration 30s -Connections 128
-```
+## 目录
 
-停止依赖：
+- [核心功能](#核心功能)
+- [技术栈](#技术栈)
+- [系统架构](#系统架构)
+- [核心业务流程](#核心业务流程)
+- [关键设计说明](#关键设计说明)
+- [本地启动](#本地启动)
+- [环境变量说明](#环境变量说明)
+- [API 概览](#api-概览)
+- [部署说明](#部署说明)
+- [项目状态与 Roadmap](#项目状态与-roadmap)
+- [目录结构](#目录结构)
 
-```powershell
-.\scripts\stop-infra.ps1
-```
+---
 
-## 代码分层
+## 核心功能
 
-后端代码按 Go 项目常见边界收进 `internal`，入口文件只负责启动应用：
-
-```text
-main.go                 # 程序入口，只调用 app.New().Run()
-internal/app            # 组装日志、数据库、Redis、MQ、HTTP Server 和优雅退出
-internal/router         # Gin 路由、静态资源、页面入口注册
-internal/handler        # HTTP 入参/出参、Cookie、状态码和错误响应
-internal/service        # 抽奖、支付、放弃支付等业务流程
-internal/database       # MySQL / Redis 数据访问
-internal/mq             # RocketMQ producer / consumer
-internal/metrics        # 秒杀指标采集和快照
-internal/util           # 配置、日志、抽奖算法和环境变量工具
-```
-
-链路可靠性说明见 [docs/reliability.md](docs/reliability.md)，里面按入口限流、Redis 原子准入、MQ 补偿、支付/放弃/超时释放、MySQL 落库和指标观测逐段解释“为什么这样设计”。
-
-## 建表
-```sql
-set names utf8mb4 collate utf8mb4_unicode_ci;
-
-create database lottery;
-grant all on lottery.* to tester;
-use lottery;
-
-create table if not exists inventory(
-    id int auto_increment comment '奖品id，自增',
-    name varchar(20) not null comment '奖品名称',
-    description varchar(100) not null default '' comment '奖品描述',
-    picture varchar(200) not null default '' comment '奖品图片',
-    price int not null default 0 comment '价值',
-    count int not null default 0 comment '库存量',
-    primary key (id)
-)default charset=utf8mb4 comment '奖品库存表，所有奖品在一次活动中要全部发出去';
-
-insert into inventory (id,name,picture,price,count) values (1,'谢谢参与','img/face.png',0,1000);    --'谢谢参与'的id我要显式指定，因为go代码里我要写死这个id
-insert into inventory (name,picture,price,count) values 
-('篮球','img/ball.jpeg',100,1000),
-('水杯','img/cup.jpeg',80,1000),
-('电脑','img/laptop.jpeg',6000,200),
-('平板','img/pad.jpg',4000,300),
-('手机','img/phone.jpeg',5000,400),
-('锅','img/pot.jpeg',120,1000),
-('茶叶','img/tea.jpeg',90,1000),
-('无人机','img/uav.jpeg',400,100),
-('酒','img/wine.jpeg',160,500);
-
-create table if not exists orders(
-    id int auto_increment comment '订单id，自增',
-    activity_id int not null default 1 comment '活动id',
-    gift_id int not null comment '商品id',
-    user_id int not null comment '用户id',
-    count int not null default 1 comment '购买数量',
-    create_time datetime default current_timestamp comment '订单创建时间',
-    primary key (id),
-    key idx_user (user_id),
-    unique key uk_activity_user (activity_id, user_id)
-)default charset=utf8mb4 comment '订单表';
-```  
-
-- 为了方便进行压力测试，我故意把库存量（count）设得很大，实际中可以把库存量设得很小。
-- 指定一个特殊的id来标识“谢谢参与”，通过调节“谢谢参与”的count来控制它被抽中的概率。
-
-## 业务流程
-<img src="views/img/秒杀业务流程.png" width="1000"/>
-
-## 程序流程
-<img src="views/img/秒杀流程.png" width="1000"/>
-
-## 高并发抽奖算法
-假设有3件奖品，库存分别是5、2、4，要把这么奖品全部发出去。  
-1. 根据当前的剩余库存计算每个奖品被抽中的概率。probs=(0.45, 0.18, 0.36)
-2. 计算累积概率。acc=(0.45, 0.64, 1.0)，把线段[0,1]切分成三段
-3. 生成(0,1]上的随机浮点数，落在哪一段上就抽中哪个奖品
-4. 抽中一个奖品对应的库存减1  
-
-每次抽奖都要重新走上面4步。
-读库存和减库存都涉及到DB的操作，在大数据、高并发场景下(比如支付宝在春晚搞抽奖活动)Redis能承受的QPS比Mysql高一到两个数量级，所以实时库存放到Redis上去维护。
-库存量很低的时候考虑一个极端情况：奖品还剩1件库存，2个协程同时去读这个库存，发现还剩1件，刚好又都抽中了这个奖品。单个 Redis `DECR` 可以保证库存数字原子扣减，但秒杀资格不只是扣库存，还包括“防重复参与、扣库存、写临时订单”。当前项目把这几个 Redis 状态变化放进 Lua 脚本中一次执行，最终由 Redis Lua 原子准入返回 `OK / DUPLICATE / SOLD_OUT`。只有准入成功后才会发送 RocketMQ 延时取消消息并给前端返回抽奖结果。
-
-## 两种库存模式对决：预扣库存 vs 旁路缓存
-
-项目在**同一个抽奖场景**下实现了两套库存方案，可在页面左上角一键切换、用同一套压测对比，用来讲清"不同数据特征该选不同缓存策略"。
+### 库存模式对决（项目主线）
 
 | 维度 | 预扣库存（`/lucky`） | 旁路缓存 Cache-Aside（`/lucky/cacheaside`） |
 | :--- | :--- | :--- |
 | 库存权威源 | Redis（`gift_count_{id}`） | MySQL（`inventory.cache_stock` 列） |
 | 读路径 | 直接读 Redis 库存当权重 | 先读 Redis 聚合缓存，未命中回源 MySQL 回填 |
-| 写路径 | Redis Lua 原子扣减 | MySQL 行锁 `UPDATE ... WHERE cache_stock>0`，再删缓存 |
+| 写路径 | Redis Lua 原子扣减 | MySQL 行锁 `UPDATE ... WHERE cache_stock>0` 后删缓存 |
 | 一致性 | 最终一致（MQ 补偿 + 超时释放） | 强一致，**绝不超卖** |
-| 落库 | 异步，支付后写 orders | 扣减成功后直接写 orders（纯 DB 强一致路径） |
-| 高并发表现 | Redis 扛住，平稳、快 | 每次写都打 MySQL，行锁竞争 + 连接池排队，**慢、DB 是瓶颈** |
-| 适用场景 | 写极多、强一致的秒杀库存 | 读多写少的数据（如商品详情、用户信息） |
+| 落库时机 | 支付后异步写 `orders` | 扣减成功后直接写 `orders`（纯 DB 强一致路径） |
+| 入口保护 | 令牌桶限流 | 压力感知熔断器 |
+| 高并发表现 | Redis 扛住，平稳、快 | 每次写打 MySQL，行锁竞争 + 连接池排队，慢、DB 是瓶颈 |
 
-**关键认知**：Cache-Aside 本身不会超卖——超卖是"读缓存值再扣"的误用，不是该模式的特征。它的真实代价是慢、DB 成为瓶颈。本项目 Cache-Aside 用 MySQL 行锁保证强一致，刻意暴露的是"写密集下缓存被频繁删除、近乎失效，链路退化为直接打 DB"的瓶颈。
+两个模式**共享同一张 `inventory` 表但读写不同列**，页面左上角一键切换——这把「尺子」是绝对公平的。
 
-两个模式共享同一张 `inventory` 表但读写不同列：预扣模式把 `count` 当只读初始库存基线（重启时据此恢复 Redis），Cache-Aside 改用独立的 `cache_stock` 列，应用启动时自动建列（`EnsureCacheStockSchema`）并互不干扰。
+### 秒杀主链路
 
-### 红灯预警与熔断降级
+- **权重抽奖算法**：按各奖品的实时剩余库存动态计算中奖概率，库存越多越容易抽中，目标是把奖品尽量发完。
+- **临时资格 → 正式订单**：抽中先拿「待支付临时资格」（Redis），支付时认领资格并写 MySQL 正式订单；超时或放弃则回补库存。
+- **重复参与防护**：MySQL 侧 `uk_activity_user(activity_id, user_id)` 唯一索引 + Redis Lua 的资格存在性判断双重兜底。
 
-为了让本机也能压出真实压力，Cache-Aside 链路用一个**受限并发闸门**（`LOTTERY_CACHEASIDE_DB_CONCURRENCY`，默认 10）模拟数据库连接池：超过上限的请求排队等待，等待时长计入响应耗时。
+### 可靠性与降级
 
-链路接入了一个**压力感知熔断器**（Closed / Open / Half-Open），不靠错误率而靠系统压力指标驱动：
+- **延时取消补偿**：RocketMQ `CANCEL_ORDER` 延时 Topic，支付窗口（默认 600s）到期后消费者释放悬挂库存。
+- **失败回滚兜底**：MQ 入队失败、奖品详情查询失败、正式订单落库失败等场景，立即回补已扣库存，不让库存长期悬挂。
+- **过载保护**：Cache-Aside 链路用「受限并发闸门」模拟连接池 + 压力感知熔断器，过载 fail-fast，冷却后自愈。
 
-- **绿灯 Closed**：DB 响应时间和连接池占用都在安全区，正常放行。
-- **黄灯预警**：压力升高（接近红线），或熔断器 Half-Open 试探恢复中。
-- **红灯 Open**：DB 响应超红线或连接池占满 → 熔断，fail-fast 拒绝新请求保护 MySQL；冷却期后 Half-Open 放少量试探，压力恢复则回到 Closed。
+### 观测与压测
 
-预扣模式不接入熔断器（它本就不打 DB），同样压力下全程绿灯——这正是对决要展示的差异。
+- **实时指标面板**：SSE 推送两套模式的独立指标（见 [API 概览](#api-概览)）。
+- **内置 wrk2 压测**：Docker Compose `loadtest` profile 一条命令固定 QPS 施压，脚本自动为每个请求追加不同 `uid`。
 
-### 怎么压测对比
+---
 
-1. 启动依赖和本机 app，浏览器打开页面，用左上角**库存模式切换**选预扣或旁路缓存。
-2. 压测预扣模式（基准，全绿）：
+## 技术栈
 
-   ```powershell
-   docker compose --profile loadtest run --rm -e RATE=1000 -e CONNECTIONS=256 wrk2
-   ```
+| 分类 | 选型 | 说明 |
+| :--- | :--- | :--- |
+| 语言 | Go 1.25（module `silas`） | 入口 `main.go` 仅负责启动，装配集中在 `internal/app` |
+| Web 框架 | Gin | 路由 / 静态资源 / HTML 模板 |
+| ORM | GORM + `driver/mysql` | 只写最终订单，不参与入口高并发扣库存 |
+| 缓存 | Redis（go-redis v6） | 预扣库存权威源 / Cache-Aside 读缓存，Lua 原子脚本 |
+| 消息队列 | Apache RocketMQ 5（golang client v5） | 延时取消消息，超时释放库存 |
+| 配置 | Viper（`conf/*.yaml`） + 环境变量覆盖 | 环境变量优先，便于容器化 |
+| JSON | bytedance/sonic | 高性能序列化 |
+| 日志 | `log/slog` + file-rotatelogs | 结构化日志，按文件切割 |
+| 前端 | 原生 HTML/CSS/JS + [lucky-canvas](https://100px.net/usage/js.html) | 抽奖转盘 + SSE 实时面板 |
+| 基础设施 | Docker Compose（MySQL 8.4 / Redis 7 / RocketMQ 5.3.2） | 依赖跑容器，Go app 本机跑 |
+| 交付 | 多阶段 Dockerfile（非 root 运行） | 可选整包容器化 |
+| 压测 | wrk2（Compose `loadtest` profile） | 固定 QPS 恒定压力 |
 
-3. 压测旁路缓存模式（观察红灯 + 熔断）：把 wrk2 目标路径改为 `/lucky/cacheaside` 后施压。页面右侧"旁路缓存压力监控"会实时显示 DB 响应时间飙升、连接池占用率拉满、缓存命中率跳水、熔断器变红、降级拒绝数上升。
-4. 重新压测前重置 Cache-Aside 库存（它会真实扣减 MySQL）：
+---
 
-   ```sql
-   UPDATE inventory SET cache_stock = count;
-   ```
+## 系统架构
 
-### 验证不超卖与熔断
+依赖跑在 Docker 里，Go 进程跑在本机（或独立容器），职责边界清晰：
 
-```powershell
-# 熔断器状态机（纯逻辑，无需 DB）
-go test ./internal/service -run CircuitBreaker -v
+```mermaid
+flowchart TB
+    subgraph Client["浏览器 / wrk2"]
+        UI["抽奖转盘 + 实时指标面板"]
+    end
 
-# Cache-Aside 并发不超卖（需要 MySQL/Redis 在线）
-go test ./internal/database -run "^TestCacheAsideNoOversell$" -count=1 -v
+    subgraph App["Go 应用（module silas）"]
+        direction TB
+        Router["router · Gin 路由"]
+        Handler["handler · HTTP 入参出参 / Cookie / 错误码"]
+        subgraph Service["service · 业务编排"]
+            L1["预扣库存 LotteryService<br/>令牌桶限流"]
+            L2["Cache-Aside Service<br/>压力感知熔断器"]
+            Order["OrderService · 支付 / 放弃"]
+        end
+        DB["database · MySQL / Redis 访问 + Lua"]
+        MQ["mq · RocketMQ producer / consumer"]
+        Metrics["metrics · 采集 + SSE 推送"]
+    end
+
+    subgraph Infra["Docker 依赖"]
+        Redis[("Redis<br/>库存 / 临时资格 / 读缓存")]
+        MySQL[("MySQL<br/>订单 / 库存权威")]
+        Rocket[("RocketMQ<br/>延时取消")]
+    end
+
+    UI -->|"GET /lucky, /lucky/cacheaside"| Router --> Handler --> Service
+    L1 -->|"Lua 原子准入"| DB
+    L2 -->|"行锁 UPDATE + 读缓存"| DB
+    Order --> DB
+    DB --> Redis
+    DB --> MySQL
+    L1 -->|"发送延时取消"| MQ --> Rocket
+    Rocket -->|"到期投递"| MQ -->|"释放库存"| DB
+    Service --> Metrics -->|"SSE /api/metrics/stream"| UI
 ```
 
-### 新增环境变量
+**数据流要点**：
+
+- 预扣模式的高并发压力**全压在 Redis**，MySQL 只在支付后写最终订单；Cache-Aside 模式**每次扣减都打 MySQL**，Redis 只做读缓存。
+- 抽奖成功即向 RocketMQ 投递一条延时消息；用户支付则认领资格、消息到期后成为空操作，用户不支付则消息到期后回补库存。
+- `metrics` 层旁路采集，不参与主链路事务，通过 SSE 单向推送给前端。
+
+---
+
+## 核心业务流程
+
+### 1. 预扣库存抽奖（`GET /lucky`）
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant S as LotteryService
+    participant R as Redis(Lua)
+    participant M as RocketMQ
+    participant DB as MySQL
+
+    U->>S: 抽奖请求(uid)
+    S->>S: 令牌桶限流
+    S->>DB: 查是否已有正式订单(防重复)
+    S->>R: 读库存快照，按权重选候选奖品
+    S->>R: Lua 原子准入(防重复+扣库存+写临时资格)
+    R-->>S: OK / DUPLICATE / SOLD_OUT
+    Note over S,R: SOLD_OUT 则剔除该奖品，用剩余候选重试
+    S->>M: 发送延时取消消息(600s)
+    Note over S,M: MQ 入队失败立即回滚 Redis 资格
+    S-->>U: 返回中奖 gid + 写中奖 Cookie
+```
+
+### 2. 支付 / 放弃 / 超时释放（三路共用同一份资格）
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant O as OrderService
+    participant R as Redis(Lua)
+    participant M as RocketMQ Consumer
+    participant DB as MySQL
+
+    alt 用户支付 POST /pay
+        U->>O: uid, gid
+        O->>R: claim 认领资格(删除临时资格，不回补库存)
+        R-->>O: 成功/失败
+        O->>DB: 写正式订单(唯一索引兜底)
+        Note over O,DB: 落库失败则回补库存
+    else 用户放弃 POST /giveup
+        U->>O: uid, gid
+        O->>R: release 释放资格 + 回补库存
+    else 超时未支付
+        M->>R: release 释放资格 + 回补库存
+    end
+    Note over R: claim 与 release 共用 Lua 原子判断<br/>同一份资格只能被一方消费
+```
+
+### 3. Cache-Aside 抽奖（`GET /lucky/cacheaside`）
+
+1. 熔断器入口判断，过载则 **fail-fast** 拒绝，保护 MySQL。
+2. 查 MySQL 正式订单防重复。
+3. Cache-Aside 读全部库存：命中 Redis 聚合缓存直接用，未命中回源 MySQL 回填（TTL 2s）。
+4. 按库存权重选候选，**MySQL 行锁 `UPDATE ... WHERE cache_stock>0`** 原子扣减（绝不超卖）。
+5. 扣减成功后**直接写正式订单**（强一致，不走临时资格与 MQ 补偿）；失败则回补库存。
+6. 每次真正打 DB 的操作上报耗时与连接池占用，驱动熔断器状态切换。
+
+### 4. 库存初始化与自愈
+
+- 启动时 `EnsureOrderSchema` / `EnsureCacheStockSchema` 自动补齐订单唯一索引和 `cache_stock` 列——老数据卷不重跑 `init.sql` 也能正常运行。
+- 从 MySQL `count` 恢复 Redis 库存基线，并区分「活动初始库存」与「Redis 当前可用库存」建立指标基线，避免重启后把剩余库存误判为初始库存。
+
+---
+
+## 关键设计说明
+
+### 数据模型
+
+- **`inventory`（奖品库存表）**：`count` 作为预扣模式的**只读初始库存基线**（重启据此恢复 Redis）；`cache_stock` 是 Cache-Aside 模式的**独立实时库存列**。两个模式共享一张表、读写不同列，彻底隔离。
+- **`orders`（订单表）**：`uk_activity_user(activity_id, user_id)` 唯一索引是「同一活动同一用户只能中一次」的最终防线。
+- **Redis key 约定**：`gift_count_{id}`（预扣库存）、`porder_{uid}`（用户临时资格，值为 giftID）、`gift_cache_all_stock`（Cache-Aside 聚合库存 JSON 缓存，TTL 2s）。
+
+> **为什么这样设计**：把「高并发扣库存」和「最终订单落库」分离到 Redis 与 MySQL 两层，让数据库不参与入口洪峰；两模式共享表却隔离列，保证对比实验的变量唯一（只有库存扣减方式不同）。
+
+### 权限 / 资格控制
+
+秒杀资格不是简单的「库存数字」，而是「防重复 + 扣库存 + 写临时资格」三个状态变化的组合。**Redis Lua 脚本是唯一的原子边界**——绝不退化为多条普通 Redis 命令，否则高并发下会出现「两个请求同时通过库存检查」的超卖或重复资格。支付认领（claim）、主动放弃与超时释放（release）共用同一份临时资格判断，天然具备竞态安全性。
+
+### 消息与补偿设计
+
+延时取消消息的 `delay` 与临时资格 TTL、支付 Cookie 过期时间统一为 `PayDelaySeconds`（默认 600s），三者一致才能保证「资格过期」「补偿触发」「前端倒计时」同步。**TTL 过期只删资格、不自动回补库存**——回补必须由 MQ 消费者或失败回滚显式完成，避免库存悬挂被回补两次。
+
+### 照片 / 可见范围等业务
+
+> 待补充：本项目为秒杀/抽奖架构实验台，不涉及照片、可见范围、聊天等业务模块。
+
+### 部署设计
+
+**依赖跑 Docker、Go app 本机跑**是默认开发结构——依赖（MySQL/Redis/RocketMQ）用 Compose 一键拉起并自动初始化库与延时 Topic，Go 进程在本机 `go run` 便于热改和调试。生产可用多阶段 Dockerfile 打成非 root 运行的独立镜像。所有配置项均有默认值并支持环境变量覆盖，无需手改配置文件即可跑通。
+
+---
+
+## 本地启动
+
+### 环境要求
+
+- Go 1.25+
+- Docker / Docker Compose
+- （可选）压测无需额外安装，内置 wrk2 容器
+
+### 快速启动（三步）
+
+依赖跑 Docker，Go app 跑本机。**所有配置都有默认值，无需手动设环境变量。**
+
+```bash
+# 1. 起依赖（MySQL + Redis + RocketMQ）
+docker compose up -d mysql redis rocketmq-namesrv rocketmq-broker
+
+# 2. 初始化 RocketMQ 延时消费主题
+docker compose up -d --force-recreate rocketmq-init
+
+# 3. 起 Go app
+go run .
+```
+
+启动后打开 <http://localhost:5678/>。左上角可一键切换库存模式。
+
+> Windows PowerShell 同样是这三条命令；仓库另提供 `scripts/*.ps1` 脚本封装（`start-infra.ps1` / `run-local-app.ps1` / `run-local-loadtest.ps1` / `stop-infra.ps1`）。
+
+### 压测对比
+
+```bash
+# 预扣模式基准（默认压 /lucky，500 QPS 30s）
+docker compose --profile loadtest run --rm wrk2
+
+# 自定义参数
+docker compose --profile loadtest run --rm \
+  -e RATE=1000 -e DURATION=60s -e CONNECTIONS=256 wrk2
+```
+
+压 Cache-Aside 模式时把目标路径改为 `/lucky/cacheaside`，观察面板红灯与熔断。重新压测前重置库存：
+
+```sql
+UPDATE inventory SET cache_stock = count;
+```
+
+### 常用命令
+
+```bash
+docker compose ps                        # 依赖状态
+docker compose logs -f rocketmq-broker   # RocketMQ 日志
+docker compose down                      # 停依赖
+docker compose down -v                   # 停依赖 + 清数据（下次启动重新建表）
+```
+
+### 常见问题
+
+- **RocketMQ 起得慢**：Broker 就绪需要十几秒，`rocketmq-init` 会重试建 Topic；压测/演示前先 `docker compose ps` 确认健康。
+- **Cache-Aside 压不出红灯**：调小 `LOTTERY_CACHEASIDE_DB_CONCURRENCY`（模拟连接池），或压测前重置 `cache_stock`。
+- **重复压测数据不对**：Cache-Aside 会真实扣减 MySQL，每轮压测前执行上面的重置 SQL。
+
+---
+
+## 环境变量说明
+
+均为可选，未设置时回落到 `conf/*.yaml` 或内置默认值。示例用占位符，请勿提交真实密钥。
 
 | 变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `LOTTERY_CACHEASIDE_DB_CONCURRENCY` | `10` | Cache-Aside 打到 MySQL 的并发上限（模拟连接池），调小更易压出红灯 |
+| `LOTTERY_HTTP_ADDR` | `localhost:5678` | Web 监听地址 |
+| `LOTTERY_MYSQL_HOST` | `conf/mysql.yaml` | MySQL 主机 |
+| `LOTTERY_MYSQL_PORT` | `3306` | MySQL 端口 |
+| `LOTTERY_MYSQL_USER` | `conf/mysql.yaml` | MySQL 用户 |
+| `LOTTERY_MYSQL_PASSWORD` | `<your-password>` | MySQL 密码 |
+| `LOTTERY_MYSQL_DATABASE` | `lottery` | 数据库名 |
+| `LOTTERY_REDIS_ADDR` | `conf/redis.yaml` | Redis 地址 |
+| `LOTTERY_REDIS_PASSWORD` | `<your-password>` | Redis 密码 |
+| `LOTTERY_REDIS_DB` | `conf/redis.yaml` | Redis DB 编号 |
+| `LOTTERY_MQ_ENABLED` | `true` | 是否启用 RocketMQ 延时取消 |
+| `LOTTERY_MQ_ENDPOINT` | `localhost:8081` | RocketMQ Proxy Endpoint |
+| `LOTTERY_MQ_TOPIC` | `CANCEL_ORDER` | 取消订单 Topic |
+| `LOTTERY_MQ_CONSUMER_GROUP` | `lottery` | 消费者组 |
+| `LOTTERY_COOKIE_DOMAIN` | `localhost` | Cookie 域名 |
+| `LOTTERY_RATE_LIMIT_QPS` | `0` | `/lucky` 令牌桶限流（每秒令牌数），`0` 关闭；本机脚本默认 `800` |
+| `LOTTERY_CACHEASIDE_DB_CONCURRENCY` | `10` | Cache-Aside 打到 MySQL 的并发上限（模拟连接池） |
 | `LOTTERY_CB_YELLOW_LATENCY_MS` | `30` | DB 响应预警黄线（毫秒） |
 | `LOTTERY_CB_RED_LATENCY_MS` | `100` | DB 响应熔断红线（毫秒） |
-| `LOTTERY_CB_RED_POOL_USAGE` | `80` | 连接池占用率熔断红线（百分比） |
+| `LOTTERY_CB_RED_POOL_USAGE` | `80` | 连接池占用率熔断红线（%） |
 | `LOTTERY_CB_TRIP_THRESHOLD` | `5` | 连续过载多少次触发熔断 |
-| `LOTTERY_CB_COOLDOWN_MS` | `3000` | 熔断后到 Half-Open 试探的冷却时间（毫秒） |
+| `LOTTERY_CB_COOLDOWN_MS` | `3000` | 熔断到 Half-Open 的冷却时间（毫秒） |
 | `LOTTERY_CB_HALFOPEN_MAX` | `3` | Half-Open 最多放行的试探请求数 |
+| `LOTTERY_LOG_LEVEL` | `info` | 日志级别 |
 
-## 后端接口
-|请求路径|请求方式|请求参数|说明|
-| :--- | :--- | :--- | :--- |
-|/|GET||返回抽奖转盘页面|
-|/gifts|GET||返回所有奖品的详细信息，用于往转盘里填充内容|
-|/lucky|GET||预扣库存模式抽奖，返回抽中的奖品ID|  
-|/lucky/cacheaside|GET||旁路缓存模式抽奖，返回抽中的奖品ID|  
-|/giveup|POST|uid和gid|不支付，放弃这次抽中的机会|  
-|/pay|POST|uid和gid|完成支付|  
-|/result|GET||抽奖成功页面|  
-|/api/metrics/snapshot|GET||返回当前秒杀指标快照|
-|/api/metrics/stream|GET||通过 SSE 实时推送秒杀指标|
+---
 
-## 前端展现
-直接使用[lucky-canvas](https://100px.net/usage/js.html)抽奖插件。
+## API 概览
 
-## 依赖容器 + 本机 Go
+### 页面与静态资源
 
-项目的默认运行方式是：Docker 只启动 MySQL、Redis、RocketMQ NameServer、Broker、Proxy，并自动初始化 `lottery` 数据库和 `CANCEL_ORDER` 延时消息 Topic；Go app 在本机直接运行。
-
-启动依赖容器：
-
-```powershell
-docker compose up -d
-```
-
-或使用脚本等待依赖就绪：
-
-```powershell
-.\scripts\start-infra.ps1
-```
-
-启动本机 Go app：
-
-```powershell
-.\scripts\run-local-app.ps1
-```
-
-启动后访问：
-
-```text
-http://localhost:5678/
-```
-
-常用命令：
-
-```powershell
-docker compose ps
-docker compose logs -f rocketmq-broker
-docker compose down
-docker compose down -v
-```
-
-注意：`docker compose down -v` 会删除 MySQL、Redis、RocketMQ 的数据卷，下一次启动会重新执行 `init.sql`。
-
-## wrk2 固定 QPS 压测
-
-项目内置了 `wrk2` 压测容器，用于演示固定流量进入秒杀接口时，Redis 预扣库存和 RocketMQ 延时取消如何保护系统。
-
-先启动依赖容器和本机 Go app：
-
-```powershell
-.\scripts\run-local-app.ps1
-```
-
-默认以 500 QPS 压测 `/lucky` 30 秒：
-
-```powershell
-docker compose --profile loadtest run --rm wrk2
-```
-
-调整压测参数：
-
-```powershell
-docker compose --profile loadtest run --rm `
-  -e RATE=1000 `
-  -e DURATION=60s `
-  -e THREADS=4 `
-  -e CONNECTIONS=256 `
-  wrk2
-```
-
-`wrk2` 会通过 Lua 脚本给每个请求追加不同的 `uid`，实际请求形如：
-
-```text
-GET /lucky?uid=123456000001
-```
-
-压测结果中的 `Requests/sec`、延迟分布和错误数用于观察外部压力；页面右侧会通过 SSE 实时展示服务端埋点，包括限流数、库存不足数、MQ 待消费数、是否超卖等业务指标。
-
-注意：官方 `giltene/wrk2` 依赖的老 LuaJIT 对 arm64 支持不好，项目中的 Dockerfile 默认使用 `AmpereTravis/wrk2-aarch64` fork，方便 Apple Silicon 机器原生构建和运行。
-
-页面会通过 SSE 订阅实时指标：
-
-```text
-GET /api/metrics/stream
-```
-
-也可以直接查看当前快照：
-
-```text
-GET /api/metrics/snapshot
-```
-
-本机 Go app 主要通过环境变量覆盖默认配置：
-
-|变量|默认值|说明|
+| 路径 | 方法 | 说明 |
 | :--- | :--- | :--- |
-|`LOTTERY_HTTP_ADDR`|`localhost:5678`|Web 监听地址|
-|`LOTTERY_MYSQL_HOST`|`conf/mysql.yaml` 中的 host|MySQL 主机|
-|`LOTTERY_MYSQL_PORT`|`conf/mysql.yaml` 中的 port|MySQL 端口|
-|`LOTTERY_MYSQL_USER`|`conf/mysql.yaml` 中的 user|MySQL 用户|
-|`LOTTERY_MYSQL_PASSWORD`|`conf/mysql.yaml` 中的 pass|MySQL 密码|
-|`LOTTERY_MYSQL_DATABASE`|`lottery`|MySQL 数据库名|
-|`LOTTERY_REDIS_ADDR`|`conf/redis.yaml` 中的 addr|Redis 地址|
-|`LOTTERY_REDIS_PASSWORD`|`conf/redis.yaml` 中的 pass|Redis 密码|
-|`LOTTERY_REDIS_DB`|`conf/redis.yaml` 中的 db|Redis DB|
-|`LOTTERY_MQ_ENABLED`|`true`|是否启用 RocketMQ 延时取消订单|
-|`LOTTERY_MQ_ENDPOINT`|`localhost:8081`|RocketMQ Proxy Endpoint|
-|`LOTTERY_MQ_TOPIC`|`CANCEL_ORDER`|取消订单消息 Topic|
-|`LOTTERY_MQ_CONSUMER_GROUP`|`lottery`|消费者组|
-|`LOTTERY_COOKIE_DOMAIN`|`localhost`|Cookie 域名|
-|`LOTTERY_RATE_LIMIT_QPS`|`0`|`/lucky` 令牌桶限流速率，表示每秒补充的令牌数；`0` 表示关闭；本机脚本默认设置为 `800`|
+| `/` | GET | 抽奖转盘页 |
+| `/result` | GET | 支付结果页 |
+| `/js` `/css` `/img` | GET | 静态资源 |
+
+### 业务接口
+
+| 路径 | 方法 | 参数 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `/gifts` | GET | — | 返回全部奖品，用于转盘填充 |
+| `/lucky` | GET | `uid`（可选） | 预扣库存模式抽奖，返回中奖 gid（无库存返回 `0`） |
+| `/lucky/cacheaside` | GET | `uid`（可选） | 旁路缓存模式抽奖，协议同上 |
+| `/pay` | POST | `uid`, `gid` | 认领临时资格并写正式订单 |
+| `/giveup` | POST | `uid`, `gid` | 放弃并回补库存 |
+
+> `uid` 优先取 query 参数，其次 `X-User-ID` 头；浏览器手动点击无 uid 时自动生成临时用户 ID。服务端始终以 Redis `porder_{uid}` 为可信资格来源，不信任前端 Cookie。
+
+### 指标接口
+
+| 路径 | 方法 | 说明 |
+| :--- | :--- | :--- |
+| `/api/metrics/snapshot` | GET | 返回当前指标快照（JSON） |
+| `/api/metrics/stream` | GET | SSE 实时推送指标 |
+
+**预扣模式指标**：活动库存 / Redis 库存 / 总请求 / 入队成功 / 限流数 / 库存不足 / MQ 待消费 / 完成订单 / 平均·P95·P99·最大延迟 / QPS / 是否超卖。
+
+**Cache-Aside 指标**：QPS / 完成 / 售罄 / 熔断拒绝 / 缓存命中·未命中·命中率 / DB 平均·P95·最大延迟 / 连接池占用（数·容量·百分比）/ 熔断器信号灯（green·yellow·red）。
+
+---
+
+## 部署说明
+
+### 依赖容器
+
+`docker-compose.yml` 启动 MySQL、Redis、RocketMQ（NameServer + Broker + Proxy），并通过 `rocketmq-init` 一次性任务自动创建 `CANCEL_ORDER` 延时 Topic 与消费者组；MySQL 首次启动自动执行 `init.sql`。
+
+### 应用交付
+
+- **本机运行**（默认开发方式）：`go run .`。
+- **容器运行**：多阶段 `Dockerfile` 构建静态二进制，运行阶段基于 `alpine`，以非 root 用户 `lottery` 启动，暴露 `5678`：
+
+  ```bash
+  docker build -t silas-lottery .
+  docker run -p 5678:5678 --env-file .env silas-lottery
+  ```
+
+  > 项目约束：Go app 默认**不放回 docker-compose**，保持「依赖容器化、应用本机/独立部署」结构。
+
+### CI/CD
+
+> 暂无。当前仓库未包含 GitHub Actions / SSH / rsync 等自动化部署链路。可作为后续 Roadmap 项补充。
+
+---
+
+## 项目状态与 Roadmap
+
+### 已完成
+
+- ✅ 预扣库存与 Cache-Aside 两套模式，页面一键切换、同场景对比
+- ✅ Redis Lua 原子准入 / 释放 / 认领三脚本
+- ✅ RocketMQ 延时取消补偿 + 支付/放弃/超时释放竞态安全
+- ✅ 压力感知熔断器（三态机）+ 受限并发闸门
+- ✅ SSE 实时指标面板（双模式独立指标）
+- ✅ 启动自愈建表、优雅退出、结构化日志 + 业务错误码 + 指标
+- ✅ 内置 wrk2 固定 QPS 压测
+
+### 后续可优化方向
+
+- ⬜ CI/CD：GitHub Actions 构建 + 镜像发布 + 自动化部署链路
+- ⬜ 分布式部署下的指标聚合（当前为单实例内存指标）
+- ⬜ 压测报告归档与两模式基准数据可视化对比
+- ⬜ 熔断 / 限流参数的运行时热更新
+- ⬜ 更完整的单元测试与集成测试覆盖
+
+---
+
+## 目录结构
+
+```text
+.
+├── main.go                     # 进程入口，仅 app.New().Run()
+├── init.sql                    # 库表初始化（inventory / orders）
+├── docker-compose.yml          # MySQL / Redis / RocketMQ / wrk2
+├── Dockerfile                  # 多阶段构建，非 root 运行
+├── conf/                       # mysql.yaml / redis.yaml 基础配置
+├── internal/
+│   ├── app/                    # 依赖装配、HTTP Server、优雅退出、启动自愈
+│   ├── router/                 # Gin 路由与静态资源注册
+│   ├── handler/                # HTTP 入参出参、Cookie、错误码、SSE
+│   ├── service/                # 抽奖(预扣/Cache-Aside)、支付、限流、熔断器
+│   ├── database/               # MySQL/Redis 访问、Lua 脚本、库存与订单
+│   ├── mq/                     # RocketMQ producer / consumer
+│   ├── metrics/                # 指标采集与快照（双模式）
+│   └── util/                   # 配置、日志、抽奖算法、环境变量工具
+├── views/                      # 前端页面（转盘 + 实时面板，lucky-canvas）
+├── docker/                     # RocketMQ broker 配置、wrk2 镜像与脚本
+├── scripts/                    # Windows PowerShell 启动/压测脚本
+└── docs/                       # 本地开发、可靠性说明等文档
+```
+
+> 更详细的分层与链路可靠性说明见 [docs/reliability.md](docs/reliability.md) 与 [docs/local-dev.md](docs/local-dev.md)。
