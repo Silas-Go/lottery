@@ -121,6 +121,29 @@ func InitInventory(activityStock int64, redisStock int64) {
 	defaultMeter.addEvent("库存初始化", fmt.Sprintf("活动初始库存为 %d，Redis 可用库存恢复为 %d。", activityStock, redisStock), "success")
 }
 
+// ResetAll 清空两套实验指标，并用真实库存重新建立面板基线。
+// 该函数只重置内存指标；MySQL/Redis 的业务数据重置由 database.ResetExperimentState 完成。
+func ResetAll(activityStock int64, redisStock int64) {
+	atomic.StoreInt64(&defaultMeter.activityStock, activityStock)
+	atomic.StoreInt64(&defaultMeter.redisStock, redisStock)
+	atomic.StoreInt64(&defaultMeter.totalRequests, 0)
+	atomic.StoreInt64(&defaultMeter.queueSuccess, 0)
+	atomic.StoreInt64(&defaultMeter.rateLimited, 0)
+	atomic.StoreInt64(&defaultMeter.stockFailed, 0)
+	atomic.StoreInt64(&defaultMeter.mqPending, 0)
+	atomic.StoreInt64(&defaultMeter.completedOrders, 0)
+	atomic.StoreInt64(&defaultMeter.maxLatency, 0)
+
+	defaultMeter.mu.Lock()
+	defaultMeter.latencySamples = nil
+	defaultMeter.secondBuckets = make(map[int64]int64)
+	defaultMeter.events = nil
+	defaultMeter.mu.Unlock()
+
+	resetCacheAsideMetrics()
+	defaultMeter.addEvent("实验重置", fmt.Sprintf("已清空订单、临时资格和指标，活动库存恢复为 %d。", activityStock), "success")
+}
+
 // RecordRequest 记录一次 /lucky 请求耗时。
 // duration 是从 handler 进入抽奖接口到响应结束的总耗时，用于计算平均延迟、P95、P99 和 QPS。
 func RecordRequest(duration time.Duration) {

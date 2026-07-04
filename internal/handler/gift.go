@@ -104,6 +104,10 @@ func (h *GiftHandler) Lottery(ctx *gin.Context) {
 // 这样前端可以用同一套交互在两种模式间切换对比；底层则走 Cache-Aside 强一致链路并接入熔断降级。
 func (h *GiftHandler) LotteryCacheAside(ctx *gin.Context) {
 	start := time.Now()
+	defer func() {
+		metrics.RecordCacheAsideLatency(time.Since(start))
+	}()
+
 	uid := lotteryUID(ctx)
 	slog.Info("cache-aside lottery http request accepted", "uid", uid, "client", ctx.ClientIP(), "path", ctx.Request.URL.Path)
 	result, appErr := h.cacheLottery.Draw(uid)

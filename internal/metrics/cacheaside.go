@@ -45,10 +45,18 @@ type CacheAsideSnapshot struct {
 	// CacheHitRate 是缓存命中率百分比（0-100）；写密集时会显著下降，说明缓存近乎失效。
 	CacheHitRate int64 `json:"cacheHitRate"`
 
+	// AvgLatency/P95/P99/MaxLatency 是 Cache-Aside HTTP 总请求耗时，单位毫秒。
+	// 这是用户实际感知到的端到端延迟，包含业务判断、缓存读取、DB 扣减与订单写入。
+	AvgLatency int64 `json:"avgLatency"`
+	P95        int64 `json:"p95"`
+	P99        int64 `json:"p99"`
+	MaxLatency int64 `json:"maxLatency"`
+
 	// DBAvgLatency/DBP95Latency/DBMaxLatency 是数据库环节耗时（含连接池排队等待），单位毫秒。
 	// 这是 Cache-Aside 慢的核心证据，也是熔断红线的主要依据。
 	DBAvgLatency int64 `json:"dbAvgLatency"`
 	DBP95Latency int64 `json:"dbP95Latency"`
+	DBP99Latency int64 `json:"dbP99Latency"`
 	DBMaxLatency int64 `json:"dbMaxLatency"`
 
 	// PoolInUse/PoolCapacity/PoolUsage 是 DB 并发闸门（模拟连接池）的占用情况与占用率百分比。
@@ -70,6 +78,7 @@ type cacheMeter struct {
 	rejected      int64
 	cacheHits     int64
 	cacheMisses   int64
+	maxLatency    int64
 	dbMaxLatency  int64
 	poolInUse     int64
 	poolCapacity  int64
@@ -77,6 +86,7 @@ type cacheMeter struct {
 	circuitState atomic.Value // string
 
 	mu               sync.Mutex
+	latencySamples   []int64
 	dbLatencySamples []int64
 	secondBuckets    map[int64]int64
 	events           []Event
@@ -87,6 +97,27 @@ var defaultCacheMeter = func() *cacheMeter {
 	m.circuitState.Store(CircuitGreen)
 	return m
 }()
+
+func resetCacheAsideMetrics() {
+	atomic.StoreInt64(&defaultCacheMeter.totalRequests, 0)
+	atomic.StoreInt64(&defaultCacheMeter.completed, 0)
+	atomic.StoreInt64(&defaultCacheMeter.soldOut, 0)
+	atomic.StoreInt64(&defaultCacheMeter.rejected, 0)
+	atomic.StoreInt64(&defaultCacheMeter.cacheHits, 0)
+	atomic.StoreInt64(&defaultCacheMeter.cacheMisses, 0)
+	atomic.StoreInt64(&defaultCacheMeter.maxLatency, 0)
+	atomic.StoreInt64(&defaultCacheMeter.dbMaxLatency, 0)
+	atomic.StoreInt64(&defaultCacheMeter.poolInUse, 0)
+	atomic.StoreInt64(&defaultCacheMeter.poolCapacity, 0)
+	defaultCacheMeter.circuitState.Store(CircuitGreen)
+
+	defaultCacheMeter.mu.Lock()
+	defaultCacheMeter.latencySamples = nil
+	defaultCacheMeter.dbLatencySamples = nil
+	defaultCacheMeter.secondBuckets = make(map[int64]int64)
+	defaultCacheMeter.events = nil
+	defaultCacheMeter.mu.Unlock()
+}
 
 // RecordCacheAsideRequest 记录一次 Cache-Aside 抽奖请求，用于统计请求总数和 QPS。
 func RecordCacheAsideRequest() {
@@ -102,10 +133,27 @@ func RecordCacheAsideRequest() {
 	defaultCacheMeter.mu.Unlock()
 }
 
+// RecordCacheAsideLatency 记录一次 Cache-Aside HTTP 总请求耗时，单位由 duration 提供。
+// 这和 DBLatency 分开：前者是用户感知的端到端耗时，后者只刻画数据库瓶颈。
+func RecordCacheAsideLatency(duration time.Duration) {
+	ms := duration.Milliseconds()
+	if ms < 1 {
+		ms = 1
+	}
+	updateMax(&defaultCacheMeter.maxLatency, ms)
+	defaultCacheMeter.mu.Lock()
+	defaultCacheMeter.latencySamples = append(defaultCacheMeter.latencySamples, ms)
+	if len(defaultCacheMeter.latencySamples) > maxLatencySamples {
+		copy(defaultCacheMeter.latencySamples, defaultCacheMeter.latencySamples[len(defaultCacheMeter.latencySamples)-maxLatencySamples:])
+		defaultCacheMeter.latencySamples = defaultCacheMeter.latencySamples[:maxLatencySamples]
+	}
+	defaultCacheMeter.mu.Unlock()
+}
+
 // RecordCacheAsideDBLatency 记录一次数据库环节耗时（含连接池排队等待），单位毫秒。
 func RecordCacheAsideDBLatency(ms int64) {
-	if ms < 0 {
-		ms = 0
+	if ms < 1 {
+		ms = 1
 	}
 	updateMax(&defaultCacheMeter.dbMaxLatency, ms)
 	defaultCacheMeter.mu.Lock()
@@ -181,12 +229,14 @@ func SnapshotCacheAside() CacheAsideSnapshot {
 	now := time.Now()
 
 	defaultCacheMeter.mu.Lock()
-	latencies := append([]int64(nil), defaultCacheMeter.dbLatencySamples...)
+	latencies := append([]int64(nil), defaultCacheMeter.latencySamples...)
+	dbLatencies := append([]int64(nil), defaultCacheMeter.dbLatencySamples...)
 	qps := recentQPS(now, defaultCacheMeter.secondBuckets)
 	events := append([]Event(nil), defaultCacheMeter.events...)
 	defaultCacheMeter.mu.Unlock()
 
 	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	sort.Slice(dbLatencies, func(i, j int) bool { return dbLatencies[i] < dbLatencies[j] })
 
 	hits := atomic.LoadInt64(&defaultCacheMeter.cacheHits)
 	misses := atomic.LoadInt64(&defaultCacheMeter.cacheMisses)
@@ -217,8 +267,13 @@ func SnapshotCacheAside() CacheAsideSnapshot {
 		CacheHits:     hits,
 		CacheMisses:   misses,
 		CacheHitRate:  hitRate,
-		DBAvgLatency:  average(latencies),
-		DBP95Latency:  percentile(latencies, 0.95),
+		AvgLatency:    average(latencies),
+		P95:           percentile(latencies, 0.95),
+		P99:           percentile(latencies, 0.99),
+		MaxLatency:    atomic.LoadInt64(&defaultCacheMeter.maxLatency),
+		DBAvgLatency:  average(dbLatencies),
+		DBP95Latency:  percentile(dbLatencies, 0.95),
+		DBP99Latency:  percentile(dbLatencies, 0.99),
 		DBMaxLatency:  atomic.LoadInt64(&defaultCacheMeter.dbMaxLatency),
 		PoolInUse:     inUse,
 		PoolCapacity:  capacity,

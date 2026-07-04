@@ -127,6 +127,18 @@ func (s *Store) ClearOrders() error {
 	return s.db.Where("id>0").Delete(Order{}).Error
 }
 
+// ResetOrders 清空订单表并重置自增 ID。
+// 实验 reset 需要连订单主键一起回到初始状态，避免下一轮录屏还带着上一轮的订单 ID 增长痕迹。
+func (s *Store) ResetOrders() error {
+	if err := s.db.Exec("DELETE FROM orders").Error; err != nil {
+		return fmt.Errorf("delete orders: %w", err)
+	}
+	if err := s.db.Exec("ALTER TABLE orders AUTO_INCREMENT = 1").Error; err != nil {
+		return fmt.Errorf("reset orders auto increment: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) ensureColumn(table, column, ddl string) error {
 	exists, err := s.columnExists(table, column)
 	if err != nil {

@@ -151,6 +151,7 @@ func initHTTP(store *database.Store) *gin.Engine {
 	return router.New(router.Handlers{
 		Gift:  handler.NewGiftHandler(lotteryService, cacheAsideService),
 		Order: handler.NewOrderHandler(orderService),
+		Lab:   handler.NewLabHandler(store),
 	})
 }
 

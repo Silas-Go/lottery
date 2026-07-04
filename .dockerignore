@@ -1,6 +1,7 @@
 .git
 .gocache
 log
+.understand-anything
 *.test
 *.out
 docker-compose.yml

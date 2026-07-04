@@ -24,6 +24,11 @@
         }
     };
     var currentMode = "prededuct";
+    var selectedLoadtest = {
+        rate: null,
+        connections: null,
+        button: null
+    };
 
     function modeConf() {
         return MODES[currentMode];
@@ -118,8 +123,12 @@
             return;
         }
         setText("ca-qps", formatNumber(ca.qps));
+        setText("ca-total", formatNumber(ca.totalRequests));
+        setText("ca-p95", (ca.p95 || 0) + "ms");
+        setText("ca-p99", (ca.p99 || 0) + "ms");
         setText("ca-db-avg", (ca.dbAvgLatency || 0) + "ms");
         setText("ca-db-p95", (ca.dbP95Latency || 0) + "ms");
+        setText("ca-db-p99", (ca.dbP99Latency || 0) + "ms");
         setText("ca-pool", (ca.poolUsage || 0) + "% (" + (ca.poolInUse || 0) + "/" + (ca.poolCapacity || 0) + ")");
         setText("ca-hit-rate", (ca.cacheHitRate || 0) + "%");
         setText("ca-miss", formatNumber(ca.cacheMisses));
@@ -164,6 +173,7 @@
             setOperationMessage("已切换到预扣库存模式：Redis 原子扣减 + MQ 补偿，扛高并发写。");
             pushEvent("切换库存模式", "预扣库存：快，Redis 是权威源。", "success");
         }
+        renderLoadtestCommand();
     }
 
     function setBadge(id, text, className) {
@@ -469,13 +479,80 @@
     }
 
     function buildLoadtestCommand(rate, connections) {
-        return "docker compose --profile loadtest run --rm -e RATE=" + rate +
-            " -e CONNECTIONS=" + connections + " wrk2";
+        var targetUrl = "http://app:5678" + modeConf().url;
+        var command = "docker compose --profile loadtest run --rm -e TARGET_URL=" + targetUrl;
+        if (rate && connections) {
+            command += " -e RATE=" + rate + " -e CONNECTIONS=" + connections;
+        }
+        return command + " wrk2";
+    }
+
+    function renderLoadtestCommand() {
+        var command = buildLoadtestCommand(selectedLoadtest.rate, selectedLoadtest.connections);
+        setText("loadtest-command", command);
+        return command;
+    }
+
+    function fallbackCopyText(text) {
+        var textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        textarea.style.top = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            return document.execCommand("copy");
+        } finally {
+            document.body.removeChild(textarea);
+        }
+    }
+
+    function copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+            if (fallbackCopyText(text)) {
+                resolve();
+                return;
+            }
+            reject(new Error("copy command failed"));
+        });
+    }
+
+    function markCommandCopied() {
+        var button = el("copy-loadtest-command");
+        if (!button) {
+            return;
+        }
+        button.textContent = "已复制";
+        window.setTimeout(function () {
+            button.textContent = "复制";
+        }, 1200);
+    }
+
+    function copyLoadtestCommand() {
+        var commandBox = el("loadtest-command");
+        var command = commandBox ? commandBox.textContent.trim() : renderLoadtestCommand();
+        if (!command) {
+            showToast("没有可复制的命令");
+            return;
+        }
+        copyText(command).then(function () {
+            markCommandCopied();
+            showToast("已复制压测命令");
+        }).catch(function () {
+            showToast("复制失败，请手动选择命令");
+        });
     }
 
     function prepareLoadtest(rate, connections, button) {
-        var command = buildLoadtestCommand(rate, connections);
-        setText("loadtest-command", command);
+        selectedLoadtest.rate = rate;
+        selectedLoadtest.connections = connections;
+        selectedLoadtest.button = button;
+        var command = renderLoadtestCommand();
         setActiveStressButton(button);
         if (liveMetrics) {
             setBadge("simulation-status", "等待 wrk2", "is-ok");
@@ -487,6 +564,45 @@
         setBadge("simulation-status", "指标未连接", "is-warn");
         setOperationMessage("SSE 指标流暂未连接。请先确认服务运行，再执行 wrk2 命令。");
         pushEvent("指标流未连接", "不会展示前端假数据；真实结果只来自服务端埋点。", "warning");
+    }
+
+    async function resetLabData() {
+        var confirmed = window.confirm("会清空订单、Redis 临时资格和两套指标。正在压测时请先 Ctrl+C 停掉 wrk2。确定要真重置吗？");
+        if (!confirmed) {
+            return;
+        }
+
+        var button = el("reset-lab");
+        if (button) {
+            button.disabled = true;
+            button.textContent = "重置中";
+        }
+        try {
+            var response = await fetch("/api/lab/reset", { method: "POST" });
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+            var payload = await response.json();
+            state.latencySamples = [];
+            if (payload.snapshot) {
+                applyMetricsSnapshot(payload.snapshot);
+            } else {
+                await loadMetricsSnapshot();
+            }
+            setBadge("simulation-status", "已重置", "is-ok");
+            setOperationMessage("实验数据已真重置：订单、Redis 临时资格、库存和指标都回到初始基线。");
+            showToast("实验数据已重置");
+        } catch (error) {
+            setBadge("simulation-status", "重置失败", "is-error");
+            setOperationMessage("重置失败：" + error.message);
+            pushEvent("重置失败", error.message, "danger");
+            showToast("重置失败，请看后端日志");
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = "真重置";
+            }
+        }
     }
 
     async function loadGifts() {
@@ -562,6 +678,16 @@
             });
         });
 
+        var copy = el("copy-loadtest-command");
+        if (copy) {
+            copy.addEventListener("click", copyLoadtestCommand);
+        }
+
+        var reset = el("reset-lab");
+        if (reset) {
+            reset.addEventListener("click", resetLabData);
+        }
+
         var clear = el("clear-events");
         if (clear) {
             clear.addEventListener("click", function () {
@@ -575,6 +701,7 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         updateMetrics();
+        renderLoadtestCommand();
         bindEvents();
         pushEvent("系统面板就绪", "正在连接服务端真实指标流。");
         loadGifts();

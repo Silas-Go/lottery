@@ -15,6 +15,9 @@ type Handlers struct {
 
 	// Order 处理 /pay 支付和 /giveup 放弃支付请求。
 	Order *handler.OrderHandler
+
+	// Lab 处理本地实验室管理接口，例如重置压测数据。
+	Lab *handler.LabHandler
 }
 
 // New 创建 Gin HTTP 引擎并注册页面、静态资源和 API 路由。
@@ -55,4 +58,5 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.POST("/pay", handlers.Order.Pay)
 	engine.GET("/api/metrics/snapshot", handler.GetMetricsSnapshot)
 	engine.GET("/api/metrics/stream", handler.StreamMetrics)
+	engine.POST("/api/lab/reset", handlers.Lab.ResetLab)
 }

@@ -1,4 +1,35 @@
 services:
+  app:
+    build:
+      context: .
+    container_name: lottery-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rocketmq-init:
+        condition: service_completed_successfully
+    environment:
+      COMPUTERNAME: itcheer
+      LOTTERY_HTTP_ADDR: 0.0.0.0:5678
+      LOTTERY_MYSQL_HOST: mysql
+      LOTTERY_MYSQL_PORT: "3306"
+      LOTTERY_MYSQL_USER: tester
+      LOTTERY_MYSQL_PASSWORD: "123456"
+      LOTTERY_MYSQL_DATABASE: lottery
+      LOTTERY_REDIS_ADDR: redis:6379
+      LOTTERY_REDIS_DB: "2"
+      LOTTERY_MQ_ENABLED: "true"
+      LOTTERY_MQ_ENDPOINT: rocketmq-broker:8081
+      LOTTERY_MQ_TOPIC: CANCEL_ORDER
+      LOTTERY_MQ_CONSUMER_GROUP: lottery
+      LOTTERY_COOKIE_DOMAIN: localhost
+      LOTTERY_RATE_LIMIT_QPS: "800"
+    ports:
+      - "5678:5678"
+    restart: on-failure
+
   mysql:
     image: mysql:8.4
     container_name: lottery-mysql
@@ -94,10 +125,12 @@ services:
     container_name: lottery-wrk2
     profiles:
       - loadtest
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      - app
+    volumes:
+      - ./docker/wrk2/scripts:/opt/wrk2/scripts:ro
     environment:
-      TARGET_URL: http://host.docker.internal:5678/lucky
+      TARGET_URL: http://app:5678/lucky
       RATE: 500
       DURATION: 30s
       THREADS: 4

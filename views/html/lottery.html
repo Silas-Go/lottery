@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>秒杀系统实验室</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
     <link rel="stylesheet" href="/css/lottery.css?v=20260623-cacheaside" />
     <script src="/js/lucky-canvas.js"></script>
 </head>
@@ -73,7 +74,10 @@
                 <button class="stress-btn" type="button" data-rate="10000" data-connections="768">准备 10000 QPS</button>
             </div>
             <p class="helper-text">按钮只生成 wrk2 命令，不会在浏览器里伪造压测数据。右侧面板只展示服务端真实指标。</p>
-            <code id="loadtest-command" class="command-box">docker compose --profile loadtest run --rm wrk2</code>
+            <div class="command-row">
+                <code id="loadtest-command" class="command-box">docker compose --profile loadtest run --rm -e TARGET_URL=http://app:5678/lucky wrk2</code>
+                <button id="copy-loadtest-command" class="ghost-btn command-copy" type="button" title="复制压测命令">复制</button>
+            </div>
 
             <div class="section-title-row">
                 <h3>奖品池</h3>
@@ -88,7 +92,10 @@
                     <p class="eyebrow">Runtime Panel</p>
                     <h2 id="system-title">系统运行面板</h2>
                 </div>
-                <span id="simulation-status" class="badge">等待请求</span>
+                <div class="panel-actions">
+                    <button id="reset-lab" class="ghost-btn danger-btn" type="button">真重置</button>
+                    <span id="simulation-status" class="badge">等待请求</span>
+                </div>
             </div>
 
             <div class="metric-grid" aria-live="polite">
@@ -197,12 +204,28 @@
                     <strong id="ca-qps">0</strong>
                 </article>
                 <article class="metric-card">
+                    <span>Cache-Aside 总请求</span>
+                    <strong id="ca-total">0</strong>
+                </article>
+                <article class="metric-card warning">
+                    <span>总请求 P95 响应</span>
+                    <strong id="ca-p95">0ms</strong>
+                </article>
+                <article class="metric-card danger">
+                    <span>总请求 P99 响应</span>
+                    <strong id="ca-p99">0ms</strong>
+                </article>
+                <article class="metric-card">
                     <span>DB 响应(含排队)</span>
                     <strong id="ca-db-avg">0ms</strong>
                 </article>
                 <article class="metric-card">
                     <span>DB P95 响应</span>
                     <strong id="ca-db-p95">0ms</strong>
+                </article>
+                <article class="metric-card warning">
+                    <span>DB P99 响应</span>
+                    <strong id="ca-db-p99">0ms</strong>
                 </article>
                 <article class="metric-card">
                     <span>连接池占用率</span>
