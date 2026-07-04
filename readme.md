@@ -93,7 +93,47 @@
 
 ---
 
-## 系统架构
+## 极简架构图
+
+> 两种方案唯一的变量就是**库存扣减**这一步。看懂这张图，就抓住了整个项目的骨架。
+
+```mermaid
+flowchart LR
+    User["👤 用户请求"]
+
+    User --> Switch{"🔀 模式切换"}
+
+    Switch -->|"/lucky"| PreClaim["⚡ Redis 预扣库存"]
+    Switch -->|"/lucky/cacheaside"| CacheAside["🐢 旁路缓存 Cache-Aside"]
+
+    PreClaim --> Lua["Lua 原子脚本<br/>防重 + 查库存 + 扣库存 + 写资格<br/>一次调用 · 不可拆分"]
+    Lua -->|"OK"| MQ["RocketMQ 延时消息<br/>超时补偿兜底"]
+    Lua -->|"异步"| Orders["MySQL 订单落库"]
+
+    CacheAside --> RedisCache["Redis 读缓存"]
+    RedisCache -->|"miss"| DB["MySQL 行锁扣减<br/>UPDATE WHERE stock > 0"]
+    DB --> Delete["删缓存"]
+    Delete -.->|"缓存永远冷"| RedisCache
+
+    CacheAside --> CB["熔断器<br/>DB RT + 连接池占用 → 红/黄/绿"]
+
+    MQ -.->|"SSE 实时推送"| Panel["📊 指标面板<br/>QPS · P95 · DB RT<br/>连接池 · 缓存命中率 · 熔断灯 · 超卖"]
+    DB -.-> Panel
+    PreClaim -.-> Panel
+```
+
+| 节点 | 预扣库存 | 旁路缓存 |
+|:---|:---|:---|
+| 库存权威源 | Redis | MySQL |
+| 扣减方式 | Lua 原子脚本 | MySQL 行锁 |
+| MySQL 参与时机 | 支付后异步写订单 | **每次扣减都打** |
+| 缓存角色 | Redis 就是权威源 | Redis 是读缓存（写密集下永远冷） |
+| 保护机制 | 令牌桶限流 | 压力感知熔断器 |
+| 一致性 | 最终一致（MQ 补偿） | 强一致（行锁保证） |
+
+---
+
+## 系统架构（详细）
 
 项目默认全容器化运行：浏览器从宿主机访问 `localhost:5678`，wrk2、Go app、MySQL、Redis、RocketMQ 都在同一个 Docker Compose 网络里通信。这样 RocketMQ 返回给 SDK 的 `rocketmq-broker:8081`、MySQL 的 `mysql:3306`、Redis 的 `redis:6379` 都是容器内可解析地址，不会再出现半容器化下的网络绕路问题。
 
