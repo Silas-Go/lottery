@@ -34,7 +34,7 @@ func registerStaticAssets(engine *gin.Engine) {
 	engine.Static("/js", "views/js")
 	engine.Static("/img", "views/img")
 	engine.Static("/css", "views/css")
-	engine.StaticFile("/favicon.ico", "views/img/dqq.png")
+	engine.StaticFile("/favicon.ico", "views/img/Silas.png")
 	engine.LoadHTMLGlob("views/html/*.html")
 }
 
