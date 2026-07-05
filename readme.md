@@ -181,7 +181,7 @@ flowchart TB
 
 **数据流要点**：
 
-- 预扣模式的高并发压力**全压在 Redis**，MySQL 只在支付后写最终订单；Cache-Aside 模式**每次扣减都打 MySQL**，Redis 只做读缓存。
+- 预扣模式的高并发库存扣减**全压在 Redis Lua**，MySQL 承担幂等性校验（SELECT 查已有订单）+ 支付后写最终订单；Cache-Aside 模式**每次扣减都打 MySQL 行锁**，Redis 只做读缓存。
 - 抽奖成功即向 RocketMQ 投递一条延时消息；用户支付则认领资格、消息到期后成为空操作，用户不支付则消息到期后回补库存。
 - `metrics` 层旁路采集，不参与主链路事务，通过 SSE 单向推送给前端。
 
