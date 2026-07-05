@@ -89,6 +89,10 @@ type Snapshot struct {
 	// CacheAside 是旁路缓存模式的压力指标快照，与上面的预扣模式指标并存。
 	// 两套指标同页并排，用于在相同压力下对比"预扣（快）"和"Cache-Aside（慢但稳）"的表现。
 	CacheAside CacheAsideSnapshot `json:"cacheAside"`
+
+	// PreDeductMySQL 是预扣库存链路的 MySQL 压力快照。
+	// 预扣不走 MySQL 扣库存，但仍会有防重复查询和奖品详情查询，适合和 Cache-Aside 的 DB 压力对比。
+	PreDeductMySQL MySQLPressureSnapshot `json:"preDeductMySQL"`
 }
 
 type meter struct {
@@ -141,6 +145,7 @@ func ResetAll(activityStock int64, redisStock int64) {
 	defaultMeter.mu.Unlock()
 
 	resetCacheAsideMetrics()
+	resetPreDeductMySQLMetrics()
 	defaultMeter.addEvent("实验重置", fmt.Sprintf("已清空订单、临时资格和指标，活动库存恢复为 %d。", activityStock), "success")
 }
 
@@ -311,6 +316,7 @@ func SnapshotNow() Snapshot {
 		SimulationDone:  totalRequests,
 		Events:          events,
 		CacheAside:      SnapshotCacheAside(),
+		PreDeductMySQL:  SnapshotPreDeductMySQL(),
 	}
 }
 

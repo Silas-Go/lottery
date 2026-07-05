@@ -36,23 +36,21 @@
 
 **画面：** 切到终端录屏。
 
-> 好，先把它跑起来。很简单，两条命令。
+> 好，先把它跑起来。就一条命令。
 
-**画面：** 敲 `.\scripts\start-infra.ps1`，Docker 依次拉起 MySQL、Redis、RocketMQ。日志刷屏。
+**画面：** 敲 `docker compose up -d --build app`，Docker 依次构建 Go app 镜像、拉起 MySQL、Redis、RocketMQ。日志刷屏。
 
-> 第一条，`start-infra`。这条命令会把三个依赖拉起来——
+> `docker compose up -d --build app`。
 >
-> **MySQL**，负责存最终的订单，是整个系统的「账本」。
+> 这一条命令干了四件事——
 >
-> **Redis**，负责扛高并发的库存读写，它是「热数据层」。
+> 第一，把 Go 应用打成 Docker 镜像。第二，启动 MySQL，自动建库建表。第三，启动 Redis。第四，启动 RocketMQ，自动创建延时消息的 Topic。
 >
-> **RocketMQ**，负责延时消息——有人抽中了但超时没付款，它来把库存还回去，算是「兜底补偿」。
-
-**画面：** 敲 `.\scripts\run-local-app.ps1`，Go app 启动，监听 `localhost:5678` 那一行高亮。
-
-> 第二条，`run-local-app`，本机启动 Go 进程。依赖全在 Docker 里，但 Go app 跑在本机，这样方便改代码、看日志。
+> 整条链路——Go app、MySQL、Redis、RocketMQ——全部在 Docker 里，一个网络，一条命令。
 >
 > 跑起来之后，浏览器打开 `localhost:5678` 就是这个页面。
+>
+> 要是你改了代码想重新部署，也是这条命令，Docker 会重新构建镜像然后替换容器。不用手动停、手动起。
 
 **画面：** 切到浏览器，抽奖转盘全景。
 
@@ -333,7 +331,7 @@
 | 段落 | 时长 | 内容 |
 |------|------|------|
 | 自我介绍 | 35s | 我是 Silas + 项目是什么 + 这集要干什么 |
-| 跑起来 | 45s | start-infra + run-local-app + 三个组件 |
+| 跑起来 | 45s | docker compose up -d --build app + 四个组件 |
 | 页面介绍 | 45s | 三关键区域 |
 | 系统架构 | 55s | 请求链路逐段点亮 |
 | 理论：预扣 | 40s | Lua 原子 + 热冷分离 |

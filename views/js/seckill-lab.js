@@ -6,6 +6,7 @@
     var toastTimer = null;
     var metricsSource = null;
     var liveMetrics = false;
+    var latestSnapshot = null;
 
     // 两种库存模式的前端配置：抽奖入口 URL、库存模式标签、请求提示与事件文案。
     // 切换模式只改变请求走向和文案，转盘交互和 SSE 指标刷新逻辑两种模式共用。
@@ -93,6 +94,7 @@
         if (!snapshot) {
             return;
         }
+        latestSnapshot = snapshot;
         liveMetrics = true;
         state.baseStock = snapshot.activityStock || 0;
         state.redisStock = snapshot.redisStock || 0;
@@ -113,15 +115,38 @@
         state.p99 = snapshot.p99 || 0;
         updateMetrics();
         renderServerEvents(snapshot.events || []);
-        applyCacheAsideSnapshot(snapshot.cacheAside);
+        renderMySQLPressure(snapshot);
     }
 
-    // applyCacheAsideSnapshot 渲染旁路缓存压力面板。
-    // 这些指标只来自服务端真实埋点（snapshot.cacheAside），压测 /lucky/cacheaside 时才会变化。
-    function applyCacheAsideSnapshot(ca) {
-        if (!ca) {
+    function setMySQLPressureLabels(mode) {
+        var cacheAside = mode === "cacheaside";
+        setText("mysql-qps-label", "当前模式 QPS");
+        setText("mysql-total-label", cacheAside ? "Cache-Aside 总请求" : "预扣总请求");
+        setText("mysql-p95-label", "入口 P95 响应");
+        setText("mysql-p99-label", "入口 P99 响应");
+        setText("mysql-db-avg-label", cacheAside ? "DB 响应(含排队)" : "MySQL 平均响应");
+        setText("mysql-db-p95-label", "MySQL P95 响应");
+        setText("mysql-db-p99-label", "MySQL P99 响应");
+        setText("mysql-cache-label", "缓存命中率");
+        setText("mysql-db-ops-label", cacheAside ? "回源 / DB 操作" : "MySQL 查询次数");
+        setText("mysql-rejected-label", "熔断降级拒绝");
+        setText("mysql-success-label", cacheAside ? "完成订单" : "成功进入队列");
+    }
+
+    function renderMySQLPressure(snapshot) {
+        if (!snapshot) {
             return;
         }
+        setMySQLPressureLabels(currentMode);
+        if (currentMode === "cacheaside") {
+            renderCacheAsidePressure(snapshot.cacheAside || {});
+            return;
+        }
+        renderPreDeductPressure(snapshot);
+    }
+
+    function renderCacheAsidePressure(ca) {
+        setText("mysql-pressure-help", "当前展示旁路缓存链路的 MySQL 压力：读缓存未命中会回源，扣库存走 MySQL 行锁，连接池打满后触发熔断保护。");
         setText("ca-qps", formatNumber(ca.qps));
         setText("ca-total", formatNumber(ca.totalRequests));
         setText("ca-p95", (ca.p95 || 0) + "ms");
@@ -134,20 +159,40 @@
         setText("ca-miss", formatNumber(ca.cacheMisses));
         setText("ca-rejected", formatNumber(ca.rejected));
         setText("ca-completed", formatNumber(ca.completed));
-        updateCircuitLamp(ca.circuitState || "green");
+        updateCircuitLamp(ca.circuitState || "green", true);
+    }
+
+    function renderPreDeductPressure(snapshot) {
+        var db = snapshot.preDeductMySQL || {};
+        setText("mysql-pressure-help", "当前展示预扣库存链路的 MySQL 轻量读压力：防重复查询和奖品详情查询会访问 MySQL，库存扣减仍由 Redis Lua 承担。");
+        setText("ca-qps", formatNumber(snapshot.qps));
+        setText("ca-total", formatNumber(snapshot.totalRequests));
+        setText("ca-p95", (snapshot.p95 || 0) + "ms");
+        setText("ca-p99", (snapshot.p99 || 0) + "ms");
+        setText("ca-db-avg", (db.dbAvgLatency || 0) + "ms");
+        setText("ca-db-p95", (db.dbP95Latency || 0) + "ms");
+        setText("ca-db-p99", (db.dbP99Latency || 0) + "ms");
+        setText("ca-pool", (db.poolUsage || 0) + "% (" + (db.poolInUse || 0) + "/" + (db.poolCapacity || 0) + ")");
+        setText("ca-hit-rate", "不适用");
+        setText("ca-miss", formatNumber(db.totalRequests));
+        setText("ca-rejected", "0");
+        setText("ca-completed", formatNumber(snapshot.queueSuccess));
+        updateCircuitLamp("green", false);
     }
 
     // updateCircuitLamp 根据熔断状态切换信号灯颜色与面板高亮。
     // green=正常放行，yellow=压力预警/Half-Open 试探，red=熔断降级（fail-fast 拒绝新请求）。
-    function updateCircuitLamp(stateText) {
-        var tone = stateText === "red" ? "red" : (stateText === "yellow" ? "yellow" : "green");
+    function updateCircuitLamp(stateText, breakerEnabled) {
+        var tone = breakerEnabled && stateText === "red" ? "red" : (breakerEnabled && stateText === "yellow" ? "yellow" : "green");
         var lamp = el("circuit-lamp");
         if (lamp) {
             lamp.className = "circuit-lamp " + tone;
         }
         var label = el("circuit-state");
         if (label) {
-            var textMap = { green: "熔断器：正常", yellow: "熔断器：预警", red: "熔断器：熔断降级中" };
+            var textMap = breakerEnabled ?
+                { green: "熔断器：正常", yellow: "熔断器：预警", red: "熔断器：熔断降级中" } :
+                { green: "预扣链路：正常" };
             label.textContent = textMap[tone];
         }
         var panel = el("cacheaside-panel");
@@ -174,6 +219,7 @@
             pushEvent("切换库存模式", "预扣库存：快，Redis 是权威源。", "success");
         }
         renderLoadtestCommand();
+        renderMySQLPressure(latestSnapshot);
     }
 
     function setBadge(id, text, className) {

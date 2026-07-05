@@ -191,40 +191,40 @@
             <ol id="event-log" class="event-log" aria-live="polite"></ol>
 
             <div class="section-title-row">
-                <h3>旁路缓存压力监控</h3>
+                <h3>实时 MySQL 压力</h3>
                 <div class="circuit-indicator">
                     <span id="circuit-lamp" class="circuit-lamp green" aria-hidden="true"></span>
-                    <span id="circuit-state" class="soft-label">熔断器：正常</span>
+                    <span id="circuit-state" class="soft-label">预扣链路：正常</span>
                 </div>
             </div>
-            <p class="helper-text" style="text-align:left">压测 <code>/lucky/cacheaside</code> 时这里实时反映 MySQL 压力：DB 响应时间、连接池占用率升高 → 黄灯预警 → 红灯熔断降级（fail-fast 保护数据库）。预扣模式不会触发。</p>
+            <p id="mysql-pressure-help" class="helper-text" style="text-align:left">当前展示预扣库存链路的 MySQL 轻量读压力：防重复查询和奖品详情查询会访问 MySQL，库存扣减仍由 Redis Lua 承担。</p>
             <div id="cacheaside-panel" class="metric-grid cacheaside-grid">
                 <article class="metric-card">
-                    <span>Cache-Aside QPS</span>
+                    <span id="mysql-qps-label">当前模式 QPS</span>
                     <strong id="ca-qps">0</strong>
                 </article>
                 <article class="metric-card">
-                    <span>Cache-Aside 总请求</span>
+                    <span id="mysql-total-label">入口总请求</span>
                     <strong id="ca-total">0</strong>
                 </article>
                 <article class="metric-card warning">
-                    <span>总请求 P95 响应</span>
+                    <span id="mysql-p95-label">入口 P95 响应</span>
                     <strong id="ca-p95">0ms</strong>
                 </article>
                 <article class="metric-card danger">
-                    <span>总请求 P99 响应</span>
+                    <span id="mysql-p99-label">入口 P99 响应</span>
                     <strong id="ca-p99">0ms</strong>
                 </article>
                 <article class="metric-card">
-                    <span>DB 响应(含排队)</span>
+                    <span id="mysql-db-avg-label">MySQL 平均响应</span>
                     <strong id="ca-db-avg">0ms</strong>
                 </article>
                 <article class="metric-card">
-                    <span>DB P95 响应</span>
+                    <span id="mysql-db-p95-label">MySQL P95 响应</span>
                     <strong id="ca-db-p95">0ms</strong>
                 </article>
                 <article class="metric-card warning">
-                    <span>DB P99 响应</span>
+                    <span id="mysql-db-p99-label">MySQL P99 响应</span>
                     <strong id="ca-db-p99">0ms</strong>
                 </article>
                 <article class="metric-card">
@@ -232,19 +232,19 @@
                     <strong id="ca-pool">0%</strong>
                 </article>
                 <article class="metric-card">
-                    <span>缓存命中率</span>
+                    <span id="mysql-cache-label">缓存命中率</span>
                     <strong id="ca-hit-rate">0%</strong>
                 </article>
                 <article class="metric-card warning">
-                    <span>缓存击穿次数</span>
+                    <span id="mysql-db-ops-label">MySQL 操作次数</span>
                     <strong id="ca-miss">0</strong>
                 </article>
                 <article class="metric-card danger">
-                    <span>熔断降级拒绝</span>
+                    <span id="mysql-rejected-label">熔断降级拒绝</span>
                     <strong id="ca-rejected">0</strong>
                 </article>
                 <article class="metric-card success">
-                    <span>完成订单</span>
+                    <span id="mysql-success-label">业务成功数</span>
                     <strong id="ca-completed">0</strong>
                 </article>
             </div>

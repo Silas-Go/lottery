@@ -107,7 +107,9 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 	}
 
 	slog.Info("lottery request start", "uid", uid)
+	dbStart := time.Now()
 	ordered, err := s.store.HasOrder(database.DefaultActivityID, uid)
+	s.recordMySQLPressure(dbStart)
 	if err != nil {
 		metrics.RecordSystemError("查询用户活动订单失败", err)
 		return nil, NewAppError(CodeGiftDBReadFailed, "查询用户参与记录失败", err, "uid", uid, "activity_id", database.DefaultActivityID)
@@ -176,7 +178,9 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 				return nil, NewAppError(CodeAdmissionFailed, "秒杀准入失败，请稍后重试", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
 			}
 
+			dbStart := time.Now()
 			gift, err := s.store.GetGiftWithError(giftID)
+			s.recordMySQLPressure(dbStart)
 			if err != nil {
 				rollbackAdmission(uid, giftID, "gift lookup failed")
 				metrics.RecordSystemError("查询中奖奖品详情失败", err)
@@ -209,6 +213,11 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 	metrics.RecordStockFailed("库存扣减冲突重试耗尽")
 	slog.Warn("lottery retry exhausted", "uid", uid, "max_try", 10)
 	return nil, NewAppError(CodeInventoryRetryExhaust, "库存扣减冲突，请稍后重试", errors.New("reduce inventory failed after 10 attempts"), "uid", uid)
+}
+
+func (s *LotteryService) recordMySQLPressure(start time.Time) {
+	inUse, capacity := s.store.DBPoolStats()
+	metrics.RecordPreDeductMySQL(time.Since(start), inUse, capacity)
 }
 
 func rollbackAdmission(uid int, giftID int, reason string) {

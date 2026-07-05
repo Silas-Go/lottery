@@ -26,6 +26,20 @@ func NewStore(db *gorm.DB) *Store {
 	return &Store{db: db}
 }
 
+// DBPoolStats 返回当前 MySQL 连接池使用情况。
+// 监控面板用它展示预扣链路的真实 MySQL 压力；如果连接不可用则返回 0。
+func (s *Store) DBPoolStats() (int, int) {
+	if s == nil || s.db == nil {
+		return 0, 0
+	}
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		return 0, 0
+	}
+	stats := sqlDB.Stats()
+	return stats.InUse, stats.MaxOpenConnections
+}
+
 // ConnectGiftDB 连接抽奖系统使用的 MySQL 数据库。
 //
 // 参数语义:
