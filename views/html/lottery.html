@@ -68,10 +68,10 @@
                 <span class="soft-label">wrk2 固定 QPS</span>
             </div>
             <div class="stress-buttons">
-                <button class="stress-btn" type="button" data-rate="500" data-connections="128">准备 500 QPS</button>
-                <button class="stress-btn" type="button" data-rate="1000" data-connections="256">准备 1000 QPS</button>
-                <button class="stress-btn" type="button" data-rate="5000" data-connections="512">准备 5000 QPS</button>
-                <button class="stress-btn" type="button" data-rate="10000" data-connections="768">准备 10000 QPS</button>
+                <button class="stress-btn" type="button" data-rate="150" data-connections="64" data-duration="20s">150 QPS 观察</button>
+                <button class="stress-btn" type="button" data-rate="300" data-connections="96" data-duration="25s">300 QPS 加压</button>
+                <button class="stress-btn" type="button" data-rate="600" data-connections="160" data-duration="25s">600 QPS 逼近</button>
+                <button class="stress-btn" type="button" data-rate="1000" data-connections="256" data-duration="30s">1000 QPS 击穿</button>
             </div>
             <p class="helper-text">按钮只生成 wrk2 命令，不会在浏览器里伪造压测数据。右侧面板只展示服务端真实指标。</p>
             <div class="command-row">

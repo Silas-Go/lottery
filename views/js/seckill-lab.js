@@ -28,6 +28,7 @@
     var selectedLoadtest = {
         rate: null,
         connections: null,
+        duration: null,
         button: null
     };
 
@@ -526,17 +527,21 @@
         });
     }
 
-    function buildLoadtestCommand(rate, connections) {
+    function buildLoadtestCommand(rate, connections, duration) {
         var targetUrl = "http://app:5678" + modeConf().url;
         var command = "docker compose --profile loadtest run --rm -e TARGET_URL=" + targetUrl;
         if (rate && connections) {
-            command += " -e RATE=" + rate + " -e CONNECTIONS=" + connections;
+            command += " -e RATE=" + rate;
+            if (duration) {
+                command += " -e DURATION=" + duration;
+            }
+            command += " -e CONNECTIONS=" + connections;
         }
         return command + " wrk2";
     }
 
     function renderLoadtestCommand() {
-        var command = buildLoadtestCommand(selectedLoadtest.rate, selectedLoadtest.connections);
+        var command = buildLoadtestCommand(selectedLoadtest.rate, selectedLoadtest.connections, selectedLoadtest.duration);
         setText("loadtest-command", command);
         return command;
     }
@@ -596,9 +601,10 @@
         });
     }
 
-    function prepareLoadtest(rate, connections, button) {
+    function prepareLoadtest(rate, connections, duration, button) {
         selectedLoadtest.rate = rate;
         selectedLoadtest.connections = connections;
+        selectedLoadtest.duration = duration;
         selectedLoadtest.button = button;
         var command = renderLoadtestCommand();
         setActiveStressButton(button);
@@ -716,7 +722,7 @@
 
         document.querySelectorAll(".stress-btn").forEach(function (button) {
             button.addEventListener("click", function () {
-                prepareLoadtest(Number(button.dataset.rate), Number(button.dataset.connections), button);
+                prepareLoadtest(Number(button.dataset.rate), Number(button.dataset.connections), button.dataset.duration, button);
             });
         });
 

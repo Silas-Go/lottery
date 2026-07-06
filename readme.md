@@ -321,6 +321,30 @@ docker compose --profile loadtest run --rm \
   -e RATE=1000 -e DURATION=60s -e CONNECTIONS=256 wrk2
 ```
 
+录制演示时不建议一上来就打 1000 QPS，否则 Cache-Aside 会瞬间进入熔断，动态过程不够好讲。更适合用阶梯压测观察压力传导：
+
+```bash
+# 1. 低压基线：确认旁路缓存链路正常
+docker compose --profile loadtest run --rm \
+  -e TARGET_URL=http://app:5678/lucky/cacheaside \
+  -e RATE=150 -e DURATION=20s -e CONNECTIONS=64 wrk2
+
+# 2. 中压加压：观察缓存命中率下降、库存回源查询增加
+docker compose --profile loadtest run --rm \
+  -e TARGET_URL=http://app:5678/lucky/cacheaside \
+  -e RATE=300 -e DURATION=25s -e CONNECTIONS=96 wrk2
+
+# 3. 高压逼近：观察连接池占用和 MySQL P95/P99 上升
+docker compose --profile loadtest run --rm \
+  -e TARGET_URL=http://app:5678/lucky/cacheaside \
+  -e RATE=600 -e DURATION=25s -e CONNECTIONS=160 wrk2
+
+# 4. 极限击穿：观察熔断器 fail-fast 保护 MySQL
+docker compose --profile loadtest run --rm \
+  -e TARGET_URL=http://app:5678/lucky/cacheaside \
+  -e RATE=1000 -e DURATION=30s -e CONNECTIONS=256 wrk2
+```
+
 Cache-Aside 会真实扣减 MySQL 的 `cache_stock` 并写正式订单；重复压测前建议重置库存：
 
 ```sql
