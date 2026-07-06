@@ -29,6 +29,10 @@ const (
 	// 它模拟"受限数据库连接池"：超过这个并发的请求必须排队等待，等待时长计入响应耗时。
 	// 调小是为了在本机演示时也能真实压出连接等待和 RT 飙升，从而触发红灯预警与熔断。
 	defaultCacheAsideDBConcurrency = 10
+
+	// CacheAsideDBOperationRead/Write 用于把库存侧 MySQL 压力拆成读回源和写扣减。
+	CacheAsideDBOperationRead  = "read"
+	CacheAsideDBOperationWrite = "write"
 )
 
 // CacheAsideStat 描述一次 Cache-Aside 库存访问的耗时分解和缓存命中情况。
@@ -40,6 +44,9 @@ type CacheAsideStat struct {
 	// HitDB 表示本次操作是否真的访问了 MySQL（即穿过了 DB 并发闸门）。
 	// 缓存命中的读不打 DB，HitDB 为 false，不占连接池也不计入 DB 压力。
 	HitDB bool
+
+	// Operation 标识本次 DB 操作类型：read=库存回源查询，write=行锁扣减写入。
+	Operation string
 
 	// WaitMs 是等待 DB 并发闸门（连接池）放行的耗时，单位毫秒。
 	// 连接池被占满时这个值会显著升高，是系统过载最直接的信号。
@@ -176,7 +183,7 @@ func (s *Store) GetAllGiftStockCacheAside() ([]*Gift, CacheAsideStat, error) {
 	}
 
 	// 缓存未命中：回源 MySQL，受 DB 并发闸门保护。
-	stat := CacheAsideStat{CacheHit: false, HitDB: true}
+	stat := CacheAsideStat{CacheHit: false, HitDB: true, Operation: CacheAsideDBOperationRead}
 	wait := cacheAsideGate.acquire()
 	defer cacheAsideGate.release()
 	stat.WaitMs = wait.Milliseconds()
@@ -219,7 +226,7 @@ func (s *Store) GetAllGiftStockCacheAside() ([]*Gift, CacheAsideStat, error) {
 // 真正的扣减仍是原子的，售罄时影响行数为 0——所以 Cache-Aside 绝不超卖（强一致），
 // 代价是每次扣减都要抢 MySQL 行锁和 DB 连接。返回 ok=false 表示库存已售罄。
 func (s *Store) DeductGiftStockCacheAside(giftID int) (bool, CacheAsideStat, error) {
-	stat := CacheAsideStat{HitDB: true}
+	stat := CacheAsideStat{HitDB: true, Operation: CacheAsideDBOperationWrite}
 	wait := cacheAsideGate.acquire()
 	defer cacheAsideGate.release()
 	stat.WaitMs = wait.Milliseconds()

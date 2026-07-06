@@ -128,9 +128,9 @@
         setText("mysql-db-p95-label", "MySQL P95 响应");
         setText("mysql-db-p99-label", "MySQL P99 响应");
         setText("mysql-cache-label", "缓存命中率");
-        setText("mysql-db-ops-label", cacheAside ? "回源 / DB 操作" : "MySQL 查询次数");
+        setText("mysql-db-ops-label", cacheAside ? "库存回源查询" : "MySQL 查询次数");
         setText("mysql-rejected-label", "熔断降级拒绝");
-        setText("mysql-success-label", cacheAside ? "完成订单" : "成功进入队列");
+        setText("mysql-success-label", cacheAside ? "完成订单 / 扣减写" : "成功进入队列");
     }
 
     function renderMySQLPressure(snapshot) {
@@ -146,7 +146,9 @@
     }
 
     function renderCacheAsidePressure(ca) {
-        setText("mysql-pressure-help", "当前展示旁路缓存链路的 MySQL 压力：读缓存未命中会回源，扣库存走 MySQL 行锁，连接池打满后触发熔断保护。");
+        setText("mysql-pressure-help", "当前展示旁路缓存链路的 MySQL 库存压力：库存回源查询=缓存未命中后的 SELECT，扣减写=MySQL 行锁 UPDATE；连接池打满后触发熔断保护。");
+        var cacheReads = (ca.cacheHits || 0) + (ca.cacheMisses || 0);
+        var dbWrites = ca.dbWrites == null ? ca.completed : ca.dbWrites;
         setText("ca-qps", formatNumber(ca.qps));
         setText("ca-total", formatNumber(ca.totalRequests));
         setText("ca-p95", (ca.p95 || 0) + "ms");
@@ -155,10 +157,10 @@
         setText("ca-db-p95", (ca.dbP95Latency || 0) + "ms");
         setText("ca-db-p99", (ca.dbP99Latency || 0) + "ms");
         setText("ca-pool", (ca.poolUsage || 0) + "% (" + (ca.poolInUse || 0) + "/" + (ca.poolCapacity || 0) + ")");
-        setText("ca-hit-rate", (ca.cacheHitRate || 0) + "%");
-        setText("ca-miss", formatNumber(ca.cacheMisses));
+        setText("ca-hit-rate", (ca.cacheHitRate || 0) + "% (" + formatNumber(ca.cacheHits) + "/" + formatNumber(cacheReads) + ")");
+        setText("ca-miss", formatNumber(ca.dbReads == null ? ca.cacheMisses : ca.dbReads));
         setText("ca-rejected", formatNumber(ca.rejected));
-        setText("ca-completed", formatNumber(ca.completed));
+        setText("ca-completed", formatNumber(ca.completed) + " / " + formatNumber(dbWrites));
         updateCircuitLamp(ca.circuitState || "green", true);
     }
 

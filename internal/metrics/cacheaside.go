@@ -45,6 +45,12 @@ type CacheAsideSnapshot struct {
 	// CacheHitRate 是缓存命中率百分比（0-100）；写密集时会显著下降，说明缓存近乎失效。
 	CacheHitRate int64 `json:"cacheHitRate"`
 
+	// DBReads/DBWrites/DBOperations 是库存侧 MySQL 操作拆分。
+	// DBReads 对应 Redis 库存缓存未命中后的 SELECT 回源；DBWrites 对应 MySQL 行锁扣减 UPDATE。
+	DBReads      int64 `json:"dbReads"`
+	DBWrites     int64 `json:"dbWrites"`
+	DBOperations int64 `json:"dbOperations"`
+
 	// AvgLatency/P95/P99/MaxLatency 是 Cache-Aside HTTP 总请求耗时，单位毫秒。
 	// 这是用户实际感知到的端到端延迟，包含业务判断、缓存读取、DB 扣减与订单写入。
 	AvgLatency int64 `json:"avgLatency"`
@@ -78,6 +84,8 @@ type cacheMeter struct {
 	rejected      int64
 	cacheHits     int64
 	cacheMisses   int64
+	dbReads       int64
+	dbWrites      int64
 	maxLatency    int64
 	dbMaxLatency  int64
 	poolInUse     int64
@@ -105,6 +113,8 @@ func resetCacheAsideMetrics() {
 	atomic.StoreInt64(&defaultCacheMeter.rejected, 0)
 	atomic.StoreInt64(&defaultCacheMeter.cacheHits, 0)
 	atomic.StoreInt64(&defaultCacheMeter.cacheMisses, 0)
+	atomic.StoreInt64(&defaultCacheMeter.dbReads, 0)
+	atomic.StoreInt64(&defaultCacheMeter.dbWrites, 0)
 	atomic.StoreInt64(&defaultCacheMeter.maxLatency, 0)
 	atomic.StoreInt64(&defaultCacheMeter.dbMaxLatency, 0)
 	atomic.StoreInt64(&defaultCacheMeter.poolInUse, 0)
@@ -176,6 +186,16 @@ func RecordCacheMiss() {
 	}
 }
 
+// RecordCacheAsideDBRead 记录一次库存缓存未命中后的 MySQL SELECT 回源。
+func RecordCacheAsideDBRead() {
+	atomic.AddInt64(&defaultCacheMeter.dbReads, 1)
+}
+
+// RecordCacheAsideDBWrite 记录一次 MySQL 行锁扣减 UPDATE 尝试。
+func RecordCacheAsideDBWrite() {
+	atomic.AddInt64(&defaultCacheMeter.dbWrites, 1)
+}
+
 // RecordCacheAsideCompleted 记录一次 Cache-Aside 成功中奖并落库。
 func RecordCacheAsideCompleted(giftID int) {
 	n := atomic.AddInt64(&defaultCacheMeter.completed, 1)
@@ -240,6 +260,8 @@ func SnapshotCacheAside() CacheAsideSnapshot {
 
 	hits := atomic.LoadInt64(&defaultCacheMeter.cacheHits)
 	misses := atomic.LoadInt64(&defaultCacheMeter.cacheMisses)
+	dbReads := atomic.LoadInt64(&defaultCacheMeter.dbReads)
+	dbWrites := atomic.LoadInt64(&defaultCacheMeter.dbWrites)
 	var hitRate int64
 	if total := hits + misses; total > 0 {
 		hitRate = hits * 100 / total
@@ -267,6 +289,9 @@ func SnapshotCacheAside() CacheAsideSnapshot {
 		CacheHits:     hits,
 		CacheMisses:   misses,
 		CacheHitRate:  hitRate,
+		DBReads:       dbReads,
+		DBWrites:      dbWrites,
+		DBOperations:  dbReads + dbWrites,
 		AvgLatency:    average(latencies),
 		P95:           percentile(latencies, 0.95),
 		P99:           percentile(latencies, 0.99),

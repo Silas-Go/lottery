@@ -144,10 +144,16 @@ func (s *CacheAsideLotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 func (s *CacheAsideLotteryService) reportPressure(stat database.CacheAsideStat) {
 	if stat.CacheHit {
 		metrics.RecordCacheHit()
-	} else if stat.HitDB {
+	} else if stat.HitDB && stat.Operation == database.CacheAsideDBOperationRead {
 		metrics.RecordCacheMiss()
 	}
 	if stat.HitDB {
+		switch stat.Operation {
+		case database.CacheAsideDBOperationRead:
+			metrics.RecordCacheAsideDBRead()
+		case database.CacheAsideDBOperationWrite:
+			metrics.RecordCacheAsideDBWrite()
+		}
 		latency := stat.WaitMs + stat.DBMs
 		metrics.RecordCacheAsideDBLatency(latency)
 		metrics.SetCacheAsidePool(stat.PoolInUse, stat.PoolCapacity)

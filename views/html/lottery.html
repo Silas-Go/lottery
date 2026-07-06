@@ -89,8 +89,8 @@
         <section class="panel system-panel" aria-labelledby="system-title">
             <div class="panel-header">
                 <div>
-                    <p class="eyebrow">Runtime Panel</p>
-                    <h2 id="system-title">系统运行面板</h2>
+                    <p class="eyebrow">Pre-Deduct Runtime</p>
+                    <h2 id="system-title">Redis 预扣链路运行面板</h2>
                 </div>
                 <div class="panel-actions">
                     <button id="reset-lab" class="ghost-btn danger-btn" type="button">真重置</button>
@@ -100,7 +100,7 @@
 
             <div class="metric-grid" aria-live="polite">
                 <article class="metric-card strong">
-                    <span>活动库存</span>
+                    <span>活动初始库存</span>
                     <strong id="activity-stock">100</strong>
                 </article>
                 <article class="metric-card">
@@ -108,39 +108,39 @@
                     <strong id="redis-stock">100</strong>
                 </article>
                 <article class="metric-card">
-                    <span>数据库最终库存</span>
+                    <span>MySQL 正式订单库存</span>
                     <strong id="db-stock">100 / 等待异步落库</strong>
                 </article>
                 <article class="metric-card">
-                    <span>当前请求数</span>
+                    <span>预扣入口请求</span>
                     <strong id="total-requests">0</strong>
                 </article>
                 <article class="metric-card success">
-                    <span>成功进入队列</span>
+                    <span>临时资格入队</span>
                     <strong id="queue-success">0</strong>
                 </article>
                 <article class="metric-card warning">
-                    <span>被限流拦截</span>
+                    <span>入口限流拦截</span>
                     <strong id="rate-limited">0</strong>
                 </article>
                 <article class="metric-card danger">
-                    <span>库存不足失败</span>
+                    <span>预扣失败 / 库存不足</span>
                     <strong id="stock-failed">0</strong>
                 </article>
                 <article class="metric-card">
-                    <span>MQ 待消费消息</span>
+                    <span>MQ 延时补偿待消费</span>
                     <strong id="mq-pending">0</strong>
                 </article>
                 <article class="metric-card success">
-                    <span>已完成订单</span>
+                    <span>支付完成订单</span>
                     <strong id="completed-orders">0</strong>
                 </article>
                 <article class="metric-card">
-                    <span>平均响应时间</span>
+                    <span>预扣平均响应时间</span>
                     <strong id="avg-latency">0ms</strong>
                 </article>
                 <article class="metric-card">
-                    <span>最大响应时间</span>
+                    <span>预扣最大响应时间</span>
                     <strong id="max-latency">0ms</strong>
                 </article>
                 <article class="metric-card success">
@@ -151,26 +151,26 @@
 
             <div class="simulation-board">
                 <div>
-                    <span class="summary-label">已处理请求</span>
+                    <span class="summary-label">预扣已处理请求</span>
                     <strong id="simulation-progress">0 / 0</strong>
                 </div>
                 <div>
-                    <span class="summary-label">QPS</span>
+                    <span class="summary-label">预扣 QPS</span>
                     <strong id="qps">0</strong>
                 </div>
                 <div>
-                    <span class="summary-label">P95</span>
+                    <span class="summary-label">预扣 P95</span>
                     <strong id="p95">0ms</strong>
                 </div>
                 <div>
-                    <span class="summary-label">P99</span>
+                    <span class="summary-label">预扣 P99</span>
                     <strong id="p99">0ms</strong>
                 </div>
             </div>
 
             <div class="section-title-row">
-                <h3>架构链路</h3>
-                <span class="soft-label">请求流向</span>
+                <h3>预扣请求链路</h3>
+                <span class="soft-label">Redis / MQ 流向</span>
             </div>
             <div class="architecture-flow" aria-label="秒杀请求架构链路">
                 <div class="flow-node" data-step="browser">Browser</div>
