@@ -33,6 +33,15 @@ func NewCacheAsideLotteryService(store *database.Store) *CacheAsideLotteryServic
 	}
 }
 
+// ResetCircuitBreaker 清空 Cache-Aside 链路的熔断器内存状态。
+// 实验室真重置会调用它，避免上一轮 Open/Half-Open 状态污染下一轮压测。
+func (s *CacheAsideLotteryService) ResetCircuitBreaker() {
+	if s == nil || s.breaker == nil {
+		return
+	}
+	s.breaker.Reset()
+}
+
 // Draw 以 Cache-Aside 模式执行一次抽奖。
 //
 // 流程：

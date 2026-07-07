@@ -7,6 +7,13 @@
     var metricsSource = null;
     var liveMetrics = false;
     var latestSnapshot = null;
+    var replayFrames = [];
+    var replayMode = false;
+    var replayPlaying = false;
+    var replayIndex = -1;
+    var replayTimer = null;
+    var lastReplayKey = "";
+    var maxReplayFrames = 240;
 
     // 两种库存模式的前端配置：抽奖入口 URL、库存模式标签、请求提示与事件文案。
     // 切换模式只改变请求走向和文案，转盘交互和 SSE 指标刷新逻辑两种模式共用。
@@ -72,6 +79,13 @@
         return Number(value || 0).toLocaleString("zh-CN");
     }
 
+    function formatElapsed(ms) {
+        if (!Number.isFinite(ms) || ms < 0) {
+            return "+0s";
+        }
+        return "+" + Math.round(ms / 1000) + "s";
+    }
+
     function updateMetrics() {
         setText("activity-stock", formatNumber(state.baseStock));
         setText("redis-stock", formatNumber(state.redisStock));
@@ -91,11 +105,162 @@
         setText("p99", state.p99 + "ms");
     }
 
-    function applyMetricsSnapshot(snapshot) {
+    function cloneSnapshot(snapshot) {
+        return JSON.parse(JSON.stringify(snapshot));
+    }
+
+    function snapshotActivityKey(snapshot, mode) {
+        if (mode === "cacheaside") {
+            var ca = snapshot.cacheAside || {};
+            return [
+                mode,
+                ca.totalRequests || 0,
+                ca.qps || 0,
+                ca.cacheHits || 0,
+                ca.cacheMisses || 0,
+                ca.dbReads || 0,
+                ca.dbWrites || 0,
+                ca.rejected || 0,
+                ca.completed || 0,
+                ca.circuitState || "green"
+            ].join("|");
+        }
+        var db = snapshot.preDeductMySQL || {};
+        return [
+            mode,
+            snapshot.totalRequests || 0,
+            snapshot.qps || 0,
+            snapshot.queueSuccess || 0,
+            snapshot.rateLimited || 0,
+            snapshot.stockFailed || 0,
+            snapshot.mqPending || 0,
+            db.totalRequests || 0
+        ].join("|");
+    }
+
+    function captureReplayFrame(snapshot, mode) {
         if (!snapshot) {
             return;
         }
-        latestSnapshot = snapshot;
+        var frameMode = mode || currentMode;
+        var key = snapshotActivityKey(snapshot, frameMode);
+        if (key === lastReplayKey && replayFrames.length > 0) {
+            return;
+        }
+        lastReplayKey = key;
+        replayFrames.push({
+            mode: frameMode,
+            timeMs: Date.now(),
+            time: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
+            snapshot: cloneSnapshot(snapshot)
+        });
+        if (replayFrames.length > maxReplayFrames) {
+            replayFrames.shift();
+        }
+        if (!replayMode) {
+            replayIndex = replayFrames.length - 1;
+        }
+        renderReplayControls();
+    }
+
+    function renderReplayControls() {
+        var total = replayFrames.length;
+        var index = replayIndex >= 0 ? Math.min(replayIndex, Math.max(0, total - 1)) : 0;
+        var frame = total > 0 ? replayFrames[index] : null;
+        var firstFrame = total > 0 ? replayFrames[0] : null;
+        var lastFrame = total > 0 ? replayFrames[total - 1] : null;
+        var spanText = total > 1 ? formatElapsed(lastFrame.timeMs - firstFrame.timeMs) : "+0s";
+        var scrubber = el("replay-scrubber");
+        if (scrubber) {
+            scrubber.max = String(Math.max(0, total - 1));
+            scrubber.value = String(total > 0 ? index : 0);
+            scrubber.disabled = total < 2;
+            var progress = total > 1 ? (index / (total - 1)) * 100 : 0;
+            scrubber.style.setProperty("--replay-progress", progress + "%");
+        }
+        setText("replay-frame-label", total > 0 ? (index + 1) + " / " + total : "0 / 0");
+        setText("replay-time-label", frame ? frame.time + " " + formatElapsed(frame.timeMs - firstFrame.timeMs) : "--:--:--");
+        setText("replay-toggle", replayPlaying ? "暂停" : "播放");
+        var status = "等待记录";
+        if (total > 0) {
+            status = replayMode ? ("回放 " + (index + 1) + "/" + total + " · " + spanText) : ("已记录 " + total + " 帧 · " + spanText);
+        }
+        setText("replay-status", status);
+    }
+
+    function stopReplayTimer() {
+        if (replayTimer) {
+            window.clearInterval(replayTimer);
+            replayTimer = null;
+        }
+        replayPlaying = false;
+        renderReplayControls();
+    }
+
+    function applyReplayFrame(index) {
+        if (replayFrames.length === 0) {
+            return;
+        }
+        replayMode = true;
+        replayIndex = Math.max(0, Math.min(index, replayFrames.length - 1));
+        var frame = replayFrames[replayIndex];
+        applyMetricsSnapshot(frame.snapshot, frame.mode, { replay: true, skipReplayCapture: true });
+        setBadge("simulation-status", "回放中", "is-warn");
+        renderReplayControls();
+    }
+
+    function toggleReplay() {
+        if (replayFrames.length === 0) {
+            showToast("还没有可回放的压测数据");
+            return;
+        }
+        if (replayPlaying) {
+            stopReplayTimer();
+            return;
+        }
+        replayMode = true;
+        if (replayIndex < 0 || replayIndex >= replayFrames.length - 1) {
+            replayIndex = 0;
+            applyReplayFrame(replayIndex);
+        }
+        replayPlaying = true;
+        replayTimer = window.setInterval(function () {
+            if (replayIndex >= replayFrames.length - 1) {
+                stopReplayTimer();
+                return;
+            }
+            applyReplayFrame(replayIndex + 1);
+        }, 850);
+        renderReplayControls();
+    }
+
+    function exitReplayMode() {
+        stopReplayTimer();
+        replayMode = false;
+        if (latestSnapshot) {
+            applyMetricsSnapshot(latestSnapshot, currentMode, { skipReplayCapture: true });
+        }
+        setBadge("simulation-status", "实时指标中", "is-ok");
+        renderReplayControls();
+    }
+
+    function clearReplayFrames() {
+        stopReplayTimer();
+        replayMode = false;
+        replayFrames = [];
+        replayIndex = -1;
+        lastReplayKey = "";
+        renderReplayControls();
+    }
+
+    function applyMetricsSnapshot(snapshot, renderMode, options) {
+        if (!snapshot) {
+            return;
+        }
+        options = options || {};
+        if (!options.replay) {
+            latestSnapshot = snapshot;
+        }
         liveMetrics = true;
         state.baseStock = snapshot.activityStock || 0;
         state.redisStock = snapshot.redisStock || 0;
@@ -116,7 +281,10 @@
         state.p99 = snapshot.p99 || 0;
         updateMetrics();
         renderServerEvents(snapshot.events || []);
-        renderMySQLPressure(snapshot);
+        renderMySQLPressure(snapshot, renderMode || currentMode);
+        if (!options.skipReplayCapture) {
+            captureReplayFrame(snapshot, renderMode || currentMode);
+        }
     }
 
     function setMySQLPressureLabels(mode) {
@@ -128,18 +296,19 @@
         setText("mysql-db-avg-label", cacheAside ? "DB 响应(含排队)" : "MySQL 平均响应");
         setText("mysql-db-p95-label", "MySQL P95 响应");
         setText("mysql-db-p99-label", "MySQL P99 响应");
-        setText("mysql-cache-label", "缓存命中率");
+        setText("mysql-cache-label", cacheAside ? "库存缓存命中率" : "Redis 库存角色");
         setText("mysql-db-ops-label", cacheAside ? "库存回源查询" : "MySQL 查询次数");
         setText("mysql-rejected-label", "熔断降级拒绝");
         setText("mysql-success-label", cacheAside ? "完成订单 / 扣减写" : "成功进入队列");
     }
 
-    function renderMySQLPressure(snapshot) {
+    function renderMySQLPressure(snapshot, mode) {
         if (!snapshot) {
             return;
         }
-        setMySQLPressureLabels(currentMode);
-        if (currentMode === "cacheaside") {
+        var renderMode = mode || currentMode;
+        setMySQLPressureLabels(renderMode);
+        if (renderMode === "cacheaside") {
             renderCacheAsidePressure(snapshot.cacheAside || {});
             return;
         }
@@ -167,7 +336,7 @@
 
     function renderPreDeductPressure(snapshot) {
         var db = snapshot.preDeductMySQL || {};
-        setText("mysql-pressure-help", "当前展示预扣库存链路的 MySQL 轻量读压力：防重复查询和奖品详情查询会访问 MySQL，库存扣减仍由 Redis Lua 承担。");
+        setText("mysql-pressure-help", "当前展示预扣库存链路的 MySQL 轻量读压力：防重复查询和奖品详情查询会访问 MySQL；Redis 在这里是库存权威源，不是 MySQL 的缓存副本。");
         setText("ca-qps", formatNumber(snapshot.qps));
         setText("ca-total", formatNumber(snapshot.totalRequests));
         setText("ca-p95", (snapshot.p95 || 0) + "ms");
@@ -176,7 +345,7 @@
         setText("ca-db-p95", (db.dbP95Latency || 0) + "ms");
         setText("ca-db-p99", (db.dbP99Latency || 0) + "ms");
         setText("ca-pool", (db.poolUsage || 0) + "% (" + (db.poolInUse || 0) + "/" + (db.poolCapacity || 0) + ")");
-        setText("ca-hit-rate", "不适用");
+        setText("ca-hit-rate", "权威源");
         setText("ca-miss", formatNumber(db.totalRequests));
         setText("ca-rejected", "0");
         setText("ca-completed", formatNumber(snapshot.queueSuccess));
@@ -222,7 +391,7 @@
             pushEvent("切换库存模式", "预扣库存：快，Redis 是权威源。", "success");
         }
         renderLoadtestCommand();
-        renderMySQLPressure(latestSnapshot);
+        renderMySQLPressure(latestSnapshot, currentMode);
     }
 
     function setBadge(id, text, className) {
@@ -638,6 +807,7 @@
             }
             var payload = await response.json();
             state.latencySamples = [];
+            clearReplayFrames();
             if (payload.snapshot) {
                 applyMetricsSnapshot(payload.snapshot);
             } else {
@@ -702,8 +872,15 @@
         metricsSource = new EventSource("/api/metrics/stream");
         metricsSource.addEventListener("metrics", function (event) {
             try {
-                applyMetricsSnapshot(JSON.parse(event.data));
-                setBadge("simulation-status", "实时指标中", "is-ok");
+                var snapshot = JSON.parse(event.data);
+                if (replayMode) {
+                    latestSnapshot = snapshot;
+                    liveMetrics = true;
+                    captureReplayFrame(snapshot, currentMode);
+                } else {
+                    applyMetricsSnapshot(snapshot);
+                    setBadge("simulation-status", "实时指标中", "is-ok");
+                }
             } catch (error) {
                 setBadge("simulation-status", "指标解析失败", "is-error");
             }
@@ -740,6 +917,55 @@
         var reset = el("reset-lab");
         if (reset) {
             reset.addEventListener("click", resetLabData);
+        }
+
+        var replayLive = el("replay-live");
+        if (replayLive) {
+            replayLive.addEventListener("click", exitReplayMode);
+        }
+
+        var replayToggle = el("replay-toggle");
+        if (replayToggle) {
+            replayToggle.addEventListener("click", toggleReplay);
+        }
+
+        var replayScrubber = el("replay-scrubber");
+        if (replayScrubber) {
+            var seekReplay = function () {
+                stopReplayTimer();
+                applyReplayFrame(Number(replayScrubber.value));
+            };
+            var seekReplayAt = function (clientX) {
+                if (replayFrames.length < 2) {
+                    return;
+                }
+                var rect = replayScrubber.getBoundingClientRect();
+                var ratio = (clientX - rect.left) / Math.max(1, rect.width);
+                var index = Math.round(Math.max(0, Math.min(1, ratio)) * (replayFrames.length - 1));
+                replayScrubber.value = String(index);
+                stopReplayTimer();
+                applyReplayFrame(index);
+            };
+            replayScrubber.addEventListener("input", seekReplay);
+            replayScrubber.addEventListener("change", seekReplay);
+            replayScrubber.addEventListener("pointerdown", function (event) {
+                seekReplayAt(event.clientX);
+                replayScrubber.setPointerCapture(event.pointerId);
+            });
+            replayScrubber.addEventListener("pointermove", function (event) {
+                if (event.buttons !== 1) {
+                    return;
+                }
+                seekReplayAt(event.clientX);
+            });
+        }
+
+        var replayClear = el("replay-clear");
+        if (replayClear) {
+            replayClear.addEventListener("click", function () {
+                clearReplayFrames();
+                showToast("回放记录已清空");
+            });
         }
 
         var clear = el("clear-events");

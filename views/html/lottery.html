@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>秒杀系统实验室</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260623-cacheaside" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260707-replay" />
     <script src="/js/lucky-canvas.js"></script>
 </head>
 
@@ -68,6 +68,7 @@
                 <span class="soft-label">wrk2 固定 QPS</span>
             </div>
             <div class="stress-buttons">
+                <button class="stress-btn" type="button" data-rate="50" data-connections="32" data-duration="20s">50 QPS 校准</button>
                 <button class="stress-btn" type="button" data-rate="150" data-connections="64" data-duration="20s">150 QPS 观察</button>
                 <button class="stress-btn" type="button" data-rate="300" data-connections="96" data-duration="25s">300 QPS 加压</button>
                 <button class="stress-btn" type="button" data-rate="600" data-connections="160" data-duration="25s">600 QPS 逼近</button>
@@ -248,11 +249,24 @@
                     <strong id="ca-completed">0</strong>
                 </article>
             </div>
+
+            <div class="section-title-row replay-title-row">
+                <h3>压测回放</h3>
+                <span id="replay-status" class="soft-label">等待记录</span>
+            </div>
+            <div class="replay-controls">
+                <button id="replay-live" class="ghost-btn" type="button">实时</button>
+                <button id="replay-toggle" class="ghost-btn" type="button">播放</button>
+                <input id="replay-scrubber" class="replay-range" type="range" min="0" max="0" value="0" step="1" aria-label="压测回放进度" />
+                <span id="replay-time-label" class="soft-label">--:--:--</span>
+                <span id="replay-frame-label" class="soft-label">0 / 0</span>
+                <button id="replay-clear" class="ghost-btn" type="button">清空</button>
+            </div>
         </section>
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260623-cacheaside"></script>
+    <script src="/js/seckill-lab.js?v=20260707-replay"></script>
 </body>
 
 </html>

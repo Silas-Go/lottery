@@ -114,29 +114,35 @@
 >
 > 因为 1000 QPS 对旁路缓存太猛了，画面会一瞬间红灯，观众还没看清压力怎么传导，系统已经开始熔断了。
 >
-> 所以这里我用阶梯压测：先 150 QPS 看健康状态，再 300、600 一步步加压，最后再用 1000 QPS 把它打到极限。
+> 所以这里我用阶梯压测：先 50 QPS 做环境校准，再 150 QPS 看健康状态，后面 300、600 一步步加压，最后再用 1000 QPS 把它打到极限。
 >
 > 压测工具用的是 wrk2。它的好处是可以按固定 QPS 持续打流量——不是服务能跑多少算多少，而是你指定多少它就打多少。这样更适合观察系统在固定压力下是怎么退化的。
 >
-> 我先复制 150 QPS 这条指令，到终端运行。
+> 我先复制 50 QPS 这条指令，到终端运行。这个不是结论，只是确认 reset、SSE、wrk2 和 app 都在干净状态。
 
 **画面：** 命令高亮。
 
 ```
 docker compose --profile loadtest run --rm \
   -e TARGET_URL=http://app:5678/lucky/cacheaside \
-  -e RATE=150 -e DURATION=20s -e CONNECTIONS=64 wrk2
+  -e RATE=50 -e DURATION=20s -e CONNECTIONS=32 wrk2
 ```
 
 > 压测开始之后，回到页面。注意，我们现在压的是旁路缓存接口，所以别看上面那个预扣库存的面板，那是另一套方案的。我们看下面这个「实时 MySQL 压力」面板。
 
 **画面：** 聚焦旁路缓存指标面板。
 
-> 低压阶段先看三件事：QPS 有没有进来、缓存命中率有没有波动、MySQL 连接池有没有明显压力。
+> 校准通过后，再切到 150 QPS。低压阶段先看三件事：QPS 有没有进来、缓存命中率有没有波动、MySQL 连接池有没有明显压力。
 >
 > 这个阶段一般不会立刻崩，它的作用不是证明系统扛不住，而是给观众一个基线：旁路缓存在压力不大的时候是正常工作的。
 
 **画面：** 指向 QPS 和 TotalRequests。
+
+```
+docker compose --profile loadtest run --rm \
+  -e TARGET_URL=http://app:5678/lucky/cacheaside \
+  -e RATE=150 -e DURATION=20s -e CONNECTIONS=64 wrk2
+```
 
 > 接着我把压力提到 300 QPS。
 

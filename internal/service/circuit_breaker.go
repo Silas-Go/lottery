@@ -35,6 +35,8 @@ type CircuitBreaker struct {
 	consecutiveOverload int
 	// halfOpenProbes 是 Half-Open 状态下已放行的试探请求数。
 	halfOpenProbes int
+	// halfOpenSuccesses 是 Half-Open 状态下已通过的健康试探次数。
+	halfOpenSuccesses int
 
 	yellowLatencyMs int64         // DB RT 预警黄线，单位毫秒
 	redLatencyMs    int64         // DB RT 熔断红线，单位毫秒
@@ -42,20 +44,33 @@ type CircuitBreaker struct {
 	tripThreshold   int           // 连续过载达到该次数触发熔断
 	cooldown        time.Duration // Open 到 Half-Open 的冷却时间
 	halfOpenMax     int           // Half-Open 最多放行的试探请求数
+	halfOpenSuccess int           // Half-Open 连续健康多少次才恢复 Closed
 }
 
 // newCircuitBreaker 用环境变量（带演示友好的默认值）创建熔断器。
-// 默认阈值是针对本机演示 + DB 闸门容量 10 调过的，能在压测时较快压出红灯。
+// 默认阈值是针对本机演示 + DB 闸门容量 10 调过的：黄灯敏感，红灯克制，
+// 避免连接池瞬时吃紧就来回熔断，录制时能看清压力逐步传导。
 func newCircuitBreaker() *CircuitBreaker {
-	return &CircuitBreaker{
+	cb := &CircuitBreaker{
 		state:           stateClosed,
 		yellowLatencyMs: int64(util.EnvInt("LOTTERY_CB_YELLOW_LATENCY_MS", 30)),
-		redLatencyMs:    int64(util.EnvInt("LOTTERY_CB_RED_LATENCY_MS", 100)),
-		redPoolUsage:    util.EnvInt("LOTTERY_CB_RED_POOL_USAGE", 80),
-		tripThreshold:   util.EnvInt("LOTTERY_CB_TRIP_THRESHOLD", 5),
-		cooldown:        time.Duration(util.EnvInt("LOTTERY_CB_COOLDOWN_MS", 3000)) * time.Millisecond,
-		halfOpenMax:     util.EnvInt("LOTTERY_CB_HALFOPEN_MAX", 3),
+		redLatencyMs:    int64(util.EnvInt("LOTTERY_CB_RED_LATENCY_MS", 150)),
+		redPoolUsage:    util.EnvInt("LOTTERY_CB_RED_POOL_USAGE", 95),
+		tripThreshold:   util.EnvInt("LOTTERY_CB_TRIP_THRESHOLD", 12),
+		cooldown:        time.Duration(util.EnvInt("LOTTERY_CB_COOLDOWN_MS", 5000)) * time.Millisecond,
+		halfOpenMax:     util.EnvInt("LOTTERY_CB_HALFOPEN_MAX", 5),
+		halfOpenSuccess: util.EnvInt("LOTTERY_CB_HALFOPEN_SUCCESS", 3),
 	}
+	if cb.tripThreshold < 1 {
+		cb.tripThreshold = 1
+	}
+	if cb.halfOpenSuccess < 1 {
+		cb.halfOpenSuccess = 1
+	}
+	if cb.halfOpenMax < cb.halfOpenSuccess {
+		cb.halfOpenMax = cb.halfOpenSuccess
+	}
+	return cb
 }
 
 // Allow 判断当前请求是否放行。
@@ -72,6 +87,7 @@ func (cb *CircuitBreaker) Allow() bool {
 		// 冷却结束，进入 Half-Open 试探阶段。
 		cb.state = stateHalfOpen
 		cb.halfOpenProbes = 0
+		cb.halfOpenSuccesses = 0
 		metrics.SetCircuitState(metrics.CircuitYellow)
 		fallthrough
 	case stateHalfOpen:
@@ -91,7 +107,7 @@ func (cb *CircuitBreaker) Report(latencyMs int64, poolUsage int) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	overloaded := latencyMs >= cb.redLatencyMs || poolUsage >= cb.redPoolUsage
+	overloaded := cb.isOverloaded(latencyMs, poolUsage)
 
 	switch cb.state {
 	case stateHalfOpen:
@@ -99,10 +115,17 @@ func (cb *CircuitBreaker) Report(latencyMs int64, poolUsage int) {
 			cb.trip() // 试探仍过载，回到 Open 继续冷却
 			return
 		}
-		// 试探成功且压力正常，恢复 Closed。
-		cb.state = stateClosed
-		cb.consecutiveOverload = 0
-		metrics.SetCircuitState(metrics.CircuitGreen)
+		cb.halfOpenSuccesses++
+		if cb.halfOpenSuccesses >= cb.halfOpenSuccess {
+			// 多次试探都健康才恢复 Closed，避免红绿来回抖动。
+			cb.state = stateClosed
+			cb.consecutiveOverload = 0
+			cb.halfOpenProbes = 0
+			cb.halfOpenSuccesses = 0
+			metrics.SetCircuitState(metrics.CircuitGreen)
+			return
+		}
+		metrics.SetCircuitState(metrics.CircuitYellow)
 	case stateClosed:
 		if overloaded {
 			cb.consecutiveOverload++
@@ -122,11 +145,36 @@ func (cb *CircuitBreaker) Report(latencyMs int64, poolUsage int) {
 	}
 }
 
+func (cb *CircuitBreaker) isOverloaded(latencyMs int64, poolUsage int) bool {
+	// DB RT 到红线，说明请求已经在真实变慢，可以独立触发熔断。
+	if latencyMs >= cb.redLatencyMs {
+		return true
+	}
+	// 连接池瞬时占用高只说明“吃紧”，不等于“必须熔断”。
+	// 只有连接池接近打满且 DB RT 也越过黄线时，才认为压力已经传导到用户可感知延迟。
+	return poolUsage >= cb.redPoolUsage && latencyMs >= cb.yellowLatencyMs
+}
+
 func (cb *CircuitBreaker) trip() {
 	cb.state = stateOpen
 	cb.openedAt = time.Now()
 	cb.consecutiveOverload = 0
+	cb.halfOpenProbes = 0
+	cb.halfOpenSuccesses = 0
 	metrics.SetCircuitState(metrics.CircuitRed)
+}
+
+// Reset 把熔断器恢复到 Closed，供实验室真重置使用，避免上一轮 Open/Half-Open
+// 状态污染下一轮压测录制。
+func (cb *CircuitBreaker) Reset() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.state = stateClosed
+	cb.openedAt = time.Time{}
+	cb.consecutiveOverload = 0
+	cb.halfOpenProbes = 0
+	cb.halfOpenSuccesses = 0
+	metrics.SetCircuitState(metrics.CircuitGreen)
 }
 
 // State 返回当前熔断器状态的展示文本（green/yellow/red），主要用于测试和排查。

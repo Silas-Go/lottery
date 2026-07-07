@@ -12,11 +12,12 @@ import (
 // LabHandler 处理只用于本地演示/压测实验室的管理接口。
 // 这些接口会修改真实 MySQL/Redis 状态，不属于正式业务 API。
 type LabHandler struct {
-	store *database.Store
+	store        *database.Store
+	resetRuntime func()
 }
 
-func NewLabHandler(store *database.Store) *LabHandler {
-	return &LabHandler{store: store}
+func NewLabHandler(store *database.Store, resetRuntime func()) *LabHandler {
+	return &LabHandler{store: store, resetRuntime: resetRuntime}
 }
 
 // ResetLab 重置本地实验状态：订单、Redis 临时资格、两套库存和内存指标全部回到初始基线。
@@ -30,6 +31,9 @@ func (h *LabHandler) ResetLab(ctx *gin.Context) {
 	if err != nil {
 		writeAPIError(ctx, http.StatusInternalServerError, "LAB_RESET_METRICS_FAILED", "实验数据已重置，但指标基线刷新失败", err)
 		return
+	}
+	if h.resetRuntime != nil {
+		h.resetRuntime()
 	}
 	metrics.ResetAll(activityStock, redisStock)
 
