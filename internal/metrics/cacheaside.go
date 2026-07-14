@@ -29,7 +29,7 @@ type CacheAsideSnapshot struct {
 	// TotalRequests 是进入 Cache-Aside 链路的抽奖请求总数（含被熔断拒绝的）。
 	TotalRequests int64 `json:"totalRequests"`
 
-	// Completed 是成功扣减库存并写入正式订单的请求数。
+	// Completed 是成功扣减库存并建立 pending_payment 订单的请求数。
 	Completed int64 `json:"completed"`
 
 	// SoldOut 是因库存售罄而未中奖的请求数。
@@ -196,11 +196,11 @@ func RecordCacheAsideDBWrite() {
 	atomic.AddInt64(&defaultCacheMeter.dbWrites, 1)
 }
 
-// RecordCacheAsideCompleted 记录一次 Cache-Aside 成功中奖并落库。
+// RecordCacheAsideCompleted 记录一次 MySQL 模式成功建立 pending_payment 订单。
 func RecordCacheAsideCompleted(giftID int) {
 	n := atomic.AddInt64(&defaultCacheMeter.completed, 1)
 	if shouldEmit(n) {
-		defaultCacheMeter.addEvent("订单完成", fmt.Sprintf("第 %d 个 Cache-Aside 正式订单已落库，奖品 ID：%d。", n, giftID), "success")
+		defaultCacheMeter.addEvent("订单待支付", fmt.Sprintf("第 %d 个 MySQL 模式订单进入 pending_payment，奖品 ID：%d。", n, giftID), "success")
 	}
 }
 

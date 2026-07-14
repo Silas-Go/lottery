@@ -32,7 +32,13 @@ type Application struct {
 // 这里集中完成基础设施和路由装配，main.go 只负责启动，方便后续排查启动阶段失败点。
 func New() *Application {
 	store := initInfrastructure()
-	engine := initHTTP(store)
+	engine, orderService := initHTTP(store)
+	if mq.Enabled() {
+		// MQ 只负责消息传输；普通落单和超时取消都回调同一个 OrderService 状态机。
+		go mq.ReceiveOrders(orderService.CreateRedisPendingOrder, orderService.TimeoutCancel)
+	} else {
+		slog.Info("rocketmq disabled")
+	}
 	addr := util.EnvString("LOTTERY_HTTP_ADDR", "localhost:5678")
 	slog.Info("application initialized", "http_addr", addr)
 
@@ -122,13 +128,6 @@ func initInfrastructure() *database.Store {
 	database.SetCacheAsideGateCapacity(util.EnvInt("LOTTERY_CACHEASIDE_DB_CONCURRENCY", 10))
 
 	mq.InitRocketLog()
-	if mq.Enabled() {
-		// MQ consumer 必须后台运行，才能在用户未支付时消费延时补偿消息。
-		// 如果不启动这个 goroutine，Redis 预扣库存会一直等到 TTL 自然过期或无法回补。
-		go mq.ReceiveCancelOrder()
-	} else {
-		slog.Info("rocketmq disabled")
-	}
 
 	initInventoryMetrics(store)
 	slog.Info("application infrastructure initialized")
@@ -137,7 +136,7 @@ func initInfrastructure() *database.Store {
 
 // initHTTP 装配 HTTP 层依赖。
 // rateLimitQPS 是本进程秒杀入口限流值，QPS 表示每秒请求数；0 表示关闭限流。
-func initHTTP(store *database.Store) *gin.Engine {
+func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService) {
 	gin.DefaultWriter = io.Discard
 
 	rateLimitQPS := util.EnvInt("LOTTERY_RATE_LIMIT_QPS", 0)
@@ -148,11 +147,12 @@ func initHTTP(store *database.Store) *gin.Engine {
 	cacheAsideService := service.NewCacheAsideLotteryService(store)
 	slog.Info("http dependencies initialized", "rate_limit_qps", rateLimitQPS)
 
-	return router.New(router.Handlers{
+	engine := router.New(router.Handlers{
 		Gift:  handler.NewGiftHandler(lotteryService, cacheAsideService),
 		Order: handler.NewOrderHandler(orderService),
 		Lab:   handler.NewLabHandler(store, cacheAsideService.ResetCircuitBreaker),
 	})
+	return engine, orderService
 }
 
 // initInventoryMetrics 初始化 Redis 库存并建立指标基线。

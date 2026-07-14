@@ -36,18 +36,19 @@ func GetProducer() (rmq_client.Producer, error) {
 	}
 
 	endpoint := Endpoint()
-	topic := Topic()
-	slog.Info("rocketmq producer initializing", "endpoint", endpoint, "topic", topic)
+	cancelTopic := CancelTopic()
+	orderTopic := OrderTopic()
+	slog.Info("rocketmq producer initializing", "endpoint", endpoint, "cancel_topic", cancelTopic, "order_topic", orderTopic)
 	p, err := rmq_client.NewProducer(
 		&rmq_client.Config{
 			Endpoint:    endpoint,
 			Credentials: &credentials.SessionCredentials{},
 		},
 		rmq_client.WithClientFunc(newRocketClient),
-		rmq_client.WithTopics(topic),
+		rmq_client.WithTopics(cancelTopic, orderTopic),
 	)
 	if err != nil {
-		slog.Error("rocketmq producer create failed", "endpoint", endpoint, "topic", topic, "error", err)
+		slog.Error("rocketmq producer create failed", "endpoint", endpoint, "cancel_topic", cancelTopic, "order_topic", orderTopic, "error", err)
 		return nil, fmt.Errorf("create rocketmq producer: %w", err)
 	}
 
@@ -61,10 +62,10 @@ func GetProducer() (rmq_client.Producer, error) {
 		if err == nil {
 			break
 		}
-		slog.Error("rocketmq producer start failed", "endpoint", endpoint, "topic", topic, "error", err)
+		slog.Error("rocketmq producer start failed", "endpoint", endpoint, "cancel_topic", cancelTopic, "order_topic", orderTopic, "error", err)
 		return nil, fmt.Errorf("start rocketmq producer: %w", err)
 	case <-time.After(producerStartTimeout):
-		slog.Error("rocketmq producer start timeout", "endpoint", endpoint, "topic", topic, "timeout", producerStartTimeout)
+		slog.Error("rocketmq producer start timeout", "endpoint", endpoint, "cancel_topic", cancelTopic, "order_topic", orderTopic, "timeout", producerStartTimeout)
 		go func() {
 			if err := <-startErr; err == nil {
 				p.GracefulStop()
@@ -74,7 +75,7 @@ func GetProducer() (rmq_client.Producer, error) {
 	}
 
 	producer = p
-	slog.Info("rocketmq producer initialized", "endpoint", endpoint, "topic", topic)
+	slog.Info("rocketmq producer initialized", "endpoint", endpoint, "cancel_topic", cancelTopic, "order_topic", orderTopic)
 	return producer, nil
 }
 
@@ -82,16 +83,14 @@ func GetProducer() (rmq_client.Producer, error) {
 //
 // 参数语义:
 //
-//	order 消息体，只使用 UserId 和 GiftId。UserId 是用户 ID，GiftId 是奖品 ID。
+//	order 消息体包含用户、奖品、库存模式和支付截止时间。
 //	delay 延时秒数，表示用户支付窗口；超过该时间后消费者会检查是否需要释放库存。
 //
-// MQ 消息不是最终订单，只是库存补偿触发器；如果用户在延时时间内没有支付，
-// consumer 会通过 Redis Lua 释放临时资格。发送失败时上层必须立即回滚 Redis，
-// 否则用户会占住库存但系统没有任何超时补偿入口。
+// 延迟消息只触发状态检查，不直接代表取消成功；OrderService 会按 inventory_mode
+// 在 Redis 或 MySQL 上竞争 pending_payment -> cancelled，并保证库存只回补一次。
 func SendCancelOrder(order database.Order, delay int) error {
 	if !Enabled() {
-		slog.Info("rocketmq producer disabled, skip cancel order message", "uid", order.UserId, "gid", order.GiftId)
-		return nil
+		return fmt.Errorf("rocketmq disabled: timeout cancellation cannot be scheduled")
 	}
 
 	content, err := sonic.Marshal(order)
@@ -106,7 +105,7 @@ func SendCancelOrder(order database.Order, delay int) error {
 	}
 
 	msg := &rmq_client.Message{
-		Topic: Topic(),
+		Topic: CancelTopic(),
 		Body:  content,
 	}
 	// 延时消息是支付超时补偿的触发器。
@@ -117,12 +116,36 @@ func SendCancelOrder(order database.Order, delay int) error {
 	defer cancel()
 
 	if _, err := producer.Send(ctx, msg); err != nil {
-		slog.Error("send cancel order failed", "uid", order.UserId, "gid", order.GiftId, "topic", Topic(), "delay", delay, "error", err)
+		slog.Error("send cancel order failed", "uid", order.UserId, "gid", order.GiftId, "topic", CancelTopic(), "delay", delay, "error", err)
 		return fmt.Errorf("send cancel order to rocketmq: %w", err)
 	}
 
 	metrics.RecordMQEnqueued()
-	slog.Info("send cancel order success", "uid", order.UserId, "gid", order.GiftId, "topic", Topic(), "delay", delay)
+	slog.Info("send cancel order success", "uid", order.UserId, "gid", order.GiftId, "topic", CancelTopic(), "delay", delay)
+	return nil
+}
+
+// SendCreateOrder 发送普通订单创建消息。
+// 这是 Redis 模式真正承担异步削峰的消息：入口只完成 Redis stock_acquired，消费者按自身速率建立 MySQL pending_payment 账本。
+func SendCreateOrder(order database.Order) error {
+	if !Enabled() {
+		return fmt.Errorf("rocketmq disabled: async order cannot be created")
+	}
+	content, err := sonic.Marshal(order)
+	if err != nil {
+		return fmt.Errorf("marshal create order: %w", err)
+	}
+	producer, err := GetProducer()
+	if err != nil {
+		return err
+	}
+	msg := &rmq_client.Message{Topic: OrderTopic(), Body: content}
+	ctx, cancel := context.WithTimeout(context.Background(), producerSendTimeout)
+	defer cancel()
+	if _, err := producer.Send(ctx, msg); err != nil {
+		return fmt.Errorf("send create order to rocketmq: %w", err)
+	}
+	slog.Info("send async create order success", "uid", order.UserId, "gid", order.GiftId, "topic", OrderTopic())
 	return nil
 }
 

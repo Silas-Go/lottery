@@ -56,6 +56,7 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/lucky/cacheaside", handlers.Gift.LotteryCacheAside)
 	engine.POST("/giveup", handlers.Order.GiveUp)
 	engine.POST("/pay", handlers.Order.Pay)
+	engine.GET("/api/order/status", handlers.Order.Status)
 	engine.GET("/api/metrics/snapshot", handler.GetMetricsSnapshot)
 	engine.GET("/api/metrics/stream", handler.StreamMetrics)
 	engine.POST("/api/lab/reset", handlers.Lab.ResetLab)

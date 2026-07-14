@@ -7,12 +7,13 @@
 Go 秒杀/抽奖系统演示项目。核心链路：
 
 - Go Web 接收抽奖、支付、放弃支付请求
-- Redis 承接高并发库存和临时资格，**Redis Lua 保证"防重复、扣库存、写临时资格"的原子性**
-- RocketMQ 延时消息负责支付超时后的资格释放
-- MySQL 只写最终订单，不参与入口高并发扣库存
+- 两个模式共用 `stock_acquired -> pending_payment -> paid/cancelled` 生命周期
+- Redis 模式由 Lua 原子准入，RocketMQ 普通消息异步落单，延迟消息检查支付超时
+- MySQL 模式在同一事务内扣库存并建立 `pending_payment`
+- MySQL 是订单最终账本；Redis admission 是 Redis 模式的实时并发裁决状态
 - 前端通过 SSE 展示服务端真实指标
 
-默认结构：**Docker 跑依赖（MySQL/Redis/RocketMQ/wrk2），Go app 本机跑**。不要把 Go app 放回 `docker-compose.yml`。
+默认结构支持完整 Docker Compose；开发时也可只用 Docker 跑依赖、Go app 本机跑。
 
 ## 快速启动
 
@@ -23,7 +24,7 @@ Go 秒杀/抽奖系统演示项目。核心链路：
 .\scripts\stop-infra.ps1            # 停止依赖
 ```
 
-验证：`docker compose config --services` 默认不应该出现 `app` 服务。
+验证：`docker compose config --quiet`，完整启动时 `app` 依赖 MySQL、Redis 和 `rocketmq-init`。
 
 ## 代码分层
 
@@ -45,11 +46,13 @@ docs/                   # 设计和可靠性说明
 
 ## 核心链路
 
-**抽奖：** `GET /lucky` → handler → service.Draw → Redis 权重选品 → **Redis Lua TryAcquireLotteryAdmission** → MQ SendCancelOrder → 写 cookie 返回 giftID
+**Redis 抽奖：** `GET /lucky` → Redis Lua `stock_acquired` → `CREATE_ORDER` 普通消息 → MySQL `pending_payment`
 
-**支付：** `POST /pay` → handler → service.Pay → **Redis Lua ClaimLotteryAdmission** → MySQL CreateOrder → metrics
+**MySQL 抽奖：** `GET /lucky/cacheaside` → MySQL 事务扣库存并建立 `pending_payment`
 
-**放弃/超时：** `POST /giveup` 或 RocketMQ 延时消息 → **Redis Lua ReleaseLotteryAdmission** → 回补 Redis 库存
+**支付：** `POST /pay` → `pending_payment -> paid`；两个模式使用各自权威状态做条件迁移
+
+**放弃/超时：** `POST /giveup` 或 `CANCEL_ORDER` → 非终态 `-> cancelled` → 按库存模式回补一次
 
 **指标：** service/mq/handler 记录 metrics → `GET /api/metrics/snapshot` 快照 + `GET /api/metrics/stream` SSE 推送 → 前端实时展示
 
@@ -57,31 +60,31 @@ docs/                   # 设计和可靠性说明
 
 **关键文件：** `internal/database/admission.go`、`internal/service/lottery.go`、`internal/service/order.go`、`internal/mq/consumer.go`
 
-三个 Lua 脚本共同保证原子性，**绝不能退化为多条普通 Redis 命令**：
+四个 Lua 脚本共同保证原子性，**绝不能退化为多条普通 Redis 命令**：
 
 | 脚本 | 原子操作 | 返回 |
 |------|----------|------|
-| TryAcquire | 查重复→查库存→扣库存→写临时资格+TTL | OK / DUPLICATE / SOLD_OUT |
-| ClaimLottery | 校验 porder_{uid}==giftID → 删临时资格 | 匹配才删，再写 MySQL |
-| ReleaseLottery | 校验 porder_{uid}==giftID → 删临时资格 → 回补库存 | 匹配才回补，防止重复加回 |
+| TryAcquire | 查重复→查库存→扣库存→写 `stock_acquired` | OK / DUPLICATE / SOLD_OUT |
+| MarkPending | `stock_acquired -> pending_payment` | 首次推进 / 幂等 / 拒绝 |
+| ClaimLottery | `pending_payment -> paid` | paid 重试幂等，cancelled 不可复活 |
+| ReleaseLottery | 非终态→`cancelled`→回补库存 | cancelled 重试不重复回补 |
 
 **关键约束：**
 - Redis Lua 只保证 Redis 内部原子性，不保证 MQ 一定发送成功
-- TTL 过期只删 tempOrderKey，**不会自动回补库存**，库存回补依赖 MQ 或补偿任务
-- claim 和 release 竞争同一个 tempOrderKey，保证同一份资格只被消费一次
+- TTL 过期只清理 admission，**不会自动回补库存**；支付窗口内必须由取消路径完成回补
+- claim 和 release 竞争同一个 admission 状态，保证 paid/cancelled 只有一个终态获胜
 
 ## RocketMQ 注意事项
 
 - 不要移除 `rocket_client.go` 中对 client id / hostname 的兼容逻辑（曾因中文主机名导致 gRPC 报错）
-- 本地默认：endpoint `127.0.0.1:8081`，topic `CANCEL_ORDER`，consumer group `lottery`
-- MQ 入队成功只表示取消任务已登记，不表示订单最终成功
+- 本地默认：普通落单 `CREATE_ORDER`、延迟取消 `CANCEL_ORDER`、consumer group `lottery`
+- 普通消息负责异步削峰；延迟消息只负责超时检查
+- MQ 入队成功只表示请求已受理，不表示订单已经支付
 - MQ 入队失败时，调用方必须立即 release Redis 资格
 
 ## Docker 约束
 
-默认 compose 只包含：mysql / redis / rocketmq-namesrv / rocketmq-broker / rocketmq-init，wrk2 仅在 `--profile loadtest` 时启用。
-
-**不要**把 Go app 加回默认 compose，原因：本地开发每次改代码不应 rebuild 镜像；本机跑更适合调试；wrk2 通过 `host.docker.internal:5678` 打本机 Go app。
+默认 compose 包含 app / mysql / redis / rocketmq-namesrv / rocketmq-broker / rocketmq-init，wrk2 仅在 `--profile loadtest` 时启用。本机调试可用脚本只启动依赖，再运行 Go app。
 
 ## 错误处理
 
@@ -133,16 +136,15 @@ docs/                   # 设计和可靠性说明
 **绝对不要：**
 - 把复杂业务逻辑塞回 `main.go`
 - 绕过 Redis Lua 准入直接 `DECR` 库存
-- 让 MySQL 参与秒杀入口扣库存
+- 让 MySQL 参与 Redis 模式 `/lucky` 的入口扣库存
 - 把前端指标改成假数据模拟
-- 把默认 compose 改成启动 Go app 容器
 - 在 handler 中直接编排 Redis + MQ + MySQL 的完整链路
 
 ## 可靠性边界
 
-**已覆盖：** Redis Lua 原子准入、防重复、库存不足阻断、MQ 失败/放弃/超时回补库存、支付和超时释放互斥、服务端 metrics + SSE
+**已覆盖：** 统一订单状态机、Redis Lua 原子准入、MySQL 事务准入、普通 MQ 异步落单、延迟取消、支付/取消互斥、库存只回补一次、服务端 metrics + SSE
 
-**尚未生产级：** 多实例全局限流、Redis 准入成功但 MQ 发送前崩溃的 outbox 兜底、订单唯一索引和完整状态机、MQ 消费幂等表、Redis/MySQL/MQ 高可用
+**尚未生产级：** 多实例全局限流、Redis 准入成功但 MQ 发送前崩溃的可靠事件/outbox、外部支付流水与退款、Redis/MySQL 对账、Redis/MySQL/MQ 高可用
 
 ## Git 注意事项
 

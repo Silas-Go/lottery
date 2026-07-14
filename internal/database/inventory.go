@@ -19,9 +19,9 @@ const (
 	INVENTORY_IDS_KEY = "gift_ids"
 )
 
-// InitGiftInventory 从 MySQL 恢复 Redis 活动库存及奖品 ID 注册表。
-// Redis 不能简单恢复成 inventory.count 初始值，必须扣掉当前活动已完成订单；
-// 否则服务重启后会把已经卖出的库存重新放回奖池，压测时看起来不超卖，长期运行却会超发。
+// InitGiftInventory 从 MySQL 账本和 Redis stock_acquired 状态恢复活动库存及奖品 ID 注册表。
+// 恢复量必须扣掉 Redis 模式的 pending_payment/paid 订单，以及尚未异步落账的 stock_acquired；
+// cancelled 已经完成回补，MySQL 模式使用独立库存，二者都不能从 Redis 基线重复扣除。
 //
 // 该函数同时用 MySQL 奖品配置重建 INVENTORY_IDS_KEY（gift_ids SET），
 // 供后续 GetAllGiftInventoryWithError 用 SMEMBERS + MGET 批量读取库存，
@@ -35,10 +35,14 @@ func (s *Store) InitGiftInventory() error {
 	if err != nil {
 		return err
 	}
+	unpersistedAdmissionCounts, err := s.UnpersistedAdmissionCounts(DefaultActivityID)
+	if err != nil {
+		return err
+	}
 
 	ids := make([]any, 0, len(gifts))
 	for _, gift := range gifts {
-		sold := completedCounts[gift.Id]
+		sold := completedCounts[gift.Id] + unpersistedAdmissionCounts[gift.Id]
 		remaining := gift.Count - sold
 		if remaining < 0 {
 			slog.Error("completed orders exceed initial inventory", "activity_id", DefaultActivityID, "gift_id", gift.Id, "name", gift.Name, "initial", gift.Count, "sold", sold)
@@ -176,9 +180,8 @@ func ReduceInventory(GiftId int) error {
 	return nil
 }
 
-// IncreaseInventory 回补单个奖品的 Redis 库存。
-// GiftId 是 gift id，即奖品 ID；该函数不检查用户资格，只适合在支付 claim 已删除临时资格后做失败兜底。
-// 用户放弃和 MQ 超时释放仍应优先走 ReleaseLotteryAdmission，避免重复回补。
+// IncreaseInventory 仅保留给旧测试和人工修复使用。
+// 新订单状态机必须走 ReleaseLotteryAdmission，把 cancelled 状态和首次回补绑定；直接 INCR 无法防止重复回补。
 func IncreaseInventory(GiftId int) error {
 	key := INVENTORY_PREFIX + strconv.Itoa(GiftId)
 	if _, err := GiftRedis.Incr(key).Result(); err != nil {

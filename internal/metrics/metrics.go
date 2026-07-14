@@ -45,7 +45,7 @@ type Snapshot struct {
 	// TotalRequests 是 /lucky 抽奖请求总数。
 	TotalRequests int64 `json:"totalRequests"`
 
-	// QueueSuccess 是成功拿到临时资格并进入 MQ 超时补偿链路的请求数。
+	// QueueSuccess 是 Redis 准入成功并同时登记普通落单与超时检查消息的请求数。
 	QueueSuccess int64 `json:"queueSuccess"`
 
 	// RateLimited 是被本机令牌桶限流拦截的请求数。
@@ -57,7 +57,7 @@ type Snapshot struct {
 	// MQPending 是已经入队但尚未消费的 RocketMQ 延时取消消息数量估计值。
 	MQPending int64 `json:"mqPending"`
 
-	// CompletedOrders 是已经写入 MySQL 的正式订单数。
+	// CompletedOrders 是已经进入 paid 终态的订单数。
 	CompletedOrders int64 `json:"completedOrders"`
 
 	// AvgLatency 是平均请求耗时，单位毫秒。
@@ -191,8 +191,7 @@ func RecordInventoryRollback(giftID int, reason string) {
 	defaultMeter.addEvent("库存回滚", fmt.Sprintf("奖品 %d 库存已补回，原因：%s。", giftID, reason), "warning")
 }
 
-// RecordQueueSuccess 记录用户成功获得临时资格并进入后续补偿链路。
-// queue 在这里不是普通队列，而是“已经发送 RocketMQ 延时取消消息”的业务状态。
+// RecordQueueSuccess 记录 stock_acquired 已进入普通 MQ 异步落单链路。
 func RecordQueueSuccess(giftID int) {
 	n := atomic.AddInt64(&defaultMeter.queueSuccess, 1)
 	if shouldEmit(n) {
@@ -246,12 +245,11 @@ func RecordMQConsumed(timeoutRollback bool) {
 	}
 }
 
-// RecordOrderCompleted 记录 MySQL 正式订单创建成功。
-// completed 在这里表示“最终订单已落库”，这是比 Redis 临时资格更强的业务结果。
+// RecordOrderCompleted 记录订单成功进入 paid 终态。
 func RecordOrderCompleted(giftID int) {
 	n := atomic.AddInt64(&defaultMeter.completedOrders, 1)
 	if shouldEmit(n) {
-		defaultMeter.addEvent("订单完成", fmt.Sprintf("第 %d 个正式订单已写入 MySQL，奖品 ID：%d。", n, giftID), "success")
+		defaultMeter.addEvent("支付完成", fmt.Sprintf("第 %d 个订单进入 paid，奖品 ID：%d。", n, giftID), "success")
 	}
 }
 

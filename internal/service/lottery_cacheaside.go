@@ -6,15 +6,14 @@ import (
 	"log/slog"
 	"silas/internal/database"
 	"silas/internal/metrics"
+	"silas/internal/mq"
 	"silas/internal/util"
+	"time"
 )
 
-// CacheAsideLotteryService 用旁路缓存（Cache-Aside）模式编排抽奖主链路。
-//
-// 它和预扣模式的 LotteryService 是"同场景对决"的两条实现：
-//   - 预扣模式：Redis 是库存权威源，Lua 原子扣减，MQ 补偿，MySQL 异步落库——快。
-//   - Cache-Aside：MySQL.cache_stock 是权威源，Redis 只做读缓存；扣减走 MySQL 行锁
-//     原子操作（绝不超卖），抽中后直接写正式订单——强一致、慢，DB 是瓶颈。
+// CacheAsideLotteryService 是历史命名，当前业务定位是“MySQL 权威库存同步准入”。
+// Redis 聚合缓存只帮助选择候选奖品，不参与正确性；真正准入由 MySQL 事务完成库存扣减和
+// pending_payment 订单创建，随后与 Redis 模式共用 paid/cancelled 生命周期。
 //
 // 入口不做令牌桶限流，而是接入压力感知熔断器：正常放行，DB 过载时 fail-fast 降级，
 // 这样压测才能真实压出红灯，并演示系统在压力下的自我保护与自动恢复。
@@ -49,8 +48,8 @@ func (s *CacheAsideLotteryService) ResetCircuitBreaker() {
 //  2. 查 MySQL 正式订单防止重复参与
 //  3. Cache-Aside 读全部奖品库存（缓存命中直接用，未命中回源 MySQL 回填）
 //  4. 按库存权重选候选奖品
-//  5. MySQL 行锁原子扣减（WHERE cache_stock>0，绝不超卖）
-//  6. 扣减成功后直接写 MySQL 正式订单（失败则回补库存）
+//  5. MySQL 事务原子完成条件扣减和 pending_payment 订单创建
+//  6. 发送统一的支付超时取消消息
 func (s *CacheAsideLotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 	metrics.RecordCacheAsideRequest()
 
@@ -100,13 +99,19 @@ func (s *CacheAsideLotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 		}
 		giftID := ids[index]
 
-		ok, deductStat, err := s.store.DeductGiftStockCacheAside(giftID)
+		expiresAt := time.Now().Add(time.Duration(PayDelaySeconds) * time.Second)
+		order, soldOut, duplicated, deductStat, err := s.store.AcquireMySQLStockAndCreatePendingOrder(
+			database.DefaultActivityID, uid, giftID, expiresAt,
+		)
 		s.reportPressure(deductStat)
 		if err != nil {
-			metrics.RecordSystemError("Cache-Aside 扣减库存失败", err)
-			return nil, NewAppError(CodeAdmissionFailed, "扣减库存失败，请稍后重试", err, "uid", uid, "gid", giftID, "try", try)
+			metrics.RecordSystemError("MySQL 库存准入和订单创建失败", err)
+			return nil, NewAppError(CodeAdmissionFailed, "创建待支付订单失败，请稍后重试", err, "uid", uid, "gid", giftID, "try", try)
 		}
-		if !ok {
+		if duplicated {
+			return nil, NewAppError(CodeDuplicateParticipation, "请勿重复参与秒杀", nil, "uid", uid, "gid", giftID, "activity_id", database.DefaultActivityID)
+		}
+		if soldOut {
 			// 该奖品已售罄（MySQL 行锁判定，不超卖），重试抽取其他奖品。
 			slog.Warn("cache-aside gift sold out, retrying", "uid", uid, "gid", giftID, "try", try)
 			continue
@@ -114,32 +119,30 @@ func (s *CacheAsideLotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 
 		gift, err := s.store.GetGiftWithError(giftID)
 		if err != nil {
-			s.restore(giftID, "gift lookup failed")
+			_, _, _ = s.store.CancelMySQLOrderAndRestoreStock(order.Id, "gift_lookup_failed")
 			metrics.RecordSystemError("Cache-Aside 查询奖品详情失败", err)
 			return nil, NewAppError(CodeGiftLookupFailed, "查询中奖奖品详情失败", err, "uid", uid, "gid", giftID, "try", try)
 		}
 
-		// Cache-Aside 是纯 DB 强一致路径：扣减成功后直接写正式订单，不走临时资格和 MQ 补偿。
-		_, duplicated, err := s.store.CreateOrder(database.DefaultActivityID, uid, giftID)
-		if err != nil {
-			s.restore(giftID, "order create failed")
-			metrics.RecordSystemError("Cache-Aside 创建订单失败", err)
-			return nil, NewAppError(CodeOrderCreateFailed, "抱歉，系统出错，请联系客服", err, "uid", uid, "gid", giftID)
-		}
-		if duplicated {
-			// 唯一索引兜底命中，回补本次已扣的库存。
-			s.restore(giftID, "duplicate order")
-			return nil, NewAppError(CodeDuplicateParticipation, "请勿重复参与秒杀", nil, "uid", uid, "gid", giftID, "activity_id", database.DefaultActivityID)
+		if err := mq.SendCancelOrder(*order, PayDelaySeconds); err != nil {
+			_, _, cancelErr := s.store.CancelMySQLOrderAndRestoreStock(order.Id, "timeout_message_send_failed")
+			if cancelErr != nil {
+				slog.Error("mysql order rollback after mq failure failed", "order_id", order.Id, "error", cancelErr)
+			}
+			metrics.RecordSystemError("发送订单超时取消消息失败", err)
+			return nil, NewAppError(CodeMQSendFailed, "创建超时任务失败，请稍后重试", err, "uid", uid, "gid", giftID, "order_id", order.Id)
 		}
 
 		metrics.RecordCacheAsideCompleted(giftID)
-		slog.Info("cache-aside request success", "uid", uid, "gid", giftID, "gift", gift.Name, "try", try)
+		slog.Info("mysql order entered pending_payment", "order_id", order.Id, "uid", uid, "gid", giftID, "gift", gift.Name, "try", try)
 		return &LotteryResult{
-			UID:      uid,
-			GiftID:   giftID,
-			GiftName: gift.Name,
-			Price:    gift.Price,
-			Delay:    PayDelaySeconds,
+			UID:           uid,
+			GiftID:        giftID,
+			GiftName:      gift.Name,
+			Price:         gift.Price,
+			Delay:         PayDelaySeconds,
+			Status:        database.OrderStatusPendingPayment,
+			InventoryMode: database.InventoryModeMySQL,
 		}, nil
 	}
 
@@ -168,14 +171,6 @@ func (s *CacheAsideLotteryService) reportPressure(stat database.CacheAsideStat) 
 		metrics.SetCacheAsidePool(stat.PoolInUse, stat.PoolCapacity)
 		s.breaker.Report(latency, poolUsagePercent(stat.PoolInUse, stat.PoolCapacity))
 	}
-}
-
-func (s *CacheAsideLotteryService) restore(giftID int, reason string) {
-	if err := s.store.RestoreGiftStockCacheAside(giftID); err != nil {
-		slog.Error("cache-aside restore stock failed", "gid", giftID, "reason", reason, "error", err)
-		return
-	}
-	slog.Info("cache-aside stock restored", "gid", giftID, "reason", reason)
 }
 
 func poolUsagePercent(inUse, capacity int) int {

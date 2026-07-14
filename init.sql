@@ -28,8 +28,17 @@ create table if not exists orders(
     gift_id int not null comment '商品id',
     user_id int not null comment '用户id',
     count int not null default 1 comment '购买数量',
+    status varchar(32) not null default 'pending_payment' comment '订单状态: pending_payment/paid/cancelled',
+    inventory_mode varchar(16) not null comment '库存模式: redis/mysql',
+    stock_released tinyint(1) not null default 0 comment '取消库存是否已回补',
+    expires_at datetime not null comment '支付截止时间',
+    paid_at datetime null comment '支付完成时间',
+    cancelled_at datetime null comment '取消时间',
+    cancel_reason varchar(64) not null default '' comment '取消原因',
     create_time datetime default current_timestamp comment '订单创建时间',
+    update_time datetime default current_timestamp on update current_timestamp comment '订单更新时间',
     primary key (id),
     key idx_user (user_id),
+    key idx_status_expires (status, expires_at),
     unique key uk_activity_user (activity_id, user_id)
 )default charset=utf8mb4;

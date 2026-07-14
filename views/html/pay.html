@@ -12,9 +12,9 @@
 
 <body class="pay-page">
     <main class="pay-card" aria-labelledby="pay-title">
-        <p class="eyebrow">Temporary Order</p>
-        <h1 id="pay-title">抢购资格已锁定</h1>
-        <p class="subtitle">系统已经完成 Redis 预扣库存，并发送 RocketMQ 延迟取消消息。请在资格有效期内完成支付。</p>
+        <p class="eyebrow">Unified Order Lifecycle</p>
+        <h1 id="pay-title">正在确认订单状态</h1>
+        <p id="state-description" class="subtitle">两个库存模式共用 stock_acquired → pending_payment → paid/cancelled 生命周期。</p>
 
         <section class="pay-gift" aria-label="中奖奖品">
             <div class="pay-field">
@@ -28,11 +28,11 @@
         </section>
 
         <div class="architecture-flow" aria-label="当前订单链路">
-            <div class="flow-node is-active">Redis 临时订单</div>
+            <div id="stock-node" class="flow-node is-active">库存已获取</div>
             <div class="flow-arrow">-></div>
-            <div class="flow-node is-active">RocketMQ 延迟取消</div>
+            <div id="pending-node" class="flow-node">等待支付</div>
             <div class="flow-arrow">-></div>
-            <div class="flow-node">MySQL 正式订单</div>
+            <div id="terminal-node" class="flow-node">支付 / 取消</div>
         </div>
 
         <div class="pay-actions">
@@ -48,6 +48,8 @@
             deleteCookie("gid");
             deleteCookie("name");
             deleteCookie("price");
+            deleteCookie("order_status");
+            deleteCookie("inventory_mode");
         }
 
         function currentOrder() {
@@ -55,7 +57,9 @@
                 uid: getCookie("uid"),
                 gid: getCookie("gid"),
                 name: getCookie("name"),
-                price: getCookie("price")
+                price: getCookie("price"),
+                status: getCookie("order_status"),
+                mode: getCookie("inventory_mode")
             };
         }
 
@@ -81,14 +85,72 @@
                 body: body
             });
             if (!response.ok) {
-                throw new Error(await response.text());
+                var raw = await response.text();
+                try {
+                    var parsed = JSON.parse(raw);
+                    throw new Error(parsed.message || raw);
+                } catch (error) {
+                    if (error instanceof SyntaxError) {
+                        throw new Error(raw);
+                    }
+                    throw error;
+                }
             }
+        }
+
+        function renderOrderState(status, mode) {
+            var payButton = document.getElementById("pay-now");
+            var giveUpButton = document.getElementById("give-up");
+            var title = document.getElementById("pay-title");
+            var description = document.getElementById("state-description");
+            document.getElementById("stock-node").classList.add("is-active");
+            document.getElementById("pending-node").classList.toggle("is-active", status !== "stock_acquired");
+            document.getElementById("terminal-node").classList.toggle("is-active", status === "paid" || status === "cancelled");
+
+            if (status === "stock_acquired") {
+                title.textContent = "库存已获取，订单正在异步创建";
+                description.textContent = "Redis 已完成准入，RocketMQ 正在削平写入峰值；正式账本建立后才能支付。";
+                payButton.disabled = true;
+                giveUpButton.disabled = false;
+                return;
+            }
+            if (status === "pending_payment") {
+                title.textContent = "订单待支付";
+                description.textContent = mode === "mysql"
+                    ? "MySQL 已原子完成库存扣减和待支付订单创建。"
+                    : "异步订单已经写入 MySQL 最终账本，请在有效期内支付。";
+                payButton.disabled = false;
+                giveUpButton.disabled = false;
+                return;
+            }
+            payButton.disabled = true;
+            giveUpButton.disabled = true;
+            title.textContent = status === "paid" ? "订单已支付" : "订单已取消";
+            description.textContent = status === "paid" ? "库存已经永久消耗。" : "库存已经且只会回补一次。";
+        }
+
+        async function refreshOrderState(order) {
+            var response = await fetch("/api/order/status?uid=" + encodeURIComponent(order.uid) + "&gid=" + encodeURIComponent(order.gid));
+            if (!response.ok) {
+                return order.status;
+            }
+            var state = await response.json();
+            renderOrderState(state.status, state.inventoryMode);
+            return state.status;
         }
 
         document.addEventListener("DOMContentLoaded", function () {
             var order = currentOrder();
             document.getElementById("gift-name").textContent = order.name || "未知奖品";
             document.getElementById("gift-price").textContent = order.price || "0";
+            renderOrderState(order.status || "stock_acquired", order.mode || "redis");
+            var poll = window.setInterval(async function () {
+                var status = await refreshOrderState(order);
+                if (status === "paid" || status === "cancelled") {
+                    window.clearInterval(poll);
+                }
+            }, 1000);
+            refreshOrderState(order);
 
             document.getElementById("give-up").addEventListener("click", async function () {
                 try {
@@ -104,11 +166,10 @@
                 try {
                     await postOrderAction("/pay");
                     clearOrderCookie();
-                    alert("支付成功，正式订单已创建。");
+                    alert("支付成功，订单已进入 paid 状态。");
                     window.location.replace("/");
                 } catch (error) {
                     showMessage(error.message);
-                    clearOrderCookie();
                 }
             });
         });

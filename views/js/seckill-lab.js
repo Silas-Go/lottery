@@ -20,15 +20,15 @@
     var MODES = {
         prededuct: {
             url: "/lucky",
-            label: "Redis 预扣 + MQ 补偿",
+            label: "Redis 准入 + MQ 异步落单",
             requestHint: "正在请求 /lucky，观察右侧系统链路。",
             requestEvent: ["Browser 发起请求", "GET /lucky，进入 Gin 预扣库存接口。"]
         },
         cacheaside: {
             url: "/lucky/cacheaside",
-            label: "MySQL 权威 + 旁路缓存",
+            label: "MySQL 权威同步准入",
             requestHint: "正在请求 /lucky/cacheaside，观察右侧 DB 压力与熔断状态。",
-            requestEvent: ["Browser 发起请求", "GET /lucky/cacheaside，进入 Cache-Aside 强一致接口。"]
+            requestEvent: ["Browser 发起请求", "GET /lucky/cacheaside，进入 MySQL 权威库存同步准入接口。"]
         }
     };
     var currentMode = "prededuct";
@@ -290,7 +290,7 @@
     function setMySQLPressureLabels(mode) {
         var cacheAside = mode === "cacheaside";
         setText("mysql-qps-label", "当前模式 QPS");
-        setText("mysql-total-label", cacheAside ? "Cache-Aside 总请求" : "预扣总请求");
+        setText("mysql-total-label", cacheAside ? "MySQL 同步总请求" : "Redis 准入总请求");
         setText("mysql-p95-label", "入口 P95 响应");
         setText("mysql-p99-label", "入口 P99 响应");
         setText("mysql-db-avg-label", cacheAside ? "DB 响应(含排队)" : "MySQL 平均响应");
@@ -299,7 +299,7 @@
         setText("mysql-cache-label", cacheAside ? "库存缓存命中率" : "Redis 库存角色");
         setText("mysql-db-ops-label", cacheAside ? "库存回源查询" : "MySQL 查询次数");
         setText("mysql-rejected-label", "熔断降级拒绝");
-        setText("mysql-success-label", cacheAside ? "完成订单 / 扣减写" : "成功进入队列");
+        setText("mysql-success-label", cacheAside ? "待支付订单 / 扣减写" : "成功进入异步队列");
     }
 
     function renderMySQLPressure(snapshot, mode) {
@@ -385,7 +385,7 @@
         setText("mode-label", MODES[mode].label);
         if (mode === "cacheaside") {
             setOperationMessage("已切换到旁路缓存模式：MySQL 行锁原子扣减、强一致不超卖，高并发时 DB 是瓶颈。");
-            pushEvent("切换库存模式", "旁路缓存（Cache-Aside）：慢但稳，过载时熔断降级。", "warning");
+            pushEvent("切换库存模式", "MySQL 同步准入：库存与待支付订单同事务，过载时熔断降级。", "warning");
         } else {
             setOperationMessage("已切换到预扣库存模式：Redis 原子扣减 + MQ 补偿，扛高并发写。");
             pushEvent("切换库存模式", "预扣库存：快，Redis 是权威源。", "success");
@@ -580,7 +580,7 @@
                     return;
                 }
                 showToast("恭喜中奖：" + prizeName);
-                pushEvent("等待支付", "临时订单已写入 Redis，RocketMQ 会在超时后触发取消。", "success");
+                pushEvent("统一订单状态", "库存已获取；订单进入 pending_payment 后可支付，超时则进入 cancelled。", "success");
                 window.setTimeout(function () {
                     window.location.replace("/result");
                 }, 900);
@@ -609,18 +609,18 @@
         state.simulationDone = state.totalRequests;
         recordLatency(latency);
         if (currentMode === "cacheaside") {
-            setBadge("simulation-status", "已落库", "is-ok");
-            setOperationMessage("MySQL 行锁原子扣减成功，正式订单已强一致落库（绝不超卖）。");
+            setBadge("simulation-status", "待支付", "is-ok");
+            setOperationMessage("MySQL 已原子完成库存扣减与 pending_payment 订单创建。");
             pushEvent("MySQL 扣减成功", "UPDATE cache_stock WHERE >0，行锁原子扣减，售罄时影响行数为 0。", "success");
-            pushEvent("正式订单落库", "Cache-Aside 走纯 DB 强一致路径，无需临时资格和 MQ 补偿。", "success");
+            pushEvent("订单待支付", "库存和待支付订单处于同一数据库事务，超时取消会回补库存。", "success");
         } else {
             state.queueSuccess += 1;
             state.redisStock = Math.max(0, state.redisStock - 1);
             state.mqPending += 1;
             setBadge("simulation-status", "已进入队列", "is-ok");
-            setOperationMessage("抢到资格，等待用户支付或 MQ 延迟取消。");
-            pushEvent("预扣库存成功", "Redis 库存扣减成功，临时订单已创建。", "success");
-            pushEvent("发送延迟消息", "RocketMQ 将在支付超时后检查并回滚库存。", "success");
+            setOperationMessage("Redis 已进入 stock_acquired，MQ 正在异步建立待支付订单。");
+            pushEvent("Redis 准入成功", "库存已扣减，业务状态进入 stock_acquired。", "success");
+            pushEvent("异步落单", "普通 MQ 削平 MySQL 写峰值；延迟消息只负责支付超时。", "success");
         }
         updateMetrics();
 

@@ -61,8 +61,13 @@ func statusForCode(code string) int {
 	case service.CodeRateLimited:
 		return http.StatusTooManyRequests
 	case service.CodeDuplicateParticipation,
-		service.CodeInventoryRetryExhaust:
+		service.CodeInventoryRetryExhaust,
+		service.CodeOrderCancelled,
+		service.CodeOrderAlreadyPaid,
+		service.CodeOrderStateConflict:
 		return http.StatusConflict
+	case service.CodeOrderProcessing:
+		return http.StatusTooEarly
 	case service.CodeOrderNotOwned:
 		return http.StatusForbidden
 	case service.CodeGiftDBReadFailed,

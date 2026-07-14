@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"gorm.io/gorm"
 )
 
 const (
@@ -253,15 +254,80 @@ func (s *Store) DeductGiftStockCacheAside(giftID int) (bool, CacheAsideStat, err
 	return true, stat, nil
 }
 
-// RestoreGiftStockCacheAside 回补单个奖品的 Cache-Aside 库存。
-// 仅用于"扣减成功但后续写正式订单失败"的兜底回滚，回补后同样删除聚合缓存。
-func (s *Store) RestoreGiftStockCacheAside(giftID int) error {
-	if err := s.db.Exec("UPDATE inventory SET cache_stock = cache_stock + 1 WHERE id = ?", giftID).Error; err != nil {
-		slog.Error("cache-aside restore stock failed", "gid", giftID, "error", err)
-		return fmt.Errorf("cache-aside restore stock gid %d: %w", giftID, err)
+var errCacheAsideDuplicateOrder = errors.New("cache-aside duplicate order")
+
+// AcquireMySQLStockAndCreatePendingOrder 是 MySQL 模式从“库存获取”进入 pending_payment 的原子边界。
+// 库存条件扣减和待支付订单必须在同一事务中：任一步失败都会整体回滚，避免扣了库存却没有订单。
+// soldOut 表示库存竞争失败；duplicated 表示用户已经参与过，二者都不会消耗本次库存。
+func (s *Store) AcquireMySQLStockAndCreatePendingOrder(activityID, userID, giftID int, expiresAt time.Time) (*Order, bool, bool, CacheAsideStat, error) {
+	stat := CacheAsideStat{HitDB: true, Operation: CacheAsideDBOperationWrite}
+	wait := cacheAsideGate.acquire()
+	defer cacheAsideGate.release()
+	stat.WaitMs = wait.Milliseconds()
+	stat.PoolInUse = cacheAsideGate.inUse()
+	stat.PoolCapacity = cacheAsideGate.capacity()
+
+	var order *Order
+	var soldOut bool
+	var duplicated bool
+	dbStart := time.Now()
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var existing Order
+		findErr := tx.Where("activity_id = ? AND user_id = ?", activityID, userID).First(&existing).Error
+		if findErr == nil {
+			duplicated = true
+			order = &existing
+			return nil
+		}
+		if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+			return findErr
+		}
+
+		stock := tx.Exec("UPDATE inventory SET cache_stock = cache_stock - 1 WHERE id = ? AND cache_stock > 0", giftID)
+		if stock.Error != nil {
+			return stock.Error
+		}
+		if stock.RowsAffected == 0 {
+			soldOut = true
+			return nil
+		}
+
+		created := &Order{
+			ActivityId:    activityID,
+			GiftId:        giftID,
+			UserId:        userID,
+			Count:         1,
+			Status:        OrderStatusPendingPayment,
+			InventoryMode: InventoryModeMySQL,
+			ExpiresAt:     expiresAt,
+		}
+		if createErr := tx.Create(created).Error; createErr != nil {
+			if isDuplicateKey(createErr) {
+				return errCacheAsideDuplicateOrder
+			}
+			return createErr
+		}
+		order = created
+		return nil
+	})
+	stat.DBMs = time.Since(dbStart).Milliseconds()
+
+	if errors.Is(err, errCacheAsideDuplicateOrder) {
+		duplicated = true
+		var findErr error
+		order, findErr = s.FindOrder(activityID, userID)
+		if findErr != nil {
+			return nil, false, true, stat, findErr
+		}
+		err = nil
 	}
-	if GiftRedis != nil {
-		GiftRedis.Del(CACHE_ALL_STOCK_KEY)
+	if err != nil {
+		return nil, false, false, stat, fmt.Errorf("acquire mysql stock and create pending order: %w", err)
 	}
-	return nil
+	if order != nil && !duplicated && GiftRedis != nil {
+		if deleteErr := GiftRedis.Del(CACHE_ALL_STOCK_KEY).Err(); deleteErr != nil {
+			slog.Warn("cache-aside delete stock cache after pending order failed", "gid", giftID, "error", deleteErr)
+		}
+	}
+	return order, soldOut, duplicated, stat, nil
 }

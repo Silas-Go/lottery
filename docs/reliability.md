@@ -1,345 +1,181 @@
-# 秒杀链路可靠性说明
+# 秒杀订单状态机与可靠性边界
 
-这份文档解释项目中每个关键链路靠什么保证可靠，以及为什么要这样设计。它的目标不是把项目包装成完整生产系统，而是把“高并发秒杀系统为什么这样拆链路”讲清楚。
+本文描述当前代码实际实现的可靠性语义。两个库存模式共享同一套订单生命周期，差别仅在库存准入和 `pending_payment` 建立方式。
 
-## 总体链路
-
-一次成功的秒杀请求会经过这条路径：
+## 统一状态机
 
 ```text
-Browser / wrk2
--> Gin /lucky
--> 本地 QPS 限流
--> Redis 读取活动库存并抽奖
--> Redis Lua 原子准入
--> RocketMQ 延时取消消息
--> 用户支付 / 主动放弃 / 超时取消
--> MySQL 最终订单
--> SSE 指标面板
+库存获取成功
+    -> stock_acquired
+    -> pending_payment
+    -> paid
+     \-> cancelled
 ```
 
-其中最核心的可靠性边界是：
+合法迁移：
 
 ```text
-Redis Lua 原子准入负责发放秒杀资格
-RocketMQ 负责超时补偿
-MySQL 只负责最终订单，不参与高并发扣库存
+stock_acquired  -> pending_payment
+stock_acquired  -> cancelled
+pending_payment -> paid
+pending_payment -> cancelled
 ```
 
-## 1. 入口限流
+`paid` 和 `cancelled` 是互斥终态。重复请求只做幂等读取，不构成新迁移；迟到消息不能把终态恢复成 `pending_payment`。
 
-代码位置：
+库存状态与订单状态必须满足：
+
+| 订单状态 | 库存语义 |
+|---|---|
+| `stock_acquired` | `HELD`，已经占用 |
+| `pending_payment` | `HELD`，等待支付 |
+| `paid` | `CONSUMED`，永久消耗 |
+| `cancelled` | `RELEASED`，只回补一次 |
+
+如果业务将来允许支付后取消，需要新增退款状态，不能复用 `cancelled`。
+
+## 模式 A：MySQL 权威库存同步准入
+
+入口：`GET /lucky/cacheaside`
 
 ```text
-internal/service/limiter.go
-internal/service/lottery.go
+请求
+-> MySQL 条件扣减 cache_stock
+-> 同一事务创建 pending_payment 订单
+-> 发送 CANCEL_ORDER 延迟检查
+-> 支付或取消
 ```
 
-当前限流是 Go 进程内令牌桶限流：
+关键边界：
+
+- 库存条件扣减和待支付订单创建处于同一个显式数据库事务。
+- 支付通过 `WHERE status = pending_payment` 条件更新竞争 `paid`。
+- 取消通过同一前置状态竞争 `cancelled`，并在同一事务回补 `cache_stock`。
+- 支付与取消只有一个操作能更新成功。
+- `cancelled` 重试不会再次回补库存。
+
+Redis 的 `gift_cache_all_stock` 在该模式中只是读快照，不参与库存正确性。真正防超卖的是 MySQL 条件更新。
+
+## 模式 B：Redis 准入、MQ 异步落单
+
+入口：`GET /lucky`
 
 ```text
-同一个 app 进程内，/lucky 按 N token/s 补充令牌
-请求拿到令牌才会继续进入 Redis / MQ 链路
+请求
+-> Redis Lua 原子扣库存并写 stock_acquired
+-> CANCEL_ORDER 延迟消息
+-> CREATE_ORDER 普通消息
+-> Consumer 创建 MySQL pending_payment 账本
+-> 支付或取消
 ```
 
-它保证的是：
+`CREATE_ORDER` 是普通消息，承担异步落单和削平 MySQL 写峰值；`CANCEL_ORDER` 是延迟消息，只承担支付超时检查。两种职责不能混淆。
+
+Redis admission value：
 
 ```text
-保护当前 Go 进程，不让所有请求都进入 Redis / MQ 链路
+porder_{uid} = {giftID}|{state}
 ```
 
-为什么需要它：
+例如：
 
 ```text
-限流不是防超卖核心，但它可以提前挡掉明显过载流量，降低 Redis、RocketMQ 和应用线程压力。
+porder_10001 = 3|stock_acquired
+porder_10001 = 3|pending_payment
+porder_10001 = 3|paid
+porder_10001 = 3|cancelled
 ```
 
-当前边界：
+关键边界：
+
+- 获取库存：Lua 原子执行防重、检查库存、扣减、写 `stock_acquired`。
+- 异步落单：Consumer 幂等创建 MySQL `pending_payment`，随后推进 Redis 状态。
+- 支付：Redis Lua 先裁决 `pending_payment -> paid`，再推进 MySQL 最终账本。
+- 取消：Redis Lua 裁决非终态 `-> cancelled` 并只增加一次库存，再写 MySQL 最终账本。
+- Redis 中保留 `paid/cancelled` 到 TTL，迟到的支付或取消可以识别终态，不能依赖“Key 不存在”猜测结果。
+- admission TTL 长于支付窗口；TTL 只清理残留，不能承担库存回补。
+
+## MQ 消费语义
+
+Consumer 同时订阅：
+
+- `CREATE_ORDER`：普通异步落单。
+- `CANCEL_ORDER`：延迟超时检查。
+
+处理原则：
+
+- 消息解析失败不 Ack。
+- 数据库、Redis 或状态机处理失败不 Ack，让 RocketMQ 重投。
+- 幂等处理成功后才 Ack。
+- 重复 `CREATE_ORDER` 返回原订单，不能重复扣库存或覆盖终态。
+- 重复 `CANCEL_ORDER` 看到 `cancelled` 时结束，不能重复回补。
+- `paid` 收到取消消息时是正常空操作。
+
+## 并发裁决
+
+### 同一用户重复创建
+
+- Redis 模式由 `porder_{uid}` 防重。
+- MySQL 模式由事务内检查和 `uk_activity_user(activity_id,user_id)` 兜底。
+- 唯一索引冲突时，事务整体回滚本次库存扣减。
+
+### 多用户竞争最后一件库存
+
+- Redis 模式由获取库存 Lua 串行裁决。
+- MySQL 模式由 `UPDATE ... WHERE cache_stock > 0` 裁决。
+- 只有成功者能进入订单状态机。
+
+### 支付与取消并发
+
+MySQL 模式：
 
 ```text
-它是单机内存限流，不是分布式限流。
-多 app 实例部署时，每个实例都会各自限流。
-桶容量默认等于 QPS，允许短时小突发，但持续流量会被压回配置速率。
+WHERE status = pending_payment
 ```
 
-生产中通常还会在网关层增加全局限流、IP 限流、用户限流和黑名单策略。
-
-## 2. Redis 作为秒杀主库存
-
-代码位置：
+Redis 模式：
 
 ```text
-internal/database/inventory.go
-internal/service/lottery.go
+porder state = pending_payment
 ```
 
-MySQL 中的 `inventory.count` 是活动初始化库存，启动时同步到 Redis：
+两种模式都只允许一个终态获胜。支付获胜则不回补；取消获胜则回补一次，后续支付拒绝。
+
+### 主动取消与超时取消并发
+
+两者使用同一个取消入口。第一次成功迁移负责回补，第二次读取 `cancelled` 并幂等结束。
+
+### 创建消息迟到
+
+如果订单已经 `cancelled`，迟到的 `CREATE_ORDER` 只能确认终态，不能执行 `cancelled -> pending_payment`。
+
+### Consumer 落库成功但 Ack 失败
+
+消息会重投。唯一索引和状态条件更新使第二次消费返回已有订单，不重复建立订单。
+
+## 启动恢复
+
+Redis 库存恢复基于：
 
 ```text
-inventory.count -> gift_count_{giftID}
+inventory.count
+- Redis 模式 pending_payment 数量
+- Redis 模式 paid 数量
+- 尚未写入 MySQL 的 stock_acquired 数量
 ```
 
-请求进入后，服务读取 Redis 当前库存，用库存权重抽出一个候选奖品。
+`cancelled` 已经回补，不再扣减；MySQL 模式使用独立 `cache_stock`，也不影响 Redis 可用库存。
 
-为什么不是直接扣 MySQL：
+## 当前仍然存在的分布式边界
 
-```text
-秒杀瞬时流量很高，MySQL 行锁和事务吞吐更容易成为瓶颈。
-Redis 更适合承接高频库存读写。
-MySQL 留给最终订单落库，避免被秒杀入口打穿。
-```
+本项目已经具备状态机和幂等消费，但不是完整生产级交易系统。仍需明确：
 
-需要注意：
+1. Redis 准入成功、发送第一条 MQ 消息前进程崩溃，仍需要可靠事件/outbox或定期扫描兜底。
+2. Redis 终态推进成功、MySQL 最终账本更新失败时依赖重试收敛，需增加对账告警。
+3. 当前支付是演示接口，没有接入外部支付平台；真实扣款回调还需要支付流水和退款状态。
+4. 本地限流是单进程令牌桶，多实例部署需要全局入口保护。
+5. 还需要监控普通落单积压、最长 `stock_acquired` 时长、Redis/MySQL 状态差异和死信数量。
 
-```text
-读取 Redis 库存并抽奖这一步只是“选候选奖品”，不是最终准入。
-最终是否拿到资格由 Redis Lua 原子准入决定。
-```
+当前定位是：
 
-## 3. Redis Lua 原子准入
-
-代码位置：
-
-```text
-internal/database/admission.go
-internal/service/lottery.go
-```
-
-这是当前项目最重要的可靠性升级点。
-
-原来链路是 Go 连续执行多条 Redis 命令：
-
-```text
-DECR 库存
-SET 临时订单
-```
-
-单个 `DECR` 是原子的，但“扣库存 + 写临时订单 + 防重复”这个业务动作不是原子的。
-
-现在改为 Redis Lua 脚本一次完成：
-
-```text
-1. 检查用户是否已经有临时订单 porder_{uid}
-2. 检查奖品库存 gift_count_{giftID} 是否大于 0
-3. 扣减库存
-4. 写入临时订单 porder_{uid} = giftID，并设置支付超时时间
-5. 返回 OK / DUPLICATE / SOLD_OUT
-```
-
-为什么 Lua 更可靠：
-
-```text
-Redis 执行 Lua 脚本时不会被其他 Redis 命令插队。
-所以检查、扣减、写临时订单是一个整体。
-```
-
-它保证的是：
-
-```text
-同一个用户不能重复抢占多个库存
-库存不足时不会发放资格
-扣库存和临时订单不会只成功一半
-```
-
-它解决的是“秒杀资格发放”的一致性，而不只是“库存数字不小于 0”。
-
-## 4. MQ 延时取消消息
-
-代码位置：
-
-```text
-internal/mq/producer.go
-internal/mq/consumer.go
-internal/service/lottery.go
-```
-
-Redis Lua 准入成功后，服务发送 RocketMQ 延时取消消息：
-
-```text
-用户拿到资格 -> 发一条延时取消消息 -> 到期后检查是否支付
-```
-
-为什么需要 MQ：
-
-```text
-用户抢到资格后不一定支付。
-如果不做超时补偿，库存会长期被临时订单占住。
-MQ 延时消息负责在支付超时后自动回收资格。
-```
-
-如果 MQ 发送失败：
-
-```text
-服务会调用 Redis Lua 释放脚本，删除临时订单并回补库存。
-```
-
-当前边界：
-
-```text
-如果进程在“Redis 准入成功后、MQ 发送前”直接崩溃，仍然可能留下没有取消消息的临时订单。
-生产中通常用本地消息表 / outbox / 事务消息进一步兜底。
-```
-
-## 5. 支付、放弃和超时释放
-
-代码位置：
-
-```text
-internal/service/order.go
-internal/mq/consumer.go
-internal/database/admission.go
-```
-
-项目有三种结束资格的方式：
-
-```text
-用户支付成功
-用户主动放弃
-MQ 超时取消
-```
-
-放弃和超时取消都走 Redis Lua 释放脚本：
-
-```text
-1. 检查 porder_{uid} 是否仍然等于 giftID
-2. 如果匹配，删除临时订单
-3. 回补库存 gift_count_{giftID}
-4. 如果不匹配，说明已经支付、过期或被其他流程处理，不重复回补
-```
-
-为什么要这样做：
-
-```text
-释放库存必须和删除临时订单绑定。
-否则可能出现重复回补、误删别人的临时订单、或者已支付订单又被超时回滚。
-```
-
-支付会先走 Redis Lua 认领脚本：
-
-```text
-1. 检查 porder_{uid} 是否仍然等于 giftID
-2. 如果匹配，删除临时订单
-3. 再创建 MySQL 正式订单
-```
-
-它保证的是：
-
-```text
-支付和超时取消不会同时成功处理同一个临时订单。
-```
-
-当前边界：
-
-```text
-支付认领 Redis 资格后，如果进程在写 MySQL 正式订单前崩溃，仍可能出现资格已删除但订单未落库。
-生产中需要订单状态机、唯一索引、事务消息或 outbox 来继续增强。
-```
-
-## 6. MySQL 最终订单
-
-代码位置：
-
-```text
-internal/database/order.go
-internal/service/order.go
-```
-
-MySQL 只在用户支付时写正式订单。
-
-为什么这样拆：
-
-```text
-秒杀入口只发资格，不直接写最终订单。
-高并发请求被 Redis 和 MQ 吸收。
-MySQL 只承接成功支付后的低频确定性写入。
-```
-
-当前项目已经具备的兜底：
-
-```text
-订单包含 activity_id
-user_id + activity_id 有唯一索引，防止同一用户在同一活动重复落库
-应用启动时会按 inventory.count - orders 聚合结果恢复 Redis 库存
-```
-
-仍建议继续增强：
-
-```text
-订单状态从 INIT / PAID / CANCELED 明确流转
-支付成功事件也走消息或 outbox，保证最终一致
-```
-
-## 7. 指标和可观测性
-
-代码位置：
-
-```text
-internal/metrics/metrics.go
-internal/handler/metrics.go
-views/js/seckill-lab.js
-```
-
-页面右侧通过 SSE 展示服务端真实指标：
-
-```text
-当前请求数
-成功进入队列
-被限流拦截
-库存不足失败
-MQ 待消费消息
-已完成订单
-P95 / P99 / QPS
-是否发生超卖
-```
-
-为什么重要：
-
-```text
-秒杀系统不是只要“能跑”。
-它需要在压测中证明：
-请求很多时，库存不会负数；
-成功数不会超过库存；
-失败原因可解释；
-MQ 积压和异步补偿可观察。
-```
-
-## 当前可靠性结论
-
-当前项目已经能证明：
-
-```text
-Redis 发放资格是原子的
-同一个用户不能重复占库存
-MySQL 通过 activity_id + user_id 唯一索引兜住重复落库
-服务重启时 Redis 库存会按已完成订单恢复
-库存不足不会继续发放资格
-MQ 失败、用户放弃、支付超时会回补库存
-支付和超时释放不会同时处理同一个临时订单
-指标面板展示的是服务端真实埋点
-```
-
-当前项目还没有完全覆盖：
-
-```text
-多实例全局限流
-进程崩溃后的 outbox 兜底
-完整订单状态机
-Redis 高可用和降级策略
-MQ 消息重复投递下的完整幂等表
-```
-
-所以它现在的定位是：
-
-```text
-一个能讲清楚秒杀核心链路的教学型并发系统。
-```
-
-下一步如果继续向生产级靠近，优先顺序建议是：
-
-```text
-1. 订单状态机
-2. Redis 准入成功后的 outbox 可靠消息
-3. 分布式限流和用户/IP 维度限流
-4. MQ 消费幂等表
-5. Redis / MySQL / MQ 高可用部署
-```
+> 用同一订单生命周期，演示 MySQL 同步交易路径与 Redis 准入、MQ 异步落单路径在吞吐、一致性和故障复杂度上的差异。

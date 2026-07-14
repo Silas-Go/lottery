@@ -3,6 +3,7 @@ package mq
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"silas/internal/database"
@@ -11,17 +12,15 @@ import (
 	"sync"
 	"time"
 
-	rmq_client "github.com/apache/rocketmq-clients/golang/v5" //注意：现在是v5
+	rmq_client "github.com/apache/rocketmq-clients/golang/v5"
 	"github.com/apache/rocketmq-clients/golang/v5/credentials"
 	"github.com/bytedance/sonic"
 )
 
 const (
-	// ./mqadmin.cmd updateTopic -n localhost:9876 -c DefaultCluster -t CANCEL_ORDER -a +message.type=DELAY
-	// ./mqadmin.cmd deleteTopic -n localhost:9876 -c DefaultCluster -t CANCEL_ORDER
-	// ./mqadmin.cmd updateSubGroup -n localhost:9876 -c DefaultCluster -g lottery
 	defaultEndpoint      = "localhost:8081"
-	defaultTopic         = "CANCEL_ORDER"
+	defaultCancelTopic   = "CANCEL_ORDER"
+	defaultOrderTopic    = "CREATE_ORDER"
 	defaultConsumerGroup = "lottery"
 )
 
@@ -30,34 +29,35 @@ var (
 	consumerMu     sync.Mutex
 )
 
-// Enabled 判断当前进程是否启用 RocketMQ。
-// 本地排查前端或 Redis 链路时可以关闭 MQ，避免外部依赖故障掩盖主流程问题。
+// CreateOrderHandler/TimeoutHandler 让 MQ 层只负责传输和 Ack，状态机仍由 service 层统一裁决。
+type CreateOrderHandler func(database.Order) error
+type TimeoutHandler func(database.Order) (bool, error)
+
 func Enabled() bool {
 	return util.EnvBool("LOTTERY_MQ_ENABLED", true)
 }
 
-// Endpoint 返回 RocketMQ proxy 的访问地址。
-// 统一从环境变量读取，是为了让本机、Docker 和面试演示环境可以复用同一套代码。
 func Endpoint() string {
 	return util.EnvString("LOTTERY_MQ_ENDPOINT", defaultEndpoint)
 }
 
-// Topic 返回支付超时补偿消息使用的 topic。
-// topic 是 MQ 主题名；本项目的 CANCEL_ORDER 表示“支付超时取消检查”消息。
-// 该 topic 必须支持延时消息，否则用户未支付时库存无法按时释放。
-func Topic() string {
-	return util.EnvString("LOTTERY_MQ_TOPIC", defaultTopic)
+// CancelTopic 是支付超时检查使用的延迟 Topic。
+func CancelTopic() string {
+	return util.EnvString("LOTTERY_MQ_CANCEL_TOPIC", util.EnvString("LOTTERY_MQ_TOPIC", defaultCancelTopic))
 }
 
-// ConsumerGroup 返回超时补偿消费者组。
-// consumer group 是 RocketMQ 的消费者组名；同一组内消息会被负载均衡消费。
-// 使用固定消费者组可以避免同一条补偿消息被多个逻辑消费者重复释放库存。
+// OrderTopic 是 Redis 准入后异步创建 MySQL pending_payment 订单的普通 Topic。
+func OrderTopic() string {
+	return util.EnvString("LOTTERY_MQ_ORDER_TOPIC", defaultOrderTopic)
+}
+
+// Topic 保留旧配置/调用兼容，等价于 CancelTopic。
+func Topic() string { return CancelTopic() }
+
 func ConsumerGroup() string {
 	return util.EnvString("LOTTERY_MQ_CONSUMER_GROUP", defaultConsumerGroup)
 }
 
-// InitRocketLog 初始化 RocketMQ 客户端自己的日志输出。
-// Go 应用日志和 RocketMQ SDK 日志分开保存，方便判断问题来自业务链路还是 MQ 客户端。
 func InitRocketLog() {
 	os.Setenv(rmq_client.CLIENT_LOG_ROOT, "./log")
 	os.Setenv(rmq_client.CLIENT_LOG_FILENAME, "rocket_lottery.log")
@@ -66,20 +66,20 @@ func InitRocketLog() {
 	slog.Info("rocketmq client log configured", "log_root", "./log", "log_file", "rocket_lottery.log")
 }
 
-// GetConsumer 获取全局 RocketMQ SimpleConsumer。
-// consumer 创建和启动成本较高，并且同一进程只需要一个补偿消费者，所以用锁保护单例初始化。
+// GetConsumer 创建同时订阅普通落单和延迟取消 Topic 的 SimpleConsumer。
 func GetConsumer() (rmq_client.SimpleConsumer, error) {
 	consumerMu.Lock()
 	defer consumerMu.Unlock()
-
 	if simpleConsumer != nil {
 		return simpleConsumer, nil
 	}
 
 	endpoint := Endpoint()
-	topic := Topic()
 	group := ConsumerGroup()
-	slog.Info("rocketmq consumer initializing", "endpoint", endpoint, "topic", topic, "group", group)
+	subscriptions := map[string]*rmq_client.FilterExpression{
+		OrderTopic():  rmq_client.SUB_ALL,
+		CancelTopic(): rmq_client.SUB_ALL,
+	}
 	consumer, err := rmq_client.NewSimpleConsumer(
 		&rmq_client.Config{
 			Endpoint:      endpoint,
@@ -88,38 +88,22 @@ func GetConsumer() (rmq_client.SimpleConsumer, error) {
 		},
 		rmq_client.WithClientFuncForSimpleConsumer(newRocketClient),
 		rmq_client.WithSimpleAwaitDuration(5*time.Second),
-		rmq_client.WithSimpleSubscriptionExpressions(map[string]*rmq_client.FilterExpression{
-			topic: rmq_client.SUB_ALL, //订阅主题下的所有Tag
-		}),
+		rmq_client.WithSimpleSubscriptionExpressions(subscriptions),
 	)
 	if err != nil {
-		slog.Error("rocketmq consumer create failed", "endpoint", endpoint, "topic", topic, "group", group, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("create rocketmq consumer: %w", err)
 	}
 	if err := consumer.Start(); err != nil {
-		slog.Error("rocketmq consumer start failed", "endpoint", endpoint, "topic", topic, "group", group, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("start rocketmq consumer: %w", err)
 	}
-
 	simpleConsumer = consumer
-	slog.Info("rocketmq consumer initialized", "endpoint", endpoint, "topic", topic, "group", group)
+	slog.Info("rocketmq consumer initialized", "endpoint", endpoint, "order_topic", OrderTopic(), "cancel_topic", CancelTopic(), "group", group)
 	return simpleConsumer, nil
 }
 
-// ReceiveCancelOrder 持续消费支付超时补偿消息。
-//
-// 补偿流程：
-//
-// 1. 拉取 RocketMQ 延时消息
-// 2. 从消息体解析出 UserId 和 GiftId，即用户 ID 和奖品 ID
-// 3. 通过 Redis Lua 释放仍未支付的临时资格
-// 4. 记录回补指标
-// 5. Ack 消息，避免同一补偿被重复投递
-//
-// Ack 是 acknowledgement 的缩写，表示消费者确认“这条消息已经处理完”。
-// 即使消息晚到也不能直接回补库存，必须先确认临时资格仍然存在；
-// 否则用户已经支付成功后，延时消息会把库存错误加回去。
-func ReceiveCancelOrder() {
+// ReceiveOrders 消费统一订单生命周期的两类消息。
+// 业务处理或消息解析失败时不 Ack，让 MQ 重投；只有幂等业务处理成功后才确认消息。
+func ReceiveOrders(createOrder CreateOrderHandler, timeout TimeoutHandler) {
 	if !Enabled() {
 		slog.Info("rocketmq consumer disabled")
 		return
@@ -128,57 +112,55 @@ func ReceiveCancelOrder() {
 	for {
 		consumer, err := GetConsumer()
 		if err != nil {
-			slog.Error("rocketmq consumer init failed, retrying", "endpoint", Endpoint(), "topic", Topic(), "error", err)
+			slog.Error("rocketmq consumer init failed, retrying", "endpoint", Endpoint(), "error", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		megs, err := consumer.Receive(ctx, 1, 10*time.Second)
+		messages, err := consumer.Receive(ctx, 1, 10*time.Second)
 		if err != nil {
-			var e *rmq_client.ErrRpcStatus
-			if errors.As(err, &e) {
-				if e.Code != 40401 { // 40401 表示本次长轮询没有新消息，不属于异常链路。
-					slog.Error("receive message failed", "code", e.Code, "error", e.Message)
-				}
+			var rpcErr *rmq_client.ErrRpcStatus
+			if !errors.As(err, &rpcErr) || rpcErr.Code != 40401 {
+				slog.Error("receive rocketmq message failed", "error", err)
 			}
 			continue
 		}
-		for _, mg := range megs {
-			var order database.Order
+		for _, message := range messages {
+			var command database.Order
+			if err := sonic.Unmarshal(message.GetBody(), &command); err != nil {
+				slog.Error("rocketmq order message parse failed; leave unacked", "message_id", message.GetMessageId(), "topic", message.GetTopic(), "error", err)
+				metrics.RecordSystemError("解析 RocketMQ 订单消息失败", err)
+				continue
+			}
+
 			timeoutRollback := false
-			err := sonic.Unmarshal(mg.GetBody(), &order)
-			if err == nil {
-				slog.Info("rocketmq cancel order message received", "uid", order.UserId, "gid", order.GiftId, "message_id", mg.GetMessageId())
-				// 超时补偿只释放仍属于该用户和奖品的临时资格。
-				// 如果支付已经认领资格，ReleaseLotteryAdmission 会返回 false，不会回补库存。
-				released, err := database.ReleaseLotteryAdmission(order.UserId, order.GiftId)
-				if err != nil {
-					slog.Error("rocketmq timeout release failed", "uid", order.UserId, "gid", order.GiftId, "message_id", mg.GetMessageId(), "error", err)
-					metrics.RecordSystemError("MQ 超时回滚库存失败", err)
-				} else if released {
-					metrics.RecordInventoryRollback(order.GiftId, "pay timeout")
-					timeoutRollback = true
-					slog.Info("rocketmq timeout released admission", "uid", order.UserId, "gid", order.GiftId, "message_id", mg.GetMessageId())
-				} else {
-					slog.Info("rocketmq timeout release skipped, admission already handled", "uid", order.UserId, "gid", order.GiftId, "message_id", mg.GetMessageId())
-				}
-			} else {
-				slog.Error("rocketmq cancel order message parse failed", "message_id", mg.GetMessageId(), "error", err)
-				metrics.RecordSystemError("解析 RocketMQ 消息失败", err)
+			switch message.GetTopic() {
+			case OrderTopic():
+				err = createOrder(command)
+			case CancelTopic():
+				timeoutRollback, err = timeout(command)
+			default:
+				err = fmt.Errorf("unsupported order topic %q", message.GetTopic())
 			}
-			if err := consumer.Ack(ctx, mg); err != nil {
-				slog.Error("rocketmq message ack failed", "message_id", mg.GetMessageId(), "error", err)
+			if err != nil {
+				slog.Error("rocketmq order handler failed; leave unacked", "message_id", message.GetMessageId(), "topic", message.GetTopic(), "uid", command.UserId, "gid", command.GiftId, "error", err)
+				metrics.RecordSystemError("RocketMQ 订单状态处理失败", err)
+				continue
+			}
+
+			if err := consumer.Ack(ctx, message); err != nil {
+				slog.Error("rocketmq message ack failed", "message_id", message.GetMessageId(), "topic", message.GetTopic(), "error", err)
 				metrics.RecordSystemError("RocketMQ Ack 失败", err)
-			} else {
-				slog.Info("rocketmq message ack success", "message_id", mg.GetMessageId(), "timeout_rollback", timeoutRollback)
+				continue
 			}
-			metrics.RecordMQConsumed(timeoutRollback)
+			if message.GetTopic() == CancelTopic() {
+				metrics.RecordMQConsumed(timeoutRollback)
+			}
+			slog.Info("rocketmq order message handled", "message_id", message.GetMessageId(), "topic", message.GetTopic(), "uid", command.UserId, "gid", command.GiftId, "timeout_rollback", timeoutRollback)
 		}
 	}
 }
 
-// StopConsumer 停止全局 RocketMQ consumer。
-// 关闭时主动停止 MQ 客户端，避免进程退出时留下未刷新的 SDK 状态和难以定位的连接日志。
 func StopConsumer() {
 	if simpleConsumer != nil {
 		simpleConsumer.GracefulStop()

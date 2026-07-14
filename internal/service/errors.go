@@ -16,6 +16,10 @@ const (
 	CodeInventoryRetryExhaust  = "INVENTORY_RETRY_EXHAUSTED"
 	CodeOrderNotOwned          = "ORDER_NOT_OWNED"
 	CodeOrderCreateFailed      = "ORDER_CREATE_FAILED"
+	CodeOrderProcessing        = "ORDER_PROCESSING"
+	CodeOrderCancelled         = "ORDER_CANCELLED"
+	CodeOrderAlreadyPaid       = "ORDER_ALREADY_PAID"
+	CodeOrderStateConflict     = "ORDER_STATE_CONFLICT"
 	CodeGiveUpRollbackFailed   = "GIVEUP_ROLLBACK_FAILED"
 	CodeCacheAsideOverload     = "CACHE_ASIDE_OVERLOAD"
 )

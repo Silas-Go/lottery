@@ -90,8 +90,8 @@
         <section class="panel system-panel" aria-labelledby="system-title">
             <div class="panel-header">
                 <div>
-                    <p class="eyebrow">Pre-Deduct Runtime</p>
-                    <h2 id="system-title">Redis 预扣链路运行面板</h2>
+                    <p class="eyebrow">Redis Admission Runtime</p>
+                    <h2 id="system-title">Redis 准入 + MQ 异步落单面板</h2>
                 </div>
                 <div class="panel-actions">
                     <button id="reset-lab" class="ghost-btn danger-btn" type="button">真重置</button>
@@ -109,7 +109,7 @@
                     <strong id="redis-stock">100</strong>
                 </article>
                 <article class="metric-card">
-                    <span>MySQL 正式订单库存</span>
+                    <span>MySQL 最终订单账本</span>
                     <strong id="db-stock">100 / 等待异步落库</strong>
                 </article>
                 <article class="metric-card">
@@ -117,7 +117,7 @@
                     <strong id="total-requests">0</strong>
                 </article>
                 <article class="metric-card success">
-                    <span>临时资格入队</span>
+                    <span>异步落单入队</span>
                     <strong id="queue-success">0</strong>
                 </article>
                 <article class="metric-card warning">
