@@ -1,272 +1,281 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="archive-story-document">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>秒杀系统实验室</title>
-    <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260707-replay" />
-    <script src="/js/lucky-canvas.js"></script>
+    <meta name="theme-color" content="#171714" />
+    <meta name="description" content="用一则可以亲手压测的故事，理解 Cache-Aside 为什么存在。" />
+    <title>第一章 · 那本不该被翻烂的《百职录》</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=3" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260716-story-progression-3" />
 </head>
 
-<body class="lab-page">
-    <header class="app-header">
-        <div>
-            <p class="eyebrow">Seckill Architecture Lab</p>
-            <h1>秒杀系统实验室</h1>
-            <p class="subtitle">同一订单生命周期，对比 MySQL 同步准入与 Redis + MQ 异步落单。</p>
-        </div>
-        <div class="status-strip" aria-label="系统状态">
-            <span class="status-pill is-live">活动进行中</span>
-            <span class="status-pill">统一订单状态机</span>
-            <span class="status-pill">MySQL 同步准入</span>
-            <span class="status-pill">Redis + MQ 异步落单</span>
+<body class="archive-page">
+    <div class="paper-grain" aria-hidden="true"></div>
+
+    <aside id="story-compass" class="story-compass" aria-label="故事进度">
+        <div class="compass-track" aria-hidden="true"><i id="compass-fill"></i></div>
+        <ol>
+            <li class="is-current" data-stage="prologue"><button type="button" data-story-target="prologue"><span>序</span><small>旧规矩</small></button></li>
+            <li class="is-locked" data-stage="the-ledger"><button type="button" data-story-target="the-ledger"><span>一</span><small>百职录</small></button></li>
+            <li class="is-locked" data-stage="the-crowd"><button type="button" data-story-target="the-crowd"><span>二</span><small>人群</small></button></li>
+            <li class="is-locked" data-stage="the-crystal"><button type="button" data-story-target="the-crystal"><span>三</span><small>水晶</small></button></li>
+            <li class="is-locked" data-stage="comparison"><button type="button" data-story-target="comparison"><span>四</span><small>答卷</small></button></li>
+            <li class="is-locked" data-stage="epilogue"><button type="button" data-story-target="epilogue"><span>终</span><small>余波</small></button></li>
+        </ol>
+    </aside>
+
+    <header class="archive-masthead">
+        <a class="brand-mark" href="#prologue" aria-label="回到本章开头">
+            <span class="brand-sigil">S</span>
+            <span><strong>SILAS</strong><small>ARCHITECTURE CHRONICLES</small></span>
+        </a>
+        <nav class="chapter-rail" aria-label="章节进度">
+            <a class="is-current" data-story-target="prologue" href="#prologue"><span>01</span>旧规矩</a>
+            <a class="is-locked" data-story-target="the-crowd" href="#the-crowd" aria-disabled="true"><span>02</span>来访者</a>
+            <a class="is-locked" data-story-target="the-crystal" href="#the-crystal" aria-disabled="true"><span>03</span>记忆水晶</a>
+            <a class="is-locked" data-story-target="epilogue" href="#epilogue" aria-disabled="true"><span>04</span>余波</a>
+        </nav>
+        <div class="scribe-tools">
+            <span id="connection-state" class="scribe-status"><i></i>正在寻找档案员</span>
+            <button id="reset-story-top" class="reset-story-top" type="button">重新讲述</button>
         </div>
     </header>
 
-    <main class="lab-shell">
-        <section class="panel operation-panel" aria-labelledby="operation-title">
-            <div class="panel-header">
-                <div>
-                    <p class="eyebrow">User Operation</p>
-                    <h2 id="operation-title">用户操作区</h2>
+    <main>
+        <section id="prologue" class="chapter-hero">
+            <div class="hero-copy">
+                <p class="chapter-kicker"><span>CHAPTER I</span> / CACHE-ASIDE</p>
+                <h1>那本不该被<br>翻烂的<br><em>《百职录》</em></h1>
+                <p class="hero-lead">很久以前，城中只有一条规矩：无论谁想知道一种职业，都必须请档案员走进长廊，从唯一的真本里翻出答案。</p>
+                <p class="hero-note">规矩足够诚实，也足够古老。它唯一没想过的，是同一个问题会在同一天被问上几千遍。</p>
+                <button id="open-ledger" class="ink-link" type="button">先翻开一页 <span>↓</span></button>
+            </div>
+            <div class="hero-book" aria-label="百职录封面">
+                <div id="book-cover" class="book-cover">
+                    <span class="book-corner corner-one"></span>
+                    <span class="book-corner corner-two"></span>
+                    <div class="book-spine"><i></i><i></i><i></i></div>
+                    <div class="book-title"><small>THE LEDGER OF</small><strong>百<br>职<br>录</strong><span>卷一</span></div>
+                    <div class="book-seal">真本</div>
+                    <div class="book-fracture" aria-hidden="true"></div>
                 </div>
-                <span id="api-status" class="badge">连接中</span>
+                <p id="book-whisper" class="book-whisper">书脊安静，纸页完整。此刻还没有人催促它。</p>
             </div>
-
-            <div class="activity-summary">
-                <div>
-                    <span class="summary-label">当前活动</span>
-                    <strong>限量奖品秒杀</strong>
-                </div>
-                <div>
-                    <span class="summary-label">当前方案</span>
-                    <strong id="mode-label">方案 A · MySQL 权威库存同步扣减</strong>
-                </div>
-            </div>
-
-            <div class="mode-switch" role="group" aria-label="架构方案切换">
-                <button id="mode-cacheaside" class="mode-btn is-active" type="button" data-mode="cacheaside">
-                    <strong>方案 A · MySQL 同步扣减</strong>
-                    <span>MySQL 权威库存 · 同事务创建待支付订单</span>
-                </button>
-                <button id="mode-prededuct" class="mode-btn" type="button" data-mode="prededuct">
-                    <strong>方案 B · Redis + MQ 异步落单</strong>
-                    <span>Redis 原子准入 · MQ 削峰 · MySQL 最终账本</span>
-                </button>
-            </div>
-
-            <div class="wheel-card">
-                <div id="my-lucky" class="wheel-mount" aria-label="抽奖转盘"></div>
-                <button id="single-lottery" class="primary-action" type="button">参与秒杀 / 抽奖</button>
-                <p id="operation-message" class="helper-text">点击后只发起一次真实请求，右侧会同步展示链路变化。</p>
-            </div>
-
-            <div class="section-title-row">
-                <h3>真实压测</h3>
-                <span class="soft-label">wrk2 固定 QPS</span>
-            </div>
-            <div class="stress-buttons">
-                <button class="stress-btn" type="button" data-rate="50" data-connections="32" data-duration="20s">50 QPS 校准</button>
-                <button class="stress-btn" type="button" data-rate="150" data-connections="64" data-duration="20s">150 QPS 观察</button>
-                <button class="stress-btn" type="button" data-rate="300" data-connections="96" data-duration="25s">300 QPS 加压</button>
-                <button class="stress-btn" type="button" data-rate="600" data-connections="160" data-duration="25s">600 QPS 逼近</button>
-                <button class="stress-btn" type="button" data-rate="1000" data-connections="256" data-duration="30s">1000 QPS 击穿</button>
-            </div>
-            <p class="helper-text">按钮只生成 wrk2 命令，不会在浏览器里伪造压测数据。右侧面板只展示服务端真实指标。</p>
-            <div class="command-row">
-                <code id="loadtest-command" class="command-box">docker compose --profile loadtest run --rm -e TARGET_URL=http://app:5678/lucky wrk2</code>
-                <button id="copy-loadtest-command" class="ghost-btn command-copy" type="button" title="复制压测命令">复制</button>
-            </div>
-
-            <div class="section-title-row">
-                <h3>奖品池</h3>
-                <span id="gift-count" class="soft-label">加载中</span>
-            </div>
-            <div id="gift-list" class="gift-grid" aria-live="polite"></div>
         </section>
 
-        <section class="panel system-panel" aria-labelledby="system-title">
-            <div class="panel-header">
+        <section id="the-ledger" class="ledger-scene story-section story-gate is-concealed" data-act-label="第一幕 · 真本">
+            <div class="section-heading">
+                <p class="chapter-kicker">THE FIRST RULE</p>
+                <h2>每一个问题，都去翻真本</h2>
+                <p>先选一种职业。此刻每次点击都会真实查询 MySQL——这就是故事最初那套简单、可靠，却毫无防备的规矩。</p>
+            </div>
+
+            <div class="ledger-layout">
                 <div>
-                    <p id="system-eyebrow" class="eyebrow">MySQL Synchronous Baseline</p>
-                    <h2 id="system-title">方案 A · MySQL 权威库存同步扣减</h2>
+                    <p class="folio-label">百职目录 · 现存四页</p>
+                    <div id="profession-tabs" class="profession-tabs" role="tablist" aria-label="选择职业">
+                        <span class="skeleton-tab"></span><span class="skeleton-tab"></span>
+                        <span class="skeleton-tab"></span><span class="skeleton-tab"></span>
+                    </div>
+                    <button id="read-again" class="quill-button" type="button">请档案员再翻一次</button>
                 </div>
-                <div class="panel-actions">
-                    <button id="reset-lab" class="ghost-btn danger-btn" type="button">真重置</button>
-                    <span id="simulation-status" class="badge">等待请求</span>
-                </div>
-            </div>
 
-            <div id="redis-runtime-metrics" class="metric-grid" aria-live="polite" hidden>
-                <article class="metric-card strong">
-                    <span>活动初始库存</span>
-                    <strong id="activity-stock">100</strong>
-                </article>
-                <article class="metric-card">
-                    <span>Redis 准入库存剩余</span>
-                    <strong id="redis-stock">100</strong>
-                </article>
-                <article class="metric-card">
-                    <span>MySQL 最终订单账本</span>
-                    <strong id="db-stock">100 / 等待异步落库</strong>
-                </article>
-                <article class="metric-card">
-                    <span>Redis 准入请求</span>
-                    <strong id="total-requests">0</strong>
-                </article>
-                <article class="metric-card success">
-                    <span>异步落单入队</span>
-                    <strong id="queue-success">0</strong>
-                </article>
-                <article class="metric-card warning">
-                    <span>入口限流拦截</span>
-                    <strong id="rate-limited">0</strong>
-                </article>
-                <article class="metric-card danger">
-                    <span>准入失败 / 库存不足</span>
-                    <strong id="stock-failed">0</strong>
-                </article>
-                <article class="metric-card">
-                    <span>MQ 延迟取消待消费</span>
-                    <strong id="mq-pending">0</strong>
-                </article>
-                <article class="metric-card success">
-                    <span>支付完成订单</span>
-                    <strong id="completed-orders">0</strong>
-                </article>
-                <article class="metric-card">
-                    <span>Redis 准入平均响应</span>
-                    <strong id="avg-latency">0ms</strong>
-                </article>
-                <article class="metric-card">
-                    <span>Redis 准入最大响应</span>
-                    <strong id="max-latency">0ms</strong>
-                </article>
-                <article class="metric-card success">
-                    <span>是否发生超卖</span>
-                    <strong id="oversold">否</strong>
+                <article id="archive-sheet" class="archive-sheet" aria-live="polite">
+                    <div class="sheet-number">FOLIO <span id="archive-number">—</span></div>
+                    <div id="archive-sigil" class="archive-sigil">录</div>
+                    <div class="sheet-copy">
+                        <p id="archive-code" class="archive-code">ARCHIVE LOADING</p>
+                        <h3 id="archive-name">档案员正在寻找这一页</h3>
+                        <h4 id="archive-title">请稍候</h4>
+                        <p id="archive-summary">长廊深处传来纸张轻响。</p>
+                        <blockquote id="archive-oath">“每一次读取，都应该能被看见。”</blockquote>
+                    </div>
+                    <div class="source-stamp">
+                        <span>本次回答来自</span>
+                        <strong id="detail-source">目录预览</strong>
+                    </div>
                 </article>
             </div>
 
-            <div id="redis-runtime-summary" class="simulation-board" hidden>
+            <ol id="read-trace" class="read-trace" aria-label="最近的真实读取记录"></ol>
+
+            <div class="story-passage">
+                <p id="ledger-passage-copy">先亲手翻开任意一页。故事只承认真正发生过的读取。</p>
+                <button id="enter-crowd" class="passage-button" type="button" disabled>
+                    <span>这页档案将成为城邦的告示</span>
+                    <strong>带着它，走向城门 →</strong>
+                </button>
+            </div>
+        </section>
+
+        <section id="the-crowd" class="crowd-scene story-section dark-section story-gate is-concealed" data-act-label="第二幕 · 人群">
+            <div class="scene-prose">
+                <p class="chapter-kicker light">THE DAY THE RULE BROKE</p>
+                <h2>然后，城邦宣布开放<br><em>“<span id="crowd-profession">观星者</span>”</em>的遴选。</h2>
+                <p>消息沿河而下。人们从码头、山谷和远方的城邦赶来。他们没有恶意，只是每个人都问了同一句话：</p>
+                <blockquote>“观星者，究竟是什么？”</blockquote>
+                <p>一个问题并不可怕。可当几千只手同时伸向同一本书，诚实的旧规矩开始发出断裂的声音。</p>
+            </div>
+
+            <div class="experiment-card old-rule-card">
+                <div class="experiment-topline">
+                    <div>
+                        <span class="experiment-index">实验 01</span>
+                        <h3>让人群依照旧规矩来访</h3>
+                    </div>
+                    <span class="path-badge mysql">MYSQL DIRECT</span>
+                </div>
+                <p class="experiment-copy">这不是网页动画。复制命令到项目终端，wrk2 会以固定速率反复读取同一页；右侧所有数字都来自服务端真实指标。</p>
+
+                <div class="pressure-picker" role="group" aria-label="选择来访强度">
+                    <button type="button" data-rate="100" data-connections="32">100 <small>人 / 秒</small></button>
+                    <button class="is-active" type="button" data-rate="300" data-connections="96">300 <small>人 / 秒</small></button>
+                    <button type="button" data-rate="600" data-connections="160">600 <small>人 / 秒</small></button>
+                </div>
+
+                <div class="terminal-window">
+                    <div class="terminal-bar"><i></i><i></i><i></i><span>lottery — zsh</span></div>
+                    <code id="direct-command"></code>
+                    <button id="copy-direct" class="terminal-copy" type="button">复制指令</button>
+                </div>
+
+                <div class="real-data-label"><i></i> LIVE DATA · 档案馆此刻的真实情况</div>
+                <div class="story-metrics direct-metrics">
+                    <article><span>赶来的访客<small>HTTP REQUESTS</small></span><strong id="direct-total">0</strong></article>
+                    <article><span>真本翻阅次数<small>MYSQL READS</small></span><strong id="direct-db-reads">0</strong></article>
+                    <article><span>每秒问询<small>CURRENT QPS</small></span><strong id="direct-qps">0</strong></article>
+                    <article><span>99% 回答不超过<small>P99 LATENCY</small></span><strong id="direct-p99">0 ms</strong></article>
+                    <article><span>档案馆差错<small>ERRORS</small></span><strong id="direct-errors">0</strong></article>
+                    <article><span>长廊最高占用<small>DB POOL PEAK</small></span><strong id="direct-pool">0 / 0</strong></article>
+                </div>
+
+                <div class="damage-meter">
+                    <div><span>真本磨损</span><strong id="damage-label">尚未开始</strong></div>
+                    <div class="damage-track"><i id="damage-fill"></i></div>
+                    <p id="damage-prose">终端中的第一位来访者抵达后，书页才会开始留下痕迹。</p>
+                </div>
+
+                <button id="awaken-crystal" class="reveal-button" type="button" disabled>
+                    <span>旧规矩已经留下证据</span>
+                    <strong>把记忆水晶带进档案馆 →</strong>
+                </button>
+            </div>
+        </section>
+
+        <section id="the-crystal" class="crystal-scene story-section story-gate is-dormant is-concealed" data-act-label="第三幕 · 水晶">
+            <div class="crystal-visual" aria-hidden="true">
+                <div class="crystal-halo halo-one"></div>
+                <div class="crystal-halo halo-two"></div>
+                <div class="memory-crystal"><span></span><i></i></div>
+                <p>REDIS</p>
+            </div>
+
+            <div class="crystal-copy">
+                <p class="chapter-kicker">A NEW KEEPER OF MEMORY</p>
+                <h2>水晶不是真本。<br>它只是<em>记住答案。</em></h2>
+                <p>档案员没有烧掉《百职录》，也没有把真相交给水晶。他只改了来访的次序：</p>
+                <ol class="cache-rules">
+                    <li><span>01</span><div><strong>先问水晶</strong><small>GET archive:profession:{id}</small></div></li>
+                    <li><span>02</span><div><strong>水晶忘了，才翻真本</strong><small>CACHE MISS → SELECT MYSQL</small></div></li>
+                    <li><span>03</span><div><strong>把答案留在水晶里</strong><small>SET + TTL <b id="ttl-seconds">300</b>s</small></div></li>
+                </ol>
+                <p class="crystal-truth">MySQL 仍是唯一真本。Redis 随时可以被清空；它的价值，不是替代真相，而是替真相挡住重复的追问。</p>
+            </div>
+
+            <div class="experiment-card crystal-rule-card">
+                <div class="experiment-topline">
+                    <div>
+                        <span class="experiment-index">实验 02</span>
+                        <h3>让同一群人重新来访</h3>
+                    </div>
+                    <span class="path-badge redis">REDIS CACHE-ASIDE</span>
+                </div>
+                <p class="experiment-copy">速率、时长、并发数、返回内容全部不变。唯一变化：请求会先经过记忆水晶。</p>
+
+                <div class="terminal-window crystal-terminal">
+                    <div class="terminal-bar"><i></i><i></i><i></i><span>lottery — zsh</span></div>
+                    <code id="cached-command"></code>
+                    <button id="copy-cached" class="terminal-copy" type="button">复制指令</button>
+                </div>
+
+                <div class="real-data-label"><i></i> LIVE DATA · 记忆水晶此刻的真实情况</div>
+                <div class="story-metrics cached-metrics">
+                    <article><span>赶来的访客<small>HTTP REQUESTS</small></span><strong id="cached-total">0</strong></article>
+                    <article><span>水晶回答次数<small>CACHE HITS</small></span><strong id="cached-hits">0</strong></article>
+                    <article><span>水晶遗忘次数<small>CACHE MISSES</small></span><strong id="cached-misses">0</strong></article>
+                    <article><span>真本翻阅次数<small>MYSQL READS</small></span><strong id="cached-db-reads">0</strong></article>
+                    <article><span>记忆命中率<small>HIT RATE</small></span><strong id="cached-hit-rate">0%</strong></article>
+                    <article><span>99% 回答不超过<small>P99 LATENCY</small></span><strong id="cached-p99">0 ms</strong></article>
+                </div>
+
+                <button id="reveal-comparison" class="reveal-button crystal-reveal-button" type="button" disabled>
+                    <span>至少让水晶回答 20 次，才足以形成答卷</span>
+                    <strong>让水晶交出答卷 →</strong>
+                </button>
+            </div>
+        </section>
+
+        <section id="comparison" class="comparison-scene story-section story-gate is-concealed" data-act-label="第四幕 · 答卷">
+            <div class="section-heading centered">
+                <p class="chapter-kicker">THE SAME CROWD, ONE DIFFERENT RULE</p>
+                <h2>不是两套业务。只是一次改道。</h2>
+                <p>同一页、同一批请求、同样的响应。下面只比较每一千次问询，需要真正翻阅多少次 MySQL。</p>
+            </div>
+
+            <div class="comparison-board">
+                <div class="comparison-head"><span>旧规矩 · MySQL 直读</span><span>唯一变量</span><span>新规矩 · Cache-Aside</span></div>
+                <div class="comparison-row hero-row">
+                    <strong id="direct-per-thousand">—</strong>
+                    <div><span>每千次请求</span><b>MYSQL READS</b></div>
+                    <strong id="cached-per-thousand">—</strong>
+                </div>
+                <div class="comparison-row">
+                    <span id="direct-compare-p99">—</span><div>尾延迟 P99</div><span id="cached-compare-p99">—</span>
+                </div>
+                <div class="comparison-row">
+                    <span>每次翻真本</span><div>读取路径</div><span>命中时只问水晶</span>
+                </div>
+                <div class="comparison-verdict">
+                    <span>真本翻阅减少</span>
+                    <strong id="read-reduction">等待两轮实验</strong>
+                    <p id="verdict-copy">完成旧规矩与记忆水晶的两轮来访后，这里才会给出结论。</p>
+                </div>
+            </div>
+
+            <button id="enter-epilogue" class="epilogue-button" type="button" disabled>
+                <span>让数字停在这里，让故事继续往前</span>
+                <strong>合上答卷，去看余波 →</strong>
+            </button>
+        </section>
+
+        <section id="epilogue" class="epilogue-scene story-section story-gate is-concealed" data-act-label="终幕 · 余波">
+            <p class="chapter-kicker light">END OF CHAPTER I</p>
+            <div class="epilogue-grid">
                 <div>
-                    <span class="summary-label">Redis 已处理请求</span>
-                    <strong id="simulation-progress">0 / 0</strong>
+                    <h2>那天以后，《百职录》仍锁在长廊尽头。</h2>
+                    <p>只是绝大多数来访者，再也不必惊动它。</p>
+                    <p>档案员终于可以坐下喝完一杯还热着的茶。水晶替他回答那些重复的问题；而当答案改变，他仍会先改写真本，再让旧记忆失效。</p>
                 </div>
-                <div>
-                    <span class="summary-label">Redis 方案 QPS</span>
-                    <strong id="qps">0</strong>
-                </div>
-                <div>
-                    <span class="summary-label">Redis 方案 P95</span>
-                    <strong id="p95">0ms</strong>
-                </div>
-                <div>
-                    <span class="summary-label">Redis 方案 P99</span>
-                    <strong id="p99">0ms</strong>
-                </div>
+                <blockquote>缓存适合回答“它是什么”。<br>却不能裁决——<em>最后一个名额，究竟属于谁。</em></blockquote>
             </div>
-
-            <div class="section-title-row">
-                <h3 id="flow-title">方案 A 请求链路</h3>
-                <span id="flow-caption" class="soft-label">MySQL 同事务扣库存并创建订单</span>
-            </div>
-            <div class="architecture-flow" aria-label="秒杀请求架构链路">
-                <div class="flow-node" data-step="browser">Browser</div>
-                <div class="flow-arrow">-></div>
-                <div class="flow-node" data-step="api">Gin API</div>
-                <div class="flow-arrow">-></div>
-                <div id="flow-stage-1" class="flow-node" data-step="stage1">MySQL 条件扣减</div>
-                <div class="flow-arrow">-></div>
-                <div id="flow-stage-2" class="flow-node" data-step="stage2">创建 pending_payment</div>
-                <div class="flow-arrow">-></div>
-                <div id="flow-stage-3" class="flow-node" data-step="stage3">提交事务</div>
-            </div>
-
-            <div class="section-title-row">
-                <h3>实时事件</h3>
-                <button id="clear-events" class="ghost-btn" type="button">清空</button>
-            </div>
-            <ol id="event-log" class="event-log" aria-live="polite"></ol>
-
-            <div class="section-title-row">
-                <h3>实时 MySQL 压力</h3>
-                <div class="circuit-indicator">
-                    <span id="circuit-lamp" class="circuit-lamp green" aria-hidden="true"></span>
-                    <span id="circuit-state" class="soft-label">MySQL 同步链路：正常</span>
-                </div>
-            </div>
-            <p id="mysql-pressure-help" class="helper-text" style="text-align:left">方案 A 的库存正确性只由 MySQL 条件 UPDATE 和订单事务保证；Cache-Aside 仅优化候选库存读取，不参与最终库存判定。</p>
-            <div id="cacheaside-panel" class="metric-grid cacheaside-grid">
-                <article class="metric-card">
-                    <span id="mysql-qps-label">当前方案 QPS</span>
-                    <strong id="ca-qps">0</strong>
-                </article>
-                <article class="metric-card">
-                    <span id="mysql-total-label">入口总请求</span>
-                    <strong id="ca-total">0</strong>
-                </article>
-                <article class="metric-card warning">
-                    <span id="mysql-p95-label">入口 P95 响应</span>
-                    <strong id="ca-p95">0ms</strong>
-                </article>
-                <article class="metric-card danger">
-                    <span id="mysql-p99-label">入口 P99 响应</span>
-                    <strong id="ca-p99">0ms</strong>
-                </article>
-                <article class="metric-card">
-                    <span id="mysql-db-avg-label">MySQL 平均响应</span>
-                    <strong id="ca-db-avg">0ms</strong>
-                </article>
-                <article class="metric-card">
-                    <span id="mysql-db-p95-label">MySQL P95 响应</span>
-                    <strong id="ca-db-p95">0ms</strong>
-                </article>
-                <article class="metric-card warning">
-                    <span id="mysql-db-p99-label">MySQL P99 响应</span>
-                    <strong id="ca-db-p99">0ms</strong>
-                </article>
-                <article class="metric-card">
-                    <span>连接池占用率</span>
-                    <strong id="ca-pool">0%</strong>
-                </article>
-                <article class="metric-card">
-                    <span id="mysql-cache-label">候选库存读缓存命中率</span>
-                    <strong id="ca-hit-rate">0%</strong>
-                </article>
-                <article class="metric-card warning">
-                    <span id="mysql-db-ops-label">MySQL 操作次数</span>
-                    <strong id="ca-miss">0</strong>
-                </article>
-                <article class="metric-card danger">
-                    <span id="mysql-rejected-label">熔断降级拒绝</span>
-                    <strong id="ca-rejected">0</strong>
-                </article>
-                <article class="metric-card success">
-                    <span id="mysql-success-label">业务成功数</span>
-                    <strong id="ca-completed">0</strong>
-                </article>
-            </div>
-
-            <div class="section-title-row replay-title-row">
-                <h3>压测回放</h3>
-                <span id="replay-status" class="soft-label">等待记录</span>
-            </div>
-            <div class="replay-controls">
-                <button id="replay-live" class="ghost-btn" type="button">实时</button>
-                <button id="replay-toggle" class="ghost-btn" type="button">播放</button>
-                <input id="replay-scrubber" class="replay-range" type="range" min="0" max="0" value="0" step="1" aria-label="压测回放进度" />
-                <span id="replay-time-label" class="soft-label">--:--:--</span>
-                <span id="replay-frame-label" class="soft-label">0 / 0</span>
-                <button id="replay-clear" class="ghost-btn" type="button">清空</button>
+            <div id="next-chapter" class="next-chapter is-locked">
+                <span>NEXT CHAPTER · LOCKED</span>
+                <strong>当一千只手同时伸向最后一枚星印</strong>
+                <p>下一章，故事将从“重复读取”进入“并发争夺”。</p>
             </div>
         </section>
     </main>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260715-architecture"></script>
+    <footer id="archive-footer" class="archive-footer story-gate is-concealed">
+        <span>第一章 · Cache-Aside Read Path</span>
+        <button id="reset-chapter" type="button">合拢书本，重新讲述</button>
+        <span>所有实验数字均来自当前服务端</span>
+    </footer>
+
+    <div id="story-toast" class="story-toast" role="status" aria-live="polite"></div>
+    <script src="/js/seckill-lab.js?v=20260716-story-progression-2"></script>
 </body>
 
 </html>

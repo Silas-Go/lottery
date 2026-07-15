@@ -124,6 +124,10 @@ func initInfrastructure() *database.Store {
 		slog.Error("ensure cache stock schema failed", "error", err)
 		panic(err)
 	}
+	if err := store.EnsureProfessionArchiveSchema(); err != nil {
+		slog.Error("ensure profession archive schema failed", "error", err)
+		panic(err)
+	}
 	// 限制 Cache-Aside 打到 MySQL 的并发上限（模拟受限连接池），调小才能在本机压出连接等待与红灯。
 	database.SetCacheAsideGateCapacity(util.EnvInt("LOTTERY_CACHEASIDE_DB_CONCURRENCY", 10))
 
@@ -145,12 +149,14 @@ func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService) {
 	})
 	orderService := service.NewOrderService(store)
 	cacheAsideService := service.NewCacheAsideLotteryService(store)
+	archiveService := service.NewArchiveService(store)
 	slog.Info("http dependencies initialized", "rate_limit_qps", rateLimitQPS)
 
 	engine := router.New(router.Handlers{
-		Gift:  handler.NewGiftHandler(lotteryService, cacheAsideService),
-		Order: handler.NewOrderHandler(orderService),
-		Lab:   handler.NewLabHandler(store, cacheAsideService.ResetCircuitBreaker),
+		Archive: handler.NewArchiveHandler(archiveService),
+		Gift:    handler.NewGiftHandler(lotteryService, cacheAsideService),
+		Order:   handler.NewOrderHandler(orderService),
+		Lab:     handler.NewLabHandler(store, cacheAsideService.ResetCircuitBreaker),
 	})
 	return engine, orderService
 }

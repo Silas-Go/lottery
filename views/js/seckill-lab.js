@@ -1,1026 +1,513 @@
 (function () {
-    var giftMap = new Map();
-    var gifts = [];
-    var wheel = null;
-    var spinning = false;
-    var toastTimer = null;
-    var metricsSource = null;
-    var liveMetrics = false;
-    var latestSnapshot = null;
-    var replayFrames = [];
-    var replayMode = false;
-    var replayPlaying = false;
-    var replayIndex = -1;
-    var replayTimer = null;
-    var lastReplayKey = "";
-    var maxReplayFrames = 240;
-
-    // 两种架构方案的前端配置：抽奖入口 URL、方案标签、流程图和请求文案。
-    // 切换模式只改变请求走向和文案，转盘交互和 SSE 指标刷新逻辑两种模式共用。
-    var MODES = {
-        prededuct: {
-            url: "/lucky",
-            label: "方案 B · Redis 准入 + MQ 异步落单",
-            eyebrow: "Redis Admission + Async Ordering",
-            panelTitle: "方案 B · Redis 准入 + MQ 异步落单",
-            flowTitle: "方案 B 请求链路",
-            flowCaption: "Redis 准入 / MQ 异步落单",
-            flowStages: ["Redis 准入", "RocketMQ", "MySQL 账本"],
-            requestHint: "正在请求方案 B，观察 Redis 准入、MQ 排队和 MySQL 异步落单。",
-            requestEvent: ["Browser 发起请求", "GET /lucky，进入 Redis 原子准入链路。"]
-        },
-        cacheaside: {
-            url: "/lucky/cacheaside",
-            label: "方案 A · MySQL 权威库存同步扣减",
-            eyebrow: "MySQL Synchronous Baseline",
-            panelTitle: "方案 A · MySQL 权威库存同步扣减",
-            flowTitle: "方案 A 请求链路",
-            flowCaption: "MySQL 同事务扣库存并创建订单",
-            flowStages: ["MySQL 条件扣减", "创建 pending_payment", "提交事务"],
-            requestHint: "正在请求方案 A，观察 MySQL 同步事务和数据库压力。",
-            requestEvent: ["Browser 发起请求", "GET /lucky/cacheaside，进入 MySQL 权威库存同步准入接口。"]
-        }
-    };
-    var currentMode = "cacheaside";
-    var selectedLoadtest = {
-        rate: null,
-        connections: null,
-        duration: null,
-        button: null
-    };
-
-    function modeConf() {
-        return MODES[currentMode];
-    }
+    "use strict";
 
     var state = {
-        baseStock: 100,
-        redisStock: 100,
-        dbStock: "100 / 等待异步落库",
-        totalRequests: 0,
-        queueSuccess: 0,
-        rateLimited: 0,
-        stockFailed: 0,
-        mqPending: 0,
-        completedOrders: 0,
-        avgLatency: 0,
-        maxLatency: 0,
-        oversold: "否",
-        simulationTotal: 0,
-        simulationDone: 0,
-        qps: 0,
-        p95: 0,
-        p99: 0,
-        latencySamples: []
+        archives: [],
+        selectedId: 3,
+        rate: 300,
+        connections: 96,
+        duration: "20s",
+        crystalAwake: false,
+        hasReadArchive: false,
+        unlocked: { prologue: true },
+        currentStage: "prologue",
+        stageObserver: null,
+        snapshot: null,
+        trace: [],
+        stream: null,
+        pollTimer: null
     };
 
-    function el(id) {
-        return document.getElementById(id);
+    function byId(id) { return document.getElementById(id); }
+    function number(value) { return Number(value || 0).toLocaleString("zh-CN"); }
+    function ms(value) { return number(value) + " ms"; }
+
+    var stageOrder = ["prologue", "the-ledger", "the-crowd", "the-crystal", "comparison", "epilogue"];
+
+    function stageUnlocked(id) {
+        return id === "prologue" || Boolean(state.unlocked[id]);
     }
 
-    function setText(id, value) {
-        var target = el(id);
-        if (target) {
-            target.textContent = value;
-        }
-    }
+    function setCurrentStage(id) {
+        if (!stageUnlocked(id)) { return; }
+        state.currentStage = id;
+        var index = Math.max(0, stageOrder.indexOf(id));
+        byId("compass-fill").style.height = (index * 100 / (stageOrder.length - 1)) + "%";
 
-    function formatNumber(value) {
-        return Number(value || 0).toLocaleString("zh-CN");
-    }
-
-    function formatElapsed(ms) {
-        if (!Number.isFinite(ms) || ms < 0) {
-            return "+0s";
-        }
-        return "+" + Math.round(ms / 1000) + "s";
-    }
-
-    function updateMetrics() {
-        setText("activity-stock", formatNumber(state.baseStock));
-        setText("redis-stock", formatNumber(state.redisStock));
-        setText("db-stock", state.dbStock);
-        setText("total-requests", formatNumber(state.totalRequests));
-        setText("queue-success", formatNumber(state.queueSuccess));
-        setText("rate-limited", formatNumber(state.rateLimited));
-        setText("stock-failed", formatNumber(state.stockFailed));
-        setText("mq-pending", formatNumber(state.mqPending));
-        setText("completed-orders", formatNumber(state.completedOrders));
-        setText("avg-latency", state.avgLatency + "ms");
-        setText("max-latency", state.maxLatency + "ms");
-        setText("oversold", state.oversold);
-        setText("simulation-progress", formatNumber(state.simulationDone) + " / " + formatNumber(state.simulationTotal));
-        setText("qps", formatNumber(state.qps));
-        setText("p95", state.p95 + "ms");
-        setText("p99", state.p99 + "ms");
-    }
-
-    function cloneSnapshot(snapshot) {
-        return JSON.parse(JSON.stringify(snapshot));
-    }
-
-    function snapshotActivityKey(snapshot, mode) {
-        if (mode === "cacheaside") {
-            var ca = snapshot.cacheAside || {};
-            return [
-                mode,
-                ca.totalRequests || 0,
-                ca.qps || 0,
-                ca.cacheHits || 0,
-                ca.cacheMisses || 0,
-                ca.dbReads || 0,
-                ca.dbWrites || 0,
-                ca.rejected || 0,
-                ca.completed || 0,
-                ca.circuitState || "green"
-            ].join("|");
-        }
-        var db = snapshot.preDeductMySQL || {};
-        return [
-            mode,
-            snapshot.totalRequests || 0,
-            snapshot.qps || 0,
-            snapshot.queueSuccess || 0,
-            snapshot.rateLimited || 0,
-            snapshot.stockFailed || 0,
-            snapshot.mqPending || 0,
-            db.totalRequests || 0
-        ].join("|");
-    }
-
-    function captureReplayFrame(snapshot, mode) {
-        if (!snapshot) {
-            return;
-        }
-        var frameMode = mode || currentMode;
-        var key = snapshotActivityKey(snapshot, frameMode);
-        if (key === lastReplayKey && replayFrames.length > 0) {
-            return;
-        }
-        lastReplayKey = key;
-        replayFrames.push({
-            mode: frameMode,
-            timeMs: Date.now(),
-            time: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
-            snapshot: cloneSnapshot(snapshot)
+        Array.prototype.forEach.call(document.querySelectorAll(".story-compass li"), function (item) {
+            item.classList.toggle("is-current", item.dataset.stage === id);
         });
-        if (replayFrames.length > maxReplayFrames) {
-            replayFrames.shift();
-        }
-        if (!replayMode) {
-            replayIndex = replayFrames.length - 1;
-        }
-        renderReplayControls();
+
+        var topStage = id === "the-crowd" ? "the-crowd" :
+            id === "the-crystal" || id === "comparison" ? "the-crystal" :
+            id === "epilogue" ? "epilogue" : "prologue";
+        Array.prototype.forEach.call(document.querySelectorAll(".chapter-rail a"), function (link) {
+            link.classList.toggle("is-current", link.dataset.storyTarget === topStage);
+        });
     }
 
-    function renderReplayControls() {
-        var total = replayFrames.length;
-        var index = replayIndex >= 0 ? Math.min(replayIndex, Math.max(0, total - 1)) : 0;
-        var frame = total > 0 ? replayFrames[index] : null;
-        var firstFrame = total > 0 ? replayFrames[0] : null;
-        var lastFrame = total > 0 ? replayFrames[total - 1] : null;
-        var spanText = total > 1 ? formatElapsed(lastFrame.timeMs - firstFrame.timeMs) : "+0s";
-        var scrubber = el("replay-scrubber");
-        if (scrubber) {
-            scrubber.max = String(Math.max(0, total - 1));
-            scrubber.value = String(total > 0 ? index : 0);
-            scrubber.disabled = total < 2;
-            var progress = total > 1 ? (index / (total - 1)) * 100 : 0;
-            scrubber.style.setProperty("--replay-progress", progress + "%");
-        }
-        setText("replay-frame-label", total > 0 ? (index + 1) + " / " + total : "0 / 0");
-        setText("replay-time-label", frame ? frame.time + " " + formatElapsed(frame.timeMs - firstFrame.timeMs) : "--:--:--");
-        setText("replay-toggle", replayPlaying ? "暂停" : "播放");
-        var status = "等待记录";
-        if (total > 0) {
-            status = replayMode ? ("回放 " + (index + 1) + "/" + total + " · " + spanText) : ("已记录 " + total + " 帧 · " + spanText);
-        }
-        setText("replay-status", status);
-    }
-
-    function stopReplayTimer() {
-        if (replayTimer) {
-            window.clearInterval(replayTimer);
-            replayTimer = null;
-        }
-        replayPlaying = false;
-        renderReplayControls();
-    }
-
-    function applyReplayFrame(index) {
-        if (replayFrames.length === 0) {
-            return;
-        }
-        replayMode = true;
-        replayIndex = Math.max(0, Math.min(index, replayFrames.length - 1));
-        var frame = replayFrames[replayIndex];
-        applyMetricsSnapshot(frame.snapshot, frame.mode, { replay: true, skipReplayCapture: true });
-        setBadge("simulation-status", "回放中", "is-warn");
-        renderReplayControls();
-    }
-
-    function toggleReplay() {
-        if (replayFrames.length === 0) {
-            showToast("还没有可回放的压测数据");
-            return;
-        }
-        if (replayPlaying) {
-            stopReplayTimer();
-            return;
-        }
-        replayMode = true;
-        if (replayIndex < 0 || replayIndex >= replayFrames.length - 1) {
-            replayIndex = 0;
-            applyReplayFrame(replayIndex);
-        }
-        replayPlaying = true;
-        replayTimer = window.setInterval(function () {
-            if (replayIndex >= replayFrames.length - 1) {
-                stopReplayTimer();
-                return;
+    function refreshProgressControls() {
+        Array.prototype.forEach.call(document.querySelectorAll("[data-story-target]"), function (control) {
+            var target = control.dataset.storyTarget;
+            var unlocked = stageUnlocked(target);
+            control.classList.toggle("is-locked", !unlocked);
+            if (control.tagName === "A") {
+                control.setAttribute("aria-disabled", unlocked ? "false" : "true");
             }
-            applyReplayFrame(replayIndex + 1);
-        }, 850);
-        renderReplayControls();
-    }
-
-    function exitReplayMode() {
-        stopReplayTimer();
-        replayMode = false;
-        if (latestSnapshot) {
-            applyMetricsSnapshot(latestSnapshot, currentMode, { skipReplayCapture: true });
-        }
-        setBadge("simulation-status", "实时指标中", "is-ok");
-        renderReplayControls();
-    }
-
-    function clearReplayFrames() {
-        stopReplayTimer();
-        replayMode = false;
-        replayFrames = [];
-        replayIndex = -1;
-        lastReplayKey = "";
-        renderReplayControls();
-    }
-
-    function applyMetricsSnapshot(snapshot, renderMode, options) {
-        if (!snapshot) {
-            return;
-        }
-        options = options || {};
-        if (!options.replay) {
-            latestSnapshot = snapshot;
-        }
-        liveMetrics = true;
-        state.baseStock = snapshot.activityStock || 0;
-        state.redisStock = snapshot.redisStock || 0;
-        state.dbStock = snapshot.dbStock || "0 / 未初始化";
-        state.totalRequests = snapshot.totalRequests || 0;
-        state.queueSuccess = snapshot.queueSuccess || 0;
-        state.rateLimited = snapshot.rateLimited || 0;
-        state.stockFailed = snapshot.stockFailed || 0;
-        state.mqPending = snapshot.mqPending || 0;
-        state.completedOrders = snapshot.completedOrders || 0;
-        state.avgLatency = snapshot.avgLatency || 0;
-        state.maxLatency = snapshot.maxLatency || 0;
-        state.oversold = snapshot.oversold ? "是" : "否";
-        state.simulationTotal = snapshot.simulationTotal || state.totalRequests;
-        state.simulationDone = snapshot.simulationDone || state.totalRequests;
-        state.qps = snapshot.qps || 0;
-        state.p95 = snapshot.p95 || 0;
-        state.p99 = snapshot.p99 || 0;
-        updateMetrics();
-        renderServerEvents(snapshot.events || []);
-        renderMySQLPressure(snapshot, renderMode || currentMode);
-        if (!options.skipReplayCapture) {
-            captureReplayFrame(snapshot, renderMode || currentMode);
-        }
-    }
-
-    function setMySQLPressureLabels(mode) {
-        var cacheAside = mode === "cacheaside";
-        setText("mysql-qps-label", "当前方案 QPS");
-        setText("mysql-total-label", cacheAside ? "MySQL 同步总请求" : "Redis 准入总请求");
-        setText("mysql-p95-label", "入口 P95 响应");
-        setText("mysql-p99-label", "入口 P99 响应");
-        setText("mysql-db-avg-label", cacheAside ? "DB 响应(含排队)" : "MySQL 平均响应");
-        setText("mysql-db-p95-label", "MySQL P95 响应");
-        setText("mysql-db-p99-label", "MySQL P99 响应");
-        setText("mysql-cache-label", cacheAside ? "候选库存读缓存命中率" : "库存权威源");
-        setText("mysql-db-ops-label", cacheAside ? "候选库存读回源" : "MySQL 查询次数");
-        setText("mysql-rejected-label", "熔断降级拒绝");
-        setText("mysql-success-label", cacheAside ? "待支付订单 / 扣减写" : "成功进入异步队列");
-    }
-
-    function renderMySQLPressure(snapshot, mode) {
-        if (!snapshot) {
-            return;
-        }
-        var renderMode = mode || currentMode;
-        setMySQLPressureLabels(renderMode);
-        if (renderMode === "cacheaside") {
-            renderCacheAsidePressure(snapshot.cacheAside || {});
-            return;
-        }
-        renderPreDeductPressure(snapshot);
-    }
-
-    function renderCacheAsidePressure(ca) {
-        setText("mysql-pressure-help", "方案 A 的库存正确性只由 MySQL 条件 UPDATE 和订单事务保证；这里的 Cache-Aside 仅优化候选库存读取，不参与最终库存判定。连接池过载时由熔断器快速拒绝。");
-        var cacheReads = (ca.cacheHits || 0) + (ca.cacheMisses || 0);
-        var dbWrites = ca.dbWrites == null ? ca.completed : ca.dbWrites;
-        setText("ca-qps", formatNumber(ca.qps));
-        setText("ca-total", formatNumber(ca.totalRequests));
-        setText("ca-p95", (ca.p95 || 0) + "ms");
-        setText("ca-p99", (ca.p99 || 0) + "ms");
-        setText("ca-db-avg", (ca.dbAvgLatency || 0) + "ms");
-        setText("ca-db-p95", (ca.dbP95Latency || 0) + "ms");
-        setText("ca-db-p99", (ca.dbP99Latency || 0) + "ms");
-        setText("ca-pool", (ca.poolUsage || 0) + "% (" + (ca.poolInUse || 0) + "/" + (ca.poolCapacity || 0) + ")");
-        setText("ca-hit-rate", (ca.cacheHitRate || 0) + "% (" + formatNumber(ca.cacheHits) + "/" + formatNumber(cacheReads) + ")");
-        setText("ca-miss", formatNumber(ca.dbReads == null ? ca.cacheMisses : ca.dbReads));
-        setText("ca-rejected", formatNumber(ca.rejected));
-        setText("ca-completed", formatNumber(ca.completed) + " / " + formatNumber(dbWrites));
-        updateCircuitLamp(ca.circuitState || "green", true);
-    }
-
-    function renderPreDeductPressure(snapshot) {
-        var db = snapshot.preDeductMySQL || {};
-        setText("mysql-pressure-help", "方案 B 中 Redis 负责库存准入；MySQL 只承担防重复读取、奖品详情读取和 MQ 消费后的订单账本写入。");
-        setText("ca-qps", formatNumber(snapshot.qps));
-        setText("ca-total", formatNumber(snapshot.totalRequests));
-        setText("ca-p95", (snapshot.p95 || 0) + "ms");
-        setText("ca-p99", (snapshot.p99 || 0) + "ms");
-        setText("ca-db-avg", (db.dbAvgLatency || 0) + "ms");
-        setText("ca-db-p95", (db.dbP95Latency || 0) + "ms");
-        setText("ca-db-p99", (db.dbP99Latency || 0) + "ms");
-        setText("ca-pool", (db.poolUsage || 0) + "% (" + (db.poolInUse || 0) + "/" + (db.poolCapacity || 0) + ")");
-        setText("ca-hit-rate", "权威源");
-        setText("ca-miss", formatNumber(db.totalRequests));
-        setText("ca-rejected", "0");
-        setText("ca-completed", formatNumber(snapshot.queueSuccess));
-        updateCircuitLamp("green", false);
-    }
-
-    // updateCircuitLamp 根据熔断状态切换信号灯颜色与面板高亮。
-    // green=正常放行，yellow=压力预警/Half-Open 试探，red=熔断降级（fail-fast 拒绝新请求）。
-    function updateCircuitLamp(stateText, breakerEnabled) {
-        var tone = breakerEnabled && stateText === "red" ? "red" : (breakerEnabled && stateText === "yellow" ? "yellow" : "green");
-        var lamp = el("circuit-lamp");
-        if (lamp) {
-            lamp.className = "circuit-lamp " + tone;
-        }
-        var label = el("circuit-state");
-        if (label) {
-            var textMap = breakerEnabled ?
-                { green: "熔断器：正常", yellow: "熔断器：预警", red: "熔断器：熔断降级中" } :
-                { green: "Redis 异步链路：正常" };
-            label.textContent = textMap[tone];
-        }
-        var panel = el("cacheaside-panel");
-        if (panel) {
-            panel.classList.toggle("is-overload", tone === "red");
-        }
-    }
-
-    function renderModeArchitecture(mode) {
-        var conf = MODES[mode];
-        if (!conf) {
-            return;
-        }
-        setText("system-eyebrow", conf.eyebrow);
-        setText("system-title", conf.panelTitle);
-        setText("flow-title", conf.flowTitle);
-        setText("flow-caption", conf.flowCaption);
-        setText("flow-stage-1", conf.flowStages[0]);
-        setText("flow-stage-2", conf.flowStages[1]);
-        setText("flow-stage-3", conf.flowStages[2]);
-        ["redis-runtime-metrics", "redis-runtime-summary"].forEach(function (id) {
-            var redisOnly = el(id);
-            if (redisOnly) {
-                redisOnly.hidden = mode === "cacheaside";
-            }
+            var compassItem = control.closest(".story-compass li");
+            if (compassItem) { compassItem.classList.toggle("is-locked", !unlocked); }
         });
     }
 
-    // setMode 切换架构方案。切换只影响后续抽奖请求走向和文案，不打断正在进行的转盘。
-    function setMode(mode) {
-        if (!MODES[mode] || mode === currentMode || spinning) {
-            return;
+    function unlockStage(id, shouldScroll) {
+        var section = byId(id);
+        if (!section) { return; }
+        var firstReveal = !stageUnlocked(id);
+        state.unlocked[id] = true;
+        section.classList.remove("is-concealed");
+        if (firstReveal) {
+            section.classList.add("is-revealing");
+            window.setTimeout(function () { section.classList.remove("is-revealing"); }, 1150);
         }
-        currentMode = mode;
-        document.querySelectorAll(".mode-btn").forEach(function (button) {
-            button.classList.toggle("is-active", button.dataset.mode === mode);
-        });
-        setText("mode-label", MODES[mode].label);
-        renderModeArchitecture(mode);
-        if (mode === "cacheaside") {
-            setOperationMessage("已切换到方案 A：MySQL 同步扣库存并在同一事务创建待支付订单，高并发瓶颈位于数据库。");
-            pushEvent("切换架构方案", "MySQL 同步准入：库存与待支付订单同事务，过载时熔断降级。", "warning");
-        } else {
-            setOperationMessage("已切换到方案 B：Redis 原子准入，MQ 削平订单写峰值，MySQL 保存最终账本。");
-            pushEvent("切换架构方案", "Redis 准入 + MQ 异步落单：Redis 是实时准入权威。", "success");
-        }
-        renderLoadtestCommand();
-        renderMySQLPressure(latestSnapshot, currentMode);
-    }
-
-    function setBadge(id, text, className) {
-        var badge = el(id);
-        if (!badge) {
-            return;
-        }
-        badge.textContent = text;
-        badge.className = "badge" + (className ? " " + className : "");
-    }
-
-    function setOperationMessage(text) {
-        setText("operation-message", text);
-    }
-
-    function appendEventItem(list, timeText, title, detail, tone) {
-        var item = document.createElement("li");
-        var time = document.createElement("span");
-        var content = document.createElement("div");
-        var strong = document.createElement("strong");
-        var span = document.createElement("span");
-
-        item.className = "event-item" + (tone ? " " + tone : "");
-        time.className = "event-time";
-        content.className = "event-content";
-        time.textContent = timeText;
-        strong.textContent = title;
-        span.textContent = detail;
-
-        content.appendChild(strong);
-        content.appendChild(span);
-        item.appendChild(time);
-        item.appendChild(content);
-        list.appendChild(item);
-    }
-
-    function pushEvent(title, detail, tone) {
-        var list = el("event-log");
-        if (!list) {
-            return;
-        }
-        var temp = document.createElement("ol");
-        appendEventItem(temp, new Date().toLocaleTimeString("zh-CN", { hour12: false }), title, detail, tone);
-        var item = temp.firstElementChild;
-        list.prepend(item);
-
-        while (list.children.length > 16) {
-            list.removeChild(list.lastElementChild);
-        }
-    }
-
-    function renderServerEvents(events) {
-        var list = el("event-log");
-        if (!list) {
-            return;
-        }
-        list.innerHTML = "";
-        events.forEach(function (event) {
-            appendEventItem(list, event.time || "--:--:--", event.title || "系统事件", event.detail || "", event.tone || "");
-        });
-    }
-
-    function showToast(text) {
-        var toast = el("toast");
-        if (!toast) {
-            return;
-        }
-        toast.textContent = text;
-        toast.classList.add("is-visible");
-        window.clearTimeout(toastTimer);
-        toastTimer = window.setTimeout(function () {
-            toast.classList.remove("is-visible");
-        }, 2200);
-    }
-
-    function pulseStep(step) {
-        var node = document.querySelector('[data-step="' + step + '"]');
-        if (!node) {
-            return;
-        }
-        node.classList.add("is-active");
-        window.setTimeout(function () {
-            node.classList.remove("is-active");
-        }, 1200);
-    }
-
-    function pulseRequestFlow() {
-        ["browser", "api", "stage1", "stage2", "stage3"].forEach(function (step, index) {
+        refreshProgressControls();
+        setCurrentStage(id);
+        if (shouldScroll !== false) {
             window.setTimeout(function () {
-                pulseStep(step);
-            }, index * 170);
+                section.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, firstReveal ? 180 : 0);
+        }
+    }
+
+    function lockProgression() {
+        state.unlocked = { prologue: true };
+        state.currentStage = "prologue";
+        state.crystalAwake = false;
+        state.hasReadArchive = false;
+        stageOrder.slice(1).forEach(function (id) {
+            var section = byId(id);
+            if (section) {
+                section.classList.add("is-concealed");
+                section.classList.remove("is-revealing");
+            }
+        });
+        byId("the-crystal").classList.add("is-dormant");
+        byId("archive-footer").classList.add("is-concealed");
+        byId("enter-crowd").disabled = true;
+        byId("ledger-passage-copy").textContent = "先亲手翻开任意一页。故事只承认真正发生过的读取。";
+        byId("read-again").textContent = "请档案员再翻一次";
+        refreshProgressControls();
+        setCurrentStage("prologue");
+    }
+
+    function scrollToStoryStage(id) {
+        if (!stageUnlocked(id)) {
+            showToast("这一幕还没有发生。先完成眼前的选择。", "");
+            return;
+        }
+        byId(id).scrollIntoView({ behavior: "smooth", block: "start" });
+        setCurrentStage(id);
+    }
+
+    function observeVisibleStages() {
+        if (!window.IntersectionObserver) { return; }
+        state.stageObserver = new IntersectionObserver(function (entries) {
+            var visible = entries.filter(function (entry) {
+                return entry.isIntersecting && stageUnlocked(entry.target.id);
+            }).sort(function (a, b) { return b.intersectionRatio - a.intersectionRatio; });
+            if (visible.length) { setCurrentStage(visible[0].target.id); }
+        }, { root: document.querySelector("main"), rootMargin: "-20% 0px -50% 0px", threshold: [0.08, 0.25, 0.5] });
+        stageOrder.forEach(function (id) {
+            var section = byId(id);
+            if (section) { state.stageObserver.observe(section); }
         });
     }
 
-    function recordLatency(ms) {
-        state.latencySamples.push(ms);
-        if (state.latencySamples.length > 60) {
-            state.latencySamples.shift();
-        }
-        var sum = state.latencySamples.reduce(function (acc, value) {
-            return acc + value;
-        }, 0);
-        state.avgLatency = Math.round(sum / state.latencySamples.length);
-        state.maxLatency = Math.max(state.maxLatency, ms);
+    function showToast(message, tone) {
+        var toast = byId("story-toast");
+        toast.textContent = message;
+        toast.className = "story-toast is-visible " + (tone || "");
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(function () {
+            toast.classList.remove("is-visible");
+        }, 2600);
     }
 
-    function renderGiftList() {
-        var list = el("gift-list");
-        if (!list) {
-            return;
+    async function requestJSON(url, options) {
+        var response = await fetch(url, options || {});
+        var raw = await response.text();
+        var body = raw ? JSON.parse(raw) : null;
+        if (!response.ok) {
+            throw new Error((body && body.message) || "请求失败（" + response.status + "）");
         }
-        list.innerHTML = "";
-        gifts.forEach(function (gift) {
-            var item = document.createElement("article");
-            var img = document.createElement("img");
-            var body = document.createElement("div");
-            var name = document.createElement("strong");
-            var price = document.createElement("span");
+        return { body: body, response: response };
+    }
 
-            item.className = "gift-item";
-            img.src = gift.Picture;
-            img.alt = gift.Name;
-            name.textContent = gift.Name;
-            price.textContent = gift.Price > 0 ? gift.Price + " 元" : "空奖项";
+    function selectedArchive() {
+        return state.archives.find(function (archive) { return archive.id === state.selectedId; }) || state.archives[0];
+    }
 
-            body.appendChild(name);
-            body.appendChild(price);
-            item.appendChild(img);
-            item.appendChild(body);
-            list.appendChild(item);
+    function renderArchive(archive, source) {
+        if (!archive) { return; }
+        state.selectedId = archive.id;
+        byId("archive-number").textContent = String(archive.id).padStart(3, "0");
+        byId("archive-sigil").textContent = archive.sigil;
+        byId("archive-sigil").style.setProperty("--archive-accent", archive.accent);
+        byId("archive-code").textContent = archive.code.replace(/-/g, " ").toUpperCase();
+        byId("archive-name").textContent = archive.name;
+        byId("archive-title").textContent = archive.title;
+        byId("archive-summary").textContent = archive.summary;
+        byId("archive-oath").textContent = "“" + archive.oath + "”";
+        byId("crowd-profession").textContent = archive.name;
+        if (source) { byId("detail-source").textContent = source; }
+
+        Array.prototype.forEach.call(document.querySelectorAll(".profession-tab"), function (tab) {
+            var active = Number(tab.dataset.id) === archive.id;
+            tab.classList.toggle("is-active", active);
+            tab.setAttribute("aria-selected", active ? "true" : "false");
         });
-        setText("gift-count", gifts.length + " 个奖品");
+        updateCommands();
     }
 
-    function buildPrizes() {
-        var colors = ["#eaf1ff", "#e8f7ef", "#fff5dd", "#edf7fb"];
-        return gifts.map(function (gift, index) {
-            giftMap.set(String(gift.Id), index);
-            return {
-                background: colors[index % colors.length],
-                fonts: [{ text: gift.Name, top: "12px", fontSize: "14px", fontWeight: "700", fontColor: "#172033" }],
-                imgs: [{ src: gift.Picture, top: "42px", width: "74px", height: "74px" }]
-            };
-        });
-    }
-
-    function initWheel() {
-        var mount = el("my-lucky");
-        if (!mount || !window.LuckyCanvas || gifts.length === 0) {
-            return;
-        }
-        mount.innerHTML = "";
-        var size = Math.max(320, Math.min(430, mount.clientWidth || 430));
-        wheel = new LuckyCanvas.LuckyWheel("#my-lucky", {
-            width: size + "px",
-            height: size + "px",
-            blocks: [
-                { padding: "10px", background: "#2563eb" },
-                { padding: "5px", background: "#ffffff" }
-            ],
-            prizes: buildPrizes(),
-            buttons: [
-                { radius: "39%", background: "#2563eb" },
-                { radius: "32%", background: "#ffffff" },
-                {
-                    radius: "25%",
-                    background: "#099268",
-                    pointer: true,
-                    fonts: [{ text: "开始", top: "-10px", fontColor: "#ffffff", fontSize: "18px", fontWeight: "900" }]
-                }
-            ],
-            start: runSingleLottery,
-            end: function (prize) {
-                spinning = false;
-                var button = el("single-lottery");
-                if (button) {
-                    button.disabled = false;
-                }
-                if (!prize || !prize.fonts || !prize.fonts[0]) {
-                    return;
-                }
-                var prizeName = prize.fonts[0].text;
-                if (prizeName === "谢谢参与") {
-                    showToast("谢谢参与，本次没有创建支付订单");
-                    pushEvent("抽奖结束", "命中空奖项，没有进入支付链路。", "warning");
-                    return;
-                }
-                showToast("恭喜中奖：" + prizeName);
-                pushEvent("统一订单状态", "库存已获取；订单进入 pending_payment 后可支付，超时则进入 cancelled。", "success");
-                window.setTimeout(function () {
-                    window.location.replace("/result");
-                }, 900);
-            }
+    function renderProfessionTabs() {
+        var host = byId("profession-tabs");
+        host.innerHTML = "";
+        state.archives.forEach(function (archive) {
+            var button = document.createElement("button");
+            button.className = "profession-tab";
+            button.type = "button";
+            button.dataset.id = archive.id;
+            button.setAttribute("role", "tab");
+            button.innerHTML = "<span>" + archive.sigil + "</span><div><strong>" + archive.name + "</strong><small>" + archive.code.toUpperCase() + "</small></div>";
+            button.addEventListener("click", function () {
+                state.selectedId = archive.id;
+                readSelectedArchive();
+            });
+            host.appendChild(button);
         });
     }
 
-    function handleLotterySuccess(giftId, latency) {
-        if (giftId === "0") {
-            state.stockFailed += 1;
-            state.simulationDone = state.totalRequests;
-            recordLatency(latency);
-            updateMetrics();
-            setOperationMessage("库存已抢完，本次请求被库存保护拦截。");
-            setBadge("simulation-status", "库存不足", "is-warn");
-            var stockSource = currentMode === "cacheaside" ?
-                "MySQL 条件扣减未命中可用库存，系统直接返回失败。" :
-                "Redis 中没有可准入库存，系统直接返回失败。";
-            pushEvent("库存不足", stockSource, "warning");
-            showToast("抽奖结束，库存不足");
-            spinning = false;
-            var button = el("single-lottery");
-            if (button) {
-                button.disabled = false;
-            }
-            return;
-        }
-
-        state.simulationDone = state.totalRequests;
-        recordLatency(latency);
-        if (currentMode === "cacheaside") {
-            setBadge("simulation-status", "待支付", "is-ok");
-            setOperationMessage("MySQL 已原子完成库存扣减与 pending_payment 订单创建。");
-            pushEvent("MySQL 扣减成功", "UPDATE cache_stock WHERE >0，行锁原子扣减，售罄时影响行数为 0。", "success");
-            pushEvent("订单待支付", "库存和待支付订单处于同一数据库事务，超时取消会回补库存。", "success");
-        } else {
-            state.queueSuccess += 1;
-            state.redisStock = Math.max(0, state.redisStock - 1);
-            state.mqPending += 1;
-            setBadge("simulation-status", "已进入队列", "is-ok");
-            setOperationMessage("Redis 已进入 stock_acquired，MQ 正在异步建立待支付订单。");
-            pushEvent("Redis 准入成功", "库存已扣减，业务状态进入 stock_acquired。", "success");
-            pushEvent("异步落单", "普通 MQ 削平 MySQL 写峰值；延迟消息只负责支付超时。", "success");
-        }
-        updateMetrics();
-
-        var index = giftMap.get(String(giftId));
-        if (typeof index === "number" && wheel) {
-            wheel.play();
-            wheel.stop(index);
-        } else {
-            spinning = false;
-            showToast("中奖编号：" + giftId);
+    function sourceLabel(source) {
+        switch (source) {
+        case "mysql": return "MySQL 真本 · BYPASS";
+        case "redis-hit": return "记忆水晶 · CACHE HIT";
+        case "redis-miss": return "真本回源 · CACHE MISS";
+        case "redis-fallback": return "水晶失联 · MYSQL FALLBACK";
+        default: return source || "未知";
         }
     }
 
-    async function runSingleLottery() {
-        if (spinning) {
-            return;
-        }
-        spinning = true;
-        var button = el("single-lottery");
-        if (button) {
-            button.disabled = true;
-        }
-
-        var startedAt = performance.now();
-        state.totalRequests += 1;
-        state.simulationTotal = Math.max(state.simulationTotal, state.totalRequests);
-        setBadge("simulation-status", "请求中", "is-warn");
-        setOperationMessage(modeConf().requestHint);
-        pulseRequestFlow();
-        pushEvent(modeConf().requestEvent[0], modeConf().requestEvent[1]);
-        updateMetrics();
-
-        try {
-            var response = await fetch(modeConf().url, { method: "GET" });
-            var giftId = await response.text();
-            var latency = Math.max(1, Math.round(performance.now() - startedAt));
-
-            if (!response.ok) {
-                state.stockFailed += 1;
-                recordLatency(latency);
-                updateMetrics();
-                setBadge("simulation-status", "请求失败", "is-error");
-                setOperationMessage("请求失败：" + giftId);
-                pushEvent("请求失败", giftId || "接口返回异常。", "danger");
-                showToast("请求失败，请看右侧事件");
-                spinning = false;
-                if (button) {
-                    button.disabled = false;
-                }
-                return;
-            }
-
-            handleLotterySuccess(giftId.trim(), latency);
-        } catch (error) {
-            var latencyOnError = Math.max(1, Math.round(performance.now() - startedAt));
-            state.stockFailed += 1;
-            recordLatency(latencyOnError);
-            updateMetrics();
-            setBadge("simulation-status", "网络异常", "is-error");
-            setOperationMessage("网络异常：" + error.message);
-            pushEvent("网络异常", error.message, "danger");
-            showToast("网络异常，请稍后再试");
-            spinning = false;
-            if (button) {
-                button.disabled = false;
-            }
-        }
-    }
-
-    function setActiveStressButton(activeButton) {
-        document.querySelectorAll(".stress-btn").forEach(function (button) {
-            button.classList.toggle("is-active", button === activeButton);
-        });
-    }
-
-    function buildLoadtestCommand(rate, connections, duration) {
-        var targetUrl = "http://app:5678" + modeConf().url;
-        var command = "docker compose --profile loadtest run --rm -e TARGET_URL=" + targetUrl;
-        if (rate && connections) {
-            command += " -e RATE=" + rate;
-            if (duration) {
-                command += " -e DURATION=" + duration;
-            }
-            command += " -e CONNECTIONS=" + connections;
-        }
-        return command + " wrk2";
-    }
-
-    function renderLoadtestCommand() {
-        var command = buildLoadtestCommand(selectedLoadtest.rate, selectedLoadtest.connections, selectedLoadtest.duration);
-        setText("loadtest-command", command);
-        return command;
-    }
-
-    function fallbackCopyText(text) {
-        var textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.setAttribute("readonly", "");
-        textarea.style.position = "fixed";
-        textarea.style.left = "-9999px";
-        textarea.style.top = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-            return document.execCommand("copy");
-        } finally {
-            document.body.removeChild(textarea);
-        }
-    }
-
-    function copyText(text) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            return navigator.clipboard.writeText(text);
-        }
-        return new Promise(function (resolve, reject) {
-            if (fallbackCopyText(text)) {
-                resolve();
-                return;
-            }
-            reject(new Error("copy command failed"));
-        });
-    }
-
-    function markCommandCopied() {
-        var button = el("copy-loadtest-command");
-        if (!button) {
-            return;
-        }
-        button.textContent = "已复制";
-        window.setTimeout(function () {
-            button.textContent = "复制";
-        }, 1200);
-    }
-
-    function copyLoadtestCommand() {
-        var commandBox = el("loadtest-command");
-        var command = commandBox ? commandBox.textContent.trim() : renderLoadtestCommand();
-        if (!command) {
-            showToast("没有可复制的命令");
-            return;
-        }
-        copyText(command).then(function () {
-            markCommandCopied();
-            showToast("已复制压测命令");
-        }).catch(function () {
-            showToast("复制失败，请手动选择命令");
-        });
-    }
-
-    function prepareLoadtest(rate, connections, duration, button) {
-        selectedLoadtest.rate = rate;
-        selectedLoadtest.connections = connections;
-        selectedLoadtest.duration = duration;
-        selectedLoadtest.button = button;
-        var command = renderLoadtestCommand();
-        setActiveStressButton(button);
-        if (liveMetrics) {
-            setBadge("simulation-status", "等待 wrk2", "is-ok");
-            setOperationMessage("真实指标流已连接。在终端运行左侧命令，右侧会用后端埋点实时刷新。");
-            pushEvent("准备真实压测", command, "success");
-            showToast("已生成 wrk2 命令");
-            return;
-        }
-        setBadge("simulation-status", "指标未连接", "is-warn");
-        setOperationMessage("SSE 指标流暂未连接。请先确认服务运行，再执行 wrk2 命令。");
-        pushEvent("指标流未连接", "不会展示前端假数据；真实结果只来自服务端埋点。", "warning");
-    }
-
-    async function resetLabData() {
-        var confirmed = window.confirm("会清空订单、Redis 临时资格和两套指标。正在压测时请先 Ctrl+C 停掉 wrk2。确定要真重置吗？");
-        if (!confirmed) {
-            return;
-        }
-
-        var button = el("reset-lab");
-        if (button) {
-            button.disabled = true;
-            button.textContent = "重置中";
-        }
-        try {
-            var response = await fetch("/api/lab/reset", { method: "POST" });
-            if (!response.ok) {
-                throw new Error(await response.text());
-            }
-            var payload = await response.json();
-            state.latencySamples = [];
-            clearReplayFrames();
-            if (payload.snapshot) {
-                applyMetricsSnapshot(payload.snapshot);
-            } else {
-                await loadMetricsSnapshot();
-            }
-            setBadge("simulation-status", "已重置", "is-ok");
-            setOperationMessage("实验数据已真重置：订单、Redis 临时资格、库存和指标都回到初始基线。");
-            showToast("实验数据已重置");
-        } catch (error) {
-            setBadge("simulation-status", "重置失败", "is-error");
-            setOperationMessage("重置失败：" + error.message);
-            pushEvent("重置失败", error.message, "danger");
-            showToast("重置失败，请看后端日志");
-        } finally {
-            if (button) {
-                button.disabled = false;
-                button.textContent = "真重置";
-            }
-        }
-    }
-
-    async function loadGifts() {
-        try {
-            var response = await fetch("/gifts");
-            if (!response.ok) {
-                throw new Error(await response.text());
-            }
-            gifts = await response.json();
-            renderGiftList();
-            initWheel();
-            setBadge("api-status", "接口已连接", "is-ok");
-            pushEvent("奖品加载成功", "从 /gifts 读取到 " + gifts.length + " 个奖品。", "success");
-        } catch (error) {
-            setBadge("api-status", "接口异常", "is-error");
-            setOperationMessage("奖品加载失败：" + error.message);
-            pushEvent("奖品加载失败", error.message, "danger");
-        }
-    }
-
-    async function loadMetricsSnapshot() {
-        try {
-            var response = await fetch("/api/metrics/snapshot");
-            if (!response.ok) {
-                throw new Error(await response.text());
-            }
-            applyMetricsSnapshot(await response.json());
-            setBadge("simulation-status", "实时指标中", "is-ok");
-        } catch (error) {
-            setBadge("simulation-status", "指标未连接", "is-warn");
-        }
-    }
-
-    function connectMetricsStream() {
-        if (!window.EventSource) {
-            loadMetricsSnapshot();
-            return;
-        }
-        if (metricsSource) {
-            metricsSource.close();
-        }
-
-        metricsSource = new EventSource("/api/metrics/stream");
-        metricsSource.addEventListener("metrics", function (event) {
-            try {
-                var snapshot = JSON.parse(event.data);
-                if (replayMode) {
-                    latestSnapshot = snapshot;
-                    liveMetrics = true;
-                    captureReplayFrame(snapshot, currentMode);
-                } else {
-                    applyMetricsSnapshot(snapshot);
-                    setBadge("simulation-status", "实时指标中", "is-ok");
-                }
-            } catch (error) {
-                setBadge("simulation-status", "指标解析失败", "is-error");
-            }
-        });
-        metricsSource.onerror = function () {
-            liveMetrics = false;
-            setBadge("simulation-status", "指标流重连中", "is-warn");
+    function addTrace(archive, source) {
+        var item = {
+            time: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
+            name: archive.name,
+            source: source,
+            label: sourceLabel(source)
         };
+        state.trace.unshift(item);
+        state.trace = state.trace.slice(0, 5);
+        var host = byId("read-trace");
+        host.innerHTML = "";
+        state.trace.forEach(function (trace) {
+            var li = document.createElement("li");
+            li.className = "trace-" + trace.source;
+            li.innerHTML = "<time>" + trace.time + "</time><span>查阅「" + trace.name + "」</span><strong>" + trace.label + "</strong>";
+            host.appendChild(li);
+        });
+    }
+
+    async function readSelectedArchive() {
+        var path = state.crystalAwake ? "cached" : "direct";
+        var sheet = byId("archive-sheet");
+        sheet.classList.add("is-turning");
+        try {
+            var result = await requestJSON("/api/archives/" + state.selectedId + "/" + path);
+            var source = result.response.headers.get("X-Archive-Source") || "mysql";
+            renderArchive(result.body, sourceLabel(source));
+            addTrace(result.body, source);
+            if (path === "direct") {
+                state.hasReadArchive = true;
+                byId("enter-crowd").disabled = false;
+                byId("ledger-passage-copy").textContent = "「" + result.body.name + "」已经被真正翻阅。城门外，第一批询问者正在靠近。";
+            }
+        } catch (error) {
+            showToast(error.message, "danger");
+        } finally {
+            window.setTimeout(function () { sheet.classList.remove("is-turning"); }, 360);
+        }
+    }
+
+    function updateCommands() {
+        var id = state.selectedId || 3;
+        // 页面已经由完整环境提供；--no-deps 避免每轮只读压测重复启动与本章无关的 RocketMQ 初始化容器。
+        var prefix = "docker compose --profile loadtest run --rm --no-deps";
+        var common = " -e RATE=" + state.rate + " -e DURATION=" + state.duration +
+            " -e CONNECTIONS=" + state.connections + " -e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
+        byId("direct-command").textContent = prefix + " -e TARGET_URL=http://app:5678/api/archives/" + id + "/direct" + common;
+        byId("cached-command").textContent = prefix + " -e TARGET_URL=http://app:5678/api/archives/" + id + "/cached" + common;
+    }
+
+    async function copyCommand(id, button) {
+        var command = byId(id).textContent;
+        try {
+            await navigator.clipboard.writeText(command);
+        } catch (_) {
+            var area = document.createElement("textarea");
+            area.value = command;
+            document.body.appendChild(area);
+            area.select();
+            document.execCommand("copy");
+            area.remove();
+        }
+        var original = button.textContent;
+        button.textContent = "已复制";
+        showToast("指令已抄好。现在，让来访者从终端出发。", "success");
+        window.setTimeout(function () { button.textContent = original; }, 1600);
+    }
+
+    function renderPath(prefix, path) {
+        byId(prefix + "-total").textContent = number(path.totalRequests);
+        if (prefix === "direct") {
+            byId("direct-db-reads").textContent = number(path.dbReads);
+            byId("direct-qps").textContent = number(path.qps);
+            byId("direct-p99").textContent = ms(path.p99);
+            byId("direct-errors").textContent = number(path.errors);
+            byId("direct-pool").textContent = number(path.poolPeak) + " / " + number(path.poolCapacity);
+        } else {
+            byId("cached-hits").textContent = number(path.cacheHits);
+            byId("cached-misses").textContent = number(path.cacheMisses);
+            byId("cached-db-reads").textContent = number(path.dbReads);
+            byId("cached-hit-rate").textContent = number(path.cacheHitRate) + "%";
+            byId("cached-p99").textContent = ms(path.p99);
+        }
+    }
+
+    function renderDamage(direct) {
+        var reads = direct.dbReads || 0;
+        var percent = Math.min(100, Math.round(reads / 30));
+        var label = "尚未开始";
+        var prose = "终端中的第一位来访者抵达后，书页才会开始留下痕迹。";
+        var stateName = "quiet";
+        if (reads > 0 && reads < 300) {
+            label = "页角发热";
+            prose = "档案员仍能回答，但每一个请求都让他重新走完长廊。";
+            stateName = "warm";
+        } else if (reads < 1200 && reads >= 300) {
+            label = "装订松动";
+            prose = "重复的问题没有带来新知识，只带来了 " + number(reads) + " 次真本翻阅。";
+            stateName = "worn";
+        } else if (reads >= 1200 && reads < 3000) {
+            label = "书脊开裂";
+            prose = "档案员开始跟不上人群。真本没有错，错的是所有读请求都必须惊动它。";
+            stateName = "cracked";
+        } else if (reads >= 3000) {
+            label = "不该再翻了";
+            prose = "这本书正被同一个问题翻烂。现在，我们终于有理由改变那条旧规矩。";
+            stateName = "broken";
+        }
+        byId("damage-label").textContent = label;
+        byId("damage-prose").textContent = prose;
+        byId("damage-fill").style.width = percent + "%";
+        byId("book-cover").dataset.damage = stateName;
+        byId("book-cover").style.setProperty("--damage", percent + "%");
+        byId("book-whisper").textContent = prose;
+        var reveal = byId("awaken-crystal");
+        reveal.disabled = reads < 20;
+        reveal.querySelector("span").textContent = reads < 20 ? "至少留下 20 次真实翻阅作为证据" : "真本已经被翻阅 " + number(reads) + " 次";
+    }
+
+    function perThousand(path) {
+        if (!path.totalRequests) { return null; }
+        return Math.round(path.dbReads * 1000 / path.totalRequests);
+    }
+
+    function renderComparison(direct, cached) {
+        var directRate = perThousand(direct);
+        var cachedRate = perThousand(cached);
+        byId("direct-per-thousand").textContent = directRate === null ? "—" : number(directRate);
+        byId("cached-per-thousand").textContent = cachedRate === null ? "—" : number(cachedRate);
+        byId("direct-compare-p99").textContent = direct.totalRequests ? ms(direct.p99) : "—";
+        byId("cached-compare-p99").textContent = cached.totalRequests ? ms(cached.p99) : "—";
+
+        if (directRate === null || cachedRate === null) {
+            byId("read-reduction").textContent = "等待两轮实验";
+            byId("verdict-copy").textContent = "完成旧规矩与记忆水晶的两轮来访后，这里才会给出结论。";
+            byId("next-chapter").classList.add("is-locked");
+            byId("next-chapter").querySelector("span").textContent = "NEXT CHAPTER · LOCKED";
+            return;
+        }
+        var reduction = directRate > 0 ? Math.max(0, (directRate - cachedRate) * 100 / directRate) : 0;
+        var reductionText = reduction.toFixed(1).replace(".0", "");
+        byId("read-reduction").textContent = reductionText + "%";
+        byId("verdict-copy").textContent = "每千次相同问询，MySQL 从 " + number(directRate) + " 次翻阅降到 " + number(cachedRate) + " 次。水晶没有改变答案，只改变了答案走过的路。";
+        byId("next-chapter").classList.remove("is-locked");
+        byId("next-chapter").querySelector("span").textContent = "NEXT CHAPTER · UNLOCKED";
+    }
+
+    function renderSnapshot(snapshot) {
+        if (!snapshot || !snapshot.archiveRead) { return; }
+        state.snapshot = snapshot;
+        var chapter = snapshot.archiveRead;
+        byId("ttl-seconds").textContent = number(chapter.cacheTTLSeconds);
+        renderPath("direct", chapter.direct);
+        renderPath("cached", chapter.cached);
+        renderDamage(chapter.direct);
+        renderComparison(chapter.direct, chapter.cached);
+        var cachedCount = chapter.cached.totalRequests || 0;
+        var revealComparison = byId("reveal-comparison");
+        revealComparison.disabled = !state.crystalAwake || cachedCount < 20;
+        revealComparison.querySelector("span").textContent = cachedCount < 20
+            ? "还差 " + number(20 - cachedCount) + " 次真实回答，才足以形成答卷"
+            : "水晶已经留下 " + number(cachedCount) + " 次真实回答";
+        byId("enter-epilogue").disabled = !(chapter.direct.totalRequests > 0 && chapter.cached.totalRequests > 0);
+    }
+
+    async function fetchSnapshot() {
+        try {
+            var result = await requestJSON("/api/metrics/snapshot");
+            renderSnapshot(result.body);
+            setConnection(true);
+        } catch (_) {
+            setConnection(false);
+        }
+    }
+
+    function setConnection(connected) {
+        var badge = byId("connection-state");
+        badge.classList.toggle("is-live", connected);
+        badge.innerHTML = "<i></i>" + (connected ? "档案员在线 · LIVE" : "与档案馆失去联系");
+    }
+
+    function connectMetrics() {
+        if (!window.EventSource) {
+            state.pollTimer = window.setInterval(fetchSnapshot, 1500);
+            return;
+        }
+        state.stream = new EventSource("/api/metrics/stream");
+        state.stream.addEventListener("metrics", function (event) {
+            try {
+                renderSnapshot(JSON.parse(event.data));
+                setConnection(true);
+            } catch (_) { setConnection(false); }
+        });
+        state.stream.onerror = function () { setConnection(false); };
+    }
+
+    async function awakenCrystal() {
+        state.crystalAwake = true;
+        byId("the-crystal").classList.remove("is-dormant");
+        unlockStage("the-crystal", true);
+        byId("read-again").textContent = "向记忆水晶再问一次";
+        showToast("水晶醒了。它的第一次回答，仍需要翻阅真本。", "success");
+        await readSelectedArchive();
+    }
+
+    function openLedger() {
+        unlockStage("the-ledger", true);
+        showToast("请亲手选择一页。第一次翻阅必须惊动真本。", "");
+    }
+
+    function enterCrowd() {
+        if (!state.hasReadArchive) {
+            showToast("故事还缺少一次真正的翻阅。", "");
+            return;
+        }
+        unlockStage("the-crowd", true);
+    }
+
+    function revealComparison() {
+        var cached = state.snapshot && state.snapshot.archiveRead && state.snapshot.archiveRead.cached;
+        if (!cached || cached.totalRequests < 20) {
+            showToast("让水晶再多回答一些，数字才有资格成为答卷。", "");
+            return;
+        }
+        unlockStage("comparison", true);
+    }
+
+    function enterEpilogue() {
+        unlockStage("epilogue", true);
+        byId("archive-footer").classList.remove("is-concealed");
+    }
+
+    async function resetChapter(trigger) {
+        var buttons = [byId("reset-chapter"), byId("reset-story-top")];
+        buttons.forEach(function (button) { button.disabled = true; });
+        try {
+            await requestJSON("/api/chapters/cache-aside/reset", { method: "POST" });
+            state.trace = [];
+            byId("read-trace").innerHTML = "";
+            lockProgression();
+            renderSnapshot({ archiveRead: {
+                cacheTTLSeconds: 300,
+                direct: {},
+                cached: {}
+            } });
+            renderArchive(selectedArchive(), "目录预览");
+            document.querySelector("main").scrollTo({ top: 0, behavior: "smooth" });
+            showToast("书本已经合拢。故事可以重新开始。", "success");
+        } catch (error) {
+            showToast(error.message, "danger");
+        } finally {
+            buttons.forEach(function (button) { button.disabled = false; });
+        }
+    }
+
+    async function loadArchives() {
+        var result = await requestJSON("/api/archives");
+        state.archives = result.body || [];
+        if (!state.archives.some(function (archive) { return archive.id === state.selectedId; })) {
+            state.selectedId = state.archives.length ? state.archives[0].id : 1;
+        }
+        renderProfessionTabs();
+        renderArchive(selectedArchive(), "目录预览");
     }
 
     function bindEvents() {
-        var single = el("single-lottery");
-        if (single) {
-            single.addEventListener("click", runSingleLottery);
-        }
-
-        document.querySelectorAll(".stress-btn").forEach(function (button) {
-            button.addEventListener("click", function () {
-                prepareLoadtest(Number(button.dataset.rate), Number(button.dataset.connections), button.dataset.duration, button);
+        byId("open-ledger").addEventListener("click", openLedger);
+        byId("read-again").addEventListener("click", readSelectedArchive);
+        byId("enter-crowd").addEventListener("click", enterCrowd);
+        byId("copy-direct").addEventListener("click", function () { copyCommand("direct-command", this); });
+        byId("copy-cached").addEventListener("click", function () { copyCommand("cached-command", this); });
+        byId("awaken-crystal").addEventListener("click", awakenCrystal);
+        byId("reveal-comparison").addEventListener("click", revealComparison);
+        byId("enter-epilogue").addEventListener("click", enterEpilogue);
+        byId("reset-chapter").addEventListener("click", function () { resetChapter(this); });
+        byId("reset-story-top").addEventListener("click", function () { resetChapter(this); });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-story-target]"), function (control) {
+            control.addEventListener("click", function (event) {
+                event.preventDefault();
+                scrollToStoryStage(control.dataset.storyTarget);
             });
         });
-
-        document.querySelectorAll(".mode-btn").forEach(function (button) {
+        Array.prototype.forEach.call(document.querySelectorAll(".pressure-picker button"), function (button) {
             button.addEventListener("click", function () {
-                setMode(button.dataset.mode);
+                Array.prototype.forEach.call(document.querySelectorAll(".pressure-picker button"), function (peer) { peer.classList.remove("is-active"); });
+                button.classList.add("is-active");
+                state.rate = Number(button.dataset.rate);
+                state.connections = Number(button.dataset.connections);
+                updateCommands();
             });
         });
+    }
 
-        var copy = el("copy-loadtest-command");
-        if (copy) {
-            copy.addEventListener("click", copyLoadtestCommand);
-        }
-
-        var reset = el("reset-lab");
-        if (reset) {
-            reset.addEventListener("click", resetLabData);
-        }
-
-        var replayLive = el("replay-live");
-        if (replayLive) {
-            replayLive.addEventListener("click", exitReplayMode);
-        }
-
-        var replayToggle = el("replay-toggle");
-        if (replayToggle) {
-            replayToggle.addEventListener("click", toggleReplay);
-        }
-
-        var replayScrubber = el("replay-scrubber");
-        if (replayScrubber) {
-            var seekReplay = function () {
-                stopReplayTimer();
-                applyReplayFrame(Number(replayScrubber.value));
-            };
-            var seekReplayAt = function (clientX) {
-                if (replayFrames.length < 2) {
-                    return;
-                }
-                var rect = replayScrubber.getBoundingClientRect();
-                var ratio = (clientX - rect.left) / Math.max(1, rect.width);
-                var index = Math.round(Math.max(0, Math.min(1, ratio)) * (replayFrames.length - 1));
-                replayScrubber.value = String(index);
-                stopReplayTimer();
-                applyReplayFrame(index);
-            };
-            replayScrubber.addEventListener("input", seekReplay);
-            replayScrubber.addEventListener("change", seekReplay);
-            replayScrubber.addEventListener("pointerdown", function (event) {
-                seekReplayAt(event.clientX);
-                replayScrubber.setPointerCapture(event.pointerId);
-            });
-            replayScrubber.addEventListener("pointermove", function (event) {
-                if (event.buttons !== 1) {
-                    return;
-                }
-                seekReplayAt(event.clientX);
-            });
-        }
-
-        var replayClear = el("replay-clear");
-        if (replayClear) {
-            replayClear.addEventListener("click", function () {
-                clearReplayFrames();
-                showToast("回放记录已清空");
-            });
-        }
-
-        var clear = el("clear-events");
-        if (clear) {
-            clear.addEventListener("click", function () {
-                var log = el("event-log");
-                if (log) {
-                    log.innerHTML = "";
-                }
-            });
+    async function start() {
+        lockProgression();
+        bindEvents();
+        observeVisibleStages();
+        updateCommands();
+        connectMetrics();
+        await fetchSnapshot();
+        try {
+            await loadArchives();
+        } catch (error) {
+            showToast(error.message, "danger");
+            byId("archive-name").textContent = "档案馆暂时没有回应";
+            byId("archive-summary").textContent = "请确认服务端、MySQL 与 Redis 已经启动。";
         }
     }
 
-    document.addEventListener("DOMContentLoaded", function () {
-        renderModeArchitecture(currentMode);
-        setMySQLPressureLabels(currentMode);
-        updateMetrics();
-        renderLoadtestCommand();
-        bindEvents();
-        pushEvent("系统面板就绪", "正在连接服务端真实指标流。");
-        loadGifts();
-        connectMetricsStream();
+    document.addEventListener("DOMContentLoaded", start);
+    window.addEventListener("beforeunload", function () {
+        if (state.stream) { state.stream.close(); }
+        if (state.pollTimer) { window.clearInterval(state.pollTimer); }
     });
-})();
+}());

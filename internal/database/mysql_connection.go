@@ -70,10 +70,12 @@ func ConnectGiftDB(confDir, confFile, fileType, logDir string) *Store {
 	newLogger := logger.New(
 		log.New(logFile, "\r\n", log.LstdFlags), // io writer，可以输出到文件，也可以输出到os.Stdout
 		logger.Config{
-			SlowThreshold:             100 * time.Millisecond, //耗时超过此值认定为慢查询
-			LogLevel:                  logger.Info,            // LogLevel的最低阈值，Silent为不输出日志
-			IgnoreRecordNotFoundError: true,                   // 忽略RecordNotFound这种错误日志
-			Colorful:                  false,                  // 禁用颜色
+			SlowThreshold: 100 * time.Millisecond, //耗时超过此值认定为慢查询
+			// 压测热路径不能逐条写 SQL：固定 QPS 下 INFO 日志会把磁盘吞吐变成瓶颈，甚至再次生成 GB 级日志。
+			// Warn 仍保留慢查询和错误，吞吐、尾延迟与 DB 读取次数改由有界内存 metrics 展示。
+			LogLevel:                  logger.Warn,
+			IgnoreRecordNotFoundError: true,  // 忽略RecordNotFound这种错误日志
+			Colorful:                  false, // 禁用颜色
 		},
 	)
 	db, err := gorm.Open(mysql.Open(DataSourceName), &gorm.Config{

@@ -2,6 +2,30 @@
 
 本文描述当前代码实际实现的可靠性语义。两个库存模式共享同一套订单生命周期，差别仅在库存准入和 `pending_payment` 建立方式。
 
+## 第一章的只读边界：Cache-Aside 不参与库存裁决
+
+首页第一章使用独立的 `profession_archives` 表演示详情读取：
+
+```text
+直读：GET /api/archives/:id/direct -> MySQL
+
+缓存读：GET /api/archives/:id/cached
+     -> Redis GET archive:profession:{id}
+     -> HIT 直接返回
+     -> MISS 回源 MySQL -> Redis SET EX 300 -> 返回
+```
+
+该链路有意与 `inventory`、`orders`、Redis admission 和 RocketMQ 隔离，因此它只证明缓存对重复读的价值，不能被用来推导库存并发正确性。
+
+一致性边界：
+
+- MySQL `profession_archives` 是职业档案唯一权威源，Redis 是可丢弃副本。
+- 缓存不可用时降级回源 MySQL，本次响应正确性不依赖 Redis。
+- 单进程使用双检互斥合并冷缓存回源；多实例缓存击穿仍需要更完整的治理。
+- 当前职业档案没有编辑 API。未来加入写路径时必须先更新 MySQL，再删除对应 Redis key；删除失败需要重试或可靠事件兜底。
+- TTL 只限制旧副本存活时间，不能替代写后失效。
+- `/api/chapters/cache-aside/reset` 只清空本章缓存和指标，不触碰订单、库存或 MQ。
+
 ## 统一状态机
 
 ```text

@@ -93,6 +93,9 @@ type Snapshot struct {
 	// PreDeductMySQL 是预扣库存链路的 MySQL 压力快照。
 	// 预扣不走 MySQL 扣库存，但仍会有防重复查询和奖品详情查询，适合和 Cache-Aside 的 DB 压力对比。
 	PreDeductMySQL MySQLPressureSnapshot `json:"preDeductMySQL"`
+
+	// ArchiveRead 是第一章独立的只读 Cache-Aside 实验，不与库存方案混用。
+	ArchiveRead ArchiveReadSnapshot `json:"archiveRead"`
 }
 
 type meter struct {
@@ -315,6 +318,7 @@ func SnapshotNow() Snapshot {
 		Events:          events,
 		CacheAside:      SnapshotCacheAside(),
 		PreDeductMySQL:  SnapshotPreDeductMySQL(),
+		ArchiveRead:     SnapshotArchiveRead(ArchiveCacheTTL),
 	}
 }
 

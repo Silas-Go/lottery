@@ -42,3 +42,24 @@ create table if not exists orders(
     key idx_status_expires (status, expires_at),
     unique key uk_activity_user (activity_id, user_id)
 )default charset=utf8mb4;
+
+-- 第一章《那本不该被翻烂的百职录》的只读真本。
+-- 应用启动时也会 AutoMigrate + FirstOrCreate，以兼容不会重新执行 init.sql 的老数据卷。
+create table if not exists profession_archives(
+    id int not null,
+    code varchar(64) not null,
+    name varchar(64) not null,
+    title varchar(128) not null,
+    sigil varchar(16) not null,
+    accent varchar(16) not null,
+    summary varchar(600) not null,
+    oath varchar(255) not null,
+    primary key (id),
+    unique key uk_profession_code (code)
+)default charset=utf8mb4;
+
+insert ignore into profession_archives (id,code,name,title,sigil,accent,summary,oath) values
+(1,'night-warden','守夜人','替沉睡的城邦守住最后一盏灯','夜','#315c78','他们认识每一条在午夜改道的河，也听得见城墙深处极轻的裂响。守夜人的职责不是战胜黑暗，而是让所有人醒来时，仍相信黎明会如约而至。','灯不必照亮远方，只要不在我手中熄灭。'),
+(2,'clockwork-smith','机巧师','让沉默的铜与铁重新学会呼吸','械','#9a6737','机巧师的工作台从不真正安静。齿轮记得手指的温度，旧钟会在无人处低声报时，而每一件被世人判定报废的器物，都可能在他们掌心获得第二次心跳。','世上没有废铁，只有尚未被听懂的请求。'),
+(3,'star-reader','观星者','从群星的迟信里辨认尚未发生的风暴','星','#6659a8','他们在最高的塔上记录星辰，把几百年前启程的光译成今日的预兆。观星者并不预言命运；他们只是比旁人更早看见选择的代价。','星辰从不回答，只把问题照得更清楚。'),
+(4,'raven-physician','渡鸦医师','在瘟风经过之后替名字留住体温','鸦','#48645a','渡鸦医师随黑羽穿过封闭的城门。他们携带草药、银针和一本从不公开的姓名册：治愈一人便划去一个名字，未能归来的人，则由他们亲自送回故乡。','疾病可以带走呼吸，不能带走一个人被记得的方式。');

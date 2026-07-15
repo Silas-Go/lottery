@@ -1,13 +1,126 @@
-# Silas · 高并发秒杀架构演示项目
+# Silas · 高并发架构故事书
 
-这个项目用同一个订单生命周期，展示两种完整交易写路径：
+这不是把 Redis、MySQL、RocketMQ 全部堆在一张图上的“技术陈列柜”。项目会像一本故事书一样，一章只提出一个问题，再用可重复的真实实验让架构自己回答。
 
-- **方案 A：MySQL 权威库存同步准入**
-- **方案 B：Redis 原子准入 + RocketMQ 异步落单 + MySQL 最终账本**
+当前完成的是第一章：
 
-项目不再把“Redis 预扣”和“库存 Cache-Aside”包装成单变量公平实验。A/B 是两套完整架构策略；如果要严格归因 Redis 或 MQ 的单独收益，应另外拆分实验。
+> **那本不该被翻烂的《百职录》**
+>
+> 当几千个人反复询问同一份职业档案，为什么“每次都查 MySQL”这条诚实的旧规矩会失效？Cache-Aside 又究竟替系统挡住了什么？
 
-## 统一订单生命周期
+首页不会提前展示库存、订单或 MQ。第一章只讲读取；写入竞争会在后续章节登场。
+
+## 第一章怎么玩
+
+页面采用逐幕推进：后续章节入口默认锁定，必须先真正翻阅一页档案、让旧路径承受请求、再让缓存路径交出数据，故事才会继续。原生长滚动条被隐藏，页首进度与桌面端章节罗盘只负责标记已经走过的路，不能提前跳过实验。
+
+启动完整环境：
+
+```bash
+docker compose up -d --build
+```
+
+打开：
+
+```text
+http://localhost:5678/
+```
+
+然后按页面顺序完成四件事：
+
+1. 从《百职录》选择一种职业。此时每次翻页都直接查询 MySQL 真本。
+2. 复制“旧规矩”压测指令到项目终端，观察真本翻阅次数、QPS、P99 和连接池峰值。
+3. 唤醒 Redis 记忆水晶。第一次查询真实发生 `MISS -> MySQL -> SET`，后续查询命中缓存。
+4. 使用相同压力运行第二条指令，查看每千请求 MySQL 读取数的归一化对比。
+
+推荐先使用页面默认的 `300 人/秒 × 20 秒`。它足以产生清晰证据，又不会像无上限压测一样把本机基础设施推向失控。
+
+重新讲述本章时，点击页脚的“合拢书本，重新讲述”。它只会清空：
+
+- `archive:profession:*` Redis 缓存；
+- 第一章的直读与缓存读指标。
+
+它不会删除秒杀订单，也不会改动任何库存。
+
+## 这次对比为什么成立
+
+两轮实验固定：
+
+| 不变量 | 内容 |
+|---|---|
+| 业务语义 | 读取同一页职业档案 |
+| 权威数据 | MySQL `profession_archives` |
+| HTTP 响应体 | 完全相同的 JSON |
+| 压测工具 | wrk2 固定 QPS |
+| 速率、时长、连接数 | 页面同时更新两条命令 |
+
+唯一变量是读取路径：
+
+```text
+旧规矩
+Browser / wrk2 -> Go API -> MySQL
+
+记忆水晶
+Browser / wrk2 -> Go API -> Redis
+                            ├─ HIT  -> 返回
+                            └─ MISS -> MySQL -> 回填 Redis -> 返回
+```
+
+因此第一章没有再把 Cache-Aside 塞进秒杀库存方案里。缓存优化的是“它是什么”这类可重复读取；它不负责裁决“最后一件库存属于谁”。
+
+## 真实指标与故事隐喻
+
+页面没有伪造流量。故事中的每个变化都由服务端指标触发：
+
+| 故事语言 | 技术指标 |
+|---|---|
+| 赶来的访客 | HTTP `totalRequests` |
+| 真本翻阅次数 | MySQL `dbReads` |
+| 每秒问询 | 最近请求桶计算的 `qps` |
+| 99% 回答不超过 | `p99` 端到端延迟 |
+| 长廊最高占用 | MySQL pool peak / capacity |
+| 水晶回答 | Redis cache hit |
+| 水晶遗忘 | Redis cache miss |
+| 真本磨损、书脊裂开 | 由真实 MySQL 读取次数跨过阈值后触发的叙事表现 |
+
+指标只保留有界延迟样本，不逐请求写日志。GORM 默认只记录慢查询和错误，避免压测再次制造 GB 级 SQL 日志。
+
+## 第一章 API
+
+| 路径 | 方法 | 说明 |
+|---|---|---|
+| `/api/archives` | GET | 职业目录；不计入对比指标 |
+| `/api/archives/:id/direct` | GET | 每次直读 MySQL |
+| `/api/archives/:id/cached` | GET | Redis Cache-Aside 读取 |
+| `/api/chapters/cache-aside/reset` | POST | 清缓存并重置本章指标 |
+| `/api/metrics/snapshot` | GET | 全部服务端指标快照，含 `archiveRead` |
+| `/api/metrics/stream` | GET | SSE 实时指标流 |
+
+两条详情接口的响应体相同，只通过响应头解释数据来源：
+
+```text
+X-Read-Path: mysql-direct | cache-aside
+X-Archive-Source: mysql | redis-miss | redis-hit | redis-fallback
+```
+
+缓存 key 与边界：
+
+```text
+key: archive:profession:{id}
+TTL: 300s
+权威源: MySQL profession_archives
+```
+
+同进程冷启动并发通过双检互斥合并回源，避免第一波 MISS 放大成缓存击穿。Redis 故障时请求降级回源 MySQL：缓存可以失去，真本不能失去。
+
+## 书页背后的完整项目
+
+第一章之外，后端仍保留两套统一订单生命周期的秒杀写路径，供后续章节逐步揭示：
+
+- **方案 A：MySQL 权威库存同步准入**；
+- **方案 B：Redis 原子准入 + RocketMQ 普通消息异步落单 + MySQL 最终账本**。
+
+统一生命周期：
 
 ```mermaid
 stateDiagram-v2
@@ -20,198 +133,58 @@ stateDiagram-v2
     cancelled --> [*]
 ```
 
-核心约束：
+两个写模式的当前 API：
 
-- `paid` 和 `cancelled` 是互斥终态。
-- 订单最多占用一次库存、最多回补一次库存。
-- 重复请求和重复消息只能幂等返回，不能覆盖终态。
-- 迟到的创建消息不能执行 `cancelled -> pending_payment`。
-- 支付后取消属于退款业务，需要新增状态，不能复用 `cancelled`。
+| 路径 | 方案 |
+|---|---|
+| `GET /lucky/cacheaside` | 历史路径名；实际是 MySQL 权威库存同步扣减 |
+| `GET /lucky` | Redis Lua 准入 + RocketMQ 异步落单 |
+| `GET /api/order/status` | 查询统一订单状态 |
+| `POST /pay` | `pending_payment -> paid` |
+| `POST /giveup` | 非终态 `-> cancelled` |
+| `POST /api/lab/reset` | 重置完整秒杀实验 |
 
-## 两种方案
+`/lucky/cacheaside` 会在后续章节改成语义清楚的新路径；当前保留它是为了不破坏已有调用。它不再出现在第一章页面，也不再被解释成“缓存库存方案”。
 
-| 维度 | 方案 A：MySQL 同步 | 方案 B：Redis + MQ 异步 |
-|---|---|---|
-| 入口 | `GET /lucky/cacheaside` | `GET /lucky` |
-| 实时库存权威 | MySQL `inventory.cache_stock` | Redis `gift_count_{id}` |
-| 获取库存 | MySQL 条件更新 | Redis Lua |
-| 待支付订单 | 请求事务内同步建立 | `CREATE_ORDER` 普通消息异步建立 |
-| 订单最终账本 | MySQL `orders` | MySQL `orders` |
-| 支付超时 | `CANCEL_ORDER` 延迟消息 | `CANCEL_ORDER` 延迟消息 |
-| 入口成功状态 | `pending_payment` | `stock_acquired` |
-| 主要瓶颈 | 热点行、连接池、事务延迟 | Redis/MQ 可用性、消息积压、最终一致性 |
-
-两个模式固定以下业务语义：
-
-- 同一活动一人一单。
-- 相同支付窗口。
-- 相同 `pending_payment -> paid/cancelled` 状态定义。
-- 相同支付、主动取消、超时取消接口。
-- 取消后原订单不能复活或重新参与。
-
-## 方案 A：MySQL 权威库存同步准入
-
-```text
-请求
--> 读取候选库存
--> MySQL 显式事务
-   -> UPDATE cache_stock WHERE cache_stock > 0
-   -> INSERT orders(status=pending_payment, inventory_mode=mysql)
--> 发送 CANCEL_ORDER 延迟检查
--> 返回待支付
-```
-
-库存扣减和待支付订单处于同一事务：任一步失败都会整体回滚。支付和取消都以 `status = pending_payment` 为前置条件；取消获胜时，状态更新和库存回补仍在同一事务。
-
-当前 `gift_cache_all_stock` 只用于读取候选权重。它不是库存正确性机制：即使读到旧值，真正准入仍由 MySQL 条件更新裁决。
-
-## 方案 B：Redis 准入、MQ 异步落单
-
-```text
-请求
--> Redis Lua：防重 + 检查库存 + 扣库存 + stock_acquired
--> 发送 CANCEL_ORDER 延迟消息
--> 发送 CREATE_ORDER 普通消息
--> 返回 stock_acquired
-
-CREATE_ORDER Consumer
--> 幂等创建 MySQL pending_payment 订单
--> Redis admission 推进到 pending_payment
-```
-
-Redis admission 格式：
-
-```text
-porder_{uid} = {giftID}|{state}
-```
-
-例如：
-
-```text
-porder_10001 = 3|stock_acquired
-porder_10001 = 3|pending_payment
-porder_10001 = 3|paid
-porder_10001 = 3|cancelled
-```
-
-Redis 模式下，支付与取消竞争同一个 admission 状态：
-
-```text
-pending_payment -> paid
-pending_payment -> cancelled + INCR inventory
-```
-
-终态 key 保留到 TTL，重复取消可以识别 `cancelled`，不会因为 key 已删除而再次增加库存。
-
-## RocketMQ 的职责
-
-项目使用两个 Topic：
+## RocketMQ 在后续章节的职责
 
 | Topic | 类型 | 职责 |
 |---|---|---|
-| `CREATE_ORDER` | 普通消息 | 异步创建 MySQL 待支付订单，削平数据库写峰值 |
+| `CREATE_ORDER` | 普通消息 | Redis 准入后异步创建 MySQL 待支付订单，缓冲数据库写峰值 |
 | `CANCEL_ORDER` | 延迟消息 | 支付窗口到期后触发状态检查和库存释放 |
 
-Consumer 只有在业务处理成功后才 Ack：
+普通消息使用的是主流 MQ 共有的异步解耦、缓冲削峰和至少一次投递语义；延迟取消才使用 RocketMQ 的延迟消息能力。
 
-- 解析失败不 Ack。
-- Redis/MySQL 状态处理失败不 Ack。
-- 重复创建、重复取消等幂等结果可以 Ack。
-- `paid` 收到迟到取消消息属于正常空操作。
-
-因此，项目使用的不只是 RocketMQ 特有的延迟能力，也使用了所有主流 MQ 都具备的异步解耦、缓冲削峰和至少一次投递语义。
-
-## 状态接口
-
-Redis 异步落单期间，支付页轮询：
-
-```http
-GET /api/order/status?uid={uid}&gid={gid}
-```
-
-返回状态之一：
+## 章节路线
 
 ```text
-stock_acquired
-pending_payment
-paid
-cancelled
+第一章  那本不该被翻烂的《百职录》
+        Cache-Aside：重复读如何离开 MySQL 热路径
+
+第二章  当一千只手伸向最后一枚星印
+        MySQL 条件扣减：权威库存如何同步裁决
+
+第三章  城门只发放资格，不再当场誊写订单
+        Redis Lua + MQ：准入、削峰、异步落单
+
+第四章  两封迟到的信与一份不能复活的订单
+        至少一次投递、幂等、超时取消与状态机
 ```
 
-`stock_acquired` 时支付按钮禁用；只有 `pending_payment` 可以发起支付。
-
-## API
-
-| 路径 | 方法 | 说明 |
-|---|---|---|
-| `/gifts` | GET | 奖品展示数据 |
-| `/lucky` | GET | Redis 准入 + MQ 异步落单 |
-| `/lucky/cacheaside` | GET | MySQL 权威库存同步准入 |
-| `/api/order/status` | GET | 查询统一订单状态 |
-| `/pay` | POST | `pending_payment -> paid` |
-| `/giveup` | POST | 非终态 `-> cancelled` |
-| `/api/metrics/snapshot` | GET | 实验指标快照 |
-| `/api/metrics/stream` | GET | SSE 实时指标 |
-| `/api/lab/reset` | POST | 清理本地实验状态 |
-
-## 数据模型
-
-### inventory
-
-- `count`：活动初始库存，也是 Redis 模式恢复基线。
-- `cache_stock`：MySQL 模式实时库存。
-
-### orders
-
-关键字段：
-
-- `activity_id / user_id / gift_id`
-- `status`
-- `inventory_mode`
-- `stock_released`
-- `expires_at / paid_at / cancelled_at`
-- `cancel_reason`
-
-`uk_activity_user(activity_id,user_id)` 是一人一单的最终兜底。
-
-## 本地运行
-
-完整容器启动：
-
-```bash
-docker compose up -d --build
-```
-
-检查：
-
-```bash
-docker compose ps
-docker compose logs -f app
-```
-
-浏览器访问：
+## 代码结构
 
 ```text
-http://localhost:5678/
+internal/app            依赖装配、启动和优雅退出
+internal/router         页面与 API 路由
+internal/handler        HTTP 协议适配
+internal/service        读取编排、抽奖、支付和取消业务流程
+internal/database       MySQL / Redis 数据访问与 Lua 原子脚本
+internal/mq             RocketMQ producer / consumer
+internal/metrics        有界内存指标、快照与 SSE 数据源
+views/                  故事书页面与支付页
+docker/wrk2             固定 QPS 压测工具和 Lua 请求脚本
+docs/                   状态机与可靠性边界
 ```
-
-PowerShell 本机运行 Go 应用时，也可以使用：
-
-```powershell
-.\scripts\start-infra.ps1
-.\scripts\run-local-app.ps1
-.\scripts\run-local-loadtest.ps1 -Rate 500 -Duration 30s -Connections 128
-```
-
-RocketMQ 相关环境变量：
-
-| 变量 | 默认值 |
-|---|---|
-| `LOTTERY_MQ_ENABLED` | `true` |
-| `LOTTERY_MQ_ENDPOINT` | `localhost:8081` |
-| `LOTTERY_MQ_ORDER_TOPIC` | `CREATE_ORDER` |
-| `LOTTERY_MQ_CANCEL_TOPIC` | `CANCEL_ORDER` |
-| `LOTTERY_MQ_CONSUMER_GROUP` | `lottery` |
 
 ## 验证
 
@@ -221,25 +194,4 @@ go vet ./...
 docker compose config --quiet
 ```
 
-## 当前可靠性边界
-
-已经覆盖：
-
-- Redis Lua 原子准入。
-- MySQL 库存和待支付订单事务一致性。
-- 普通 MQ 异步落单和重复消费幂等。
-- 支付与取消并发互斥。
-- 主动取消、超时取消重复回补保护。
-- 迟到创建消息不覆盖终态。
-- 启动恢复扣除 `pending_payment/paid/stock_acquired` 库存占用。
-
-仍未生产级：
-
-- Redis 准入成功、发送 MQ 前崩溃的可靠事件/outbox。
-- 外部支付流水、支付回调和退款状态。
-- Redis/MySQL 自动对账和差异告警。
-- 多实例全局限流。
-- MQ 死信治理和积压告警。
-- Redis、MySQL、RocketMQ 高可用部署。
-
-详细说明见 [docs/reliability.md](docs/reliability.md)。
+订单和消息可靠性边界详见 [docs/reliability.md](docs/reliability.md)。

@@ -56,7 +56,8 @@ func writeAPIError(ctx *gin.Context, status int, code string, message string, er
 // service 层只表达业务失败原因，不绑定具体的网络响应语义。
 func statusForCode(code string) int {
 	switch code {
-	case service.CodeNoGiftsConfigured:
+	case service.CodeNoGiftsConfigured,
+		service.CodeArchiveNotFound:
 		return http.StatusNotFound
 	case service.CodeRateLimited:
 		return http.StatusTooManyRequests
@@ -75,7 +76,9 @@ func statusForCode(code string) int {
 		service.CodeRedisInventoryReadFail,
 		service.CodeTempOrderCreateFailed,
 		service.CodeMQSendFailed,
-		service.CodeCacheAsideOverload:
+		service.CodeCacheAsideOverload,
+		service.CodeArchiveDBReadFailed,
+		service.CodeArchiveCacheResetFailed:
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
