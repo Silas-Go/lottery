@@ -15,23 +15,33 @@
     var lastReplayKey = "";
     var maxReplayFrames = 240;
 
-    // 两种库存模式的前端配置：抽奖入口 URL、库存模式标签、请求提示与事件文案。
+    // 两种架构方案的前端配置：抽奖入口 URL、方案标签、流程图和请求文案。
     // 切换模式只改变请求走向和文案，转盘交互和 SSE 指标刷新逻辑两种模式共用。
     var MODES = {
         prededuct: {
             url: "/lucky",
-            label: "Redis 准入 + MQ 异步落单",
-            requestHint: "正在请求 /lucky，观察右侧系统链路。",
-            requestEvent: ["Browser 发起请求", "GET /lucky，进入 Gin 预扣库存接口。"]
+            label: "方案 B · Redis 准入 + MQ 异步落单",
+            eyebrow: "Redis Admission + Async Ordering",
+            panelTitle: "方案 B · Redis 准入 + MQ 异步落单",
+            flowTitle: "方案 B 请求链路",
+            flowCaption: "Redis 准入 / MQ 异步落单",
+            flowStages: ["Redis 准入", "RocketMQ", "MySQL 账本"],
+            requestHint: "正在请求方案 B，观察 Redis 准入、MQ 排队和 MySQL 异步落单。",
+            requestEvent: ["Browser 发起请求", "GET /lucky，进入 Redis 原子准入链路。"]
         },
         cacheaside: {
             url: "/lucky/cacheaside",
-            label: "MySQL 权威同步准入",
-            requestHint: "正在请求 /lucky/cacheaside，观察右侧 DB 压力与熔断状态。",
+            label: "方案 A · MySQL 权威库存同步扣减",
+            eyebrow: "MySQL Synchronous Baseline",
+            panelTitle: "方案 A · MySQL 权威库存同步扣减",
+            flowTitle: "方案 A 请求链路",
+            flowCaption: "MySQL 同事务扣库存并创建订单",
+            flowStages: ["MySQL 条件扣减", "创建 pending_payment", "提交事务"],
+            requestHint: "正在请求方案 A，观察 MySQL 同步事务和数据库压力。",
             requestEvent: ["Browser 发起请求", "GET /lucky/cacheaside，进入 MySQL 权威库存同步准入接口。"]
         }
     };
-    var currentMode = "prededuct";
+    var currentMode = "cacheaside";
     var selectedLoadtest = {
         rate: null,
         connections: null,
@@ -289,15 +299,15 @@
 
     function setMySQLPressureLabels(mode) {
         var cacheAside = mode === "cacheaside";
-        setText("mysql-qps-label", "当前模式 QPS");
+        setText("mysql-qps-label", "当前方案 QPS");
         setText("mysql-total-label", cacheAside ? "MySQL 同步总请求" : "Redis 准入总请求");
         setText("mysql-p95-label", "入口 P95 响应");
         setText("mysql-p99-label", "入口 P99 响应");
         setText("mysql-db-avg-label", cacheAside ? "DB 响应(含排队)" : "MySQL 平均响应");
         setText("mysql-db-p95-label", "MySQL P95 响应");
         setText("mysql-db-p99-label", "MySQL P99 响应");
-        setText("mysql-cache-label", cacheAside ? "库存缓存命中率" : "Redis 库存角色");
-        setText("mysql-db-ops-label", cacheAside ? "库存回源查询" : "MySQL 查询次数");
+        setText("mysql-cache-label", cacheAside ? "候选库存读缓存命中率" : "库存权威源");
+        setText("mysql-db-ops-label", cacheAside ? "候选库存读回源" : "MySQL 查询次数");
         setText("mysql-rejected-label", "熔断降级拒绝");
         setText("mysql-success-label", cacheAside ? "待支付订单 / 扣减写" : "成功进入异步队列");
     }
@@ -316,7 +326,7 @@
     }
 
     function renderCacheAsidePressure(ca) {
-        setText("mysql-pressure-help", "当前展示旁路缓存链路的 MySQL 库存压力：库存回源查询=缓存未命中后的 SELECT，扣减写=MySQL 行锁 UPDATE；连接池打满后触发熔断保护。");
+        setText("mysql-pressure-help", "方案 A 的库存正确性只由 MySQL 条件 UPDATE 和订单事务保证；这里的 Cache-Aside 仅优化候选库存读取，不参与最终库存判定。连接池过载时由熔断器快速拒绝。");
         var cacheReads = (ca.cacheHits || 0) + (ca.cacheMisses || 0);
         var dbWrites = ca.dbWrites == null ? ca.completed : ca.dbWrites;
         setText("ca-qps", formatNumber(ca.qps));
@@ -336,7 +346,7 @@
 
     function renderPreDeductPressure(snapshot) {
         var db = snapshot.preDeductMySQL || {};
-        setText("mysql-pressure-help", "当前展示预扣库存链路的 MySQL 轻量读压力：防重复查询和奖品详情查询会访问 MySQL；Redis 在这里是库存权威源，不是 MySQL 的缓存副本。");
+        setText("mysql-pressure-help", "方案 B 中 Redis 负责库存准入；MySQL 只承担防重复读取、奖品详情读取和 MQ 消费后的订单账本写入。");
         setText("ca-qps", formatNumber(snapshot.qps));
         setText("ca-total", formatNumber(snapshot.totalRequests));
         setText("ca-p95", (snapshot.p95 || 0) + "ms");
@@ -364,7 +374,7 @@
         if (label) {
             var textMap = breakerEnabled ?
                 { green: "熔断器：正常", yellow: "熔断器：预警", red: "熔断器：熔断降级中" } :
-                { green: "预扣链路：正常" };
+                { green: "Redis 异步链路：正常" };
             label.textContent = textMap[tone];
         }
         var panel = el("cacheaside-panel");
@@ -373,7 +383,27 @@
         }
     }
 
-    // setMode 切换库存模式。切换只影响后续抽奖请求走向和文案，不打断正在进行的转盘。
+    function renderModeArchitecture(mode) {
+        var conf = MODES[mode];
+        if (!conf) {
+            return;
+        }
+        setText("system-eyebrow", conf.eyebrow);
+        setText("system-title", conf.panelTitle);
+        setText("flow-title", conf.flowTitle);
+        setText("flow-caption", conf.flowCaption);
+        setText("flow-stage-1", conf.flowStages[0]);
+        setText("flow-stage-2", conf.flowStages[1]);
+        setText("flow-stage-3", conf.flowStages[2]);
+        ["redis-runtime-metrics", "redis-runtime-summary"].forEach(function (id) {
+            var redisOnly = el(id);
+            if (redisOnly) {
+                redisOnly.hidden = mode === "cacheaside";
+            }
+        });
+    }
+
+    // setMode 切换架构方案。切换只影响后续抽奖请求走向和文案，不打断正在进行的转盘。
     function setMode(mode) {
         if (!MODES[mode] || mode === currentMode || spinning) {
             return;
@@ -383,12 +413,13 @@
             button.classList.toggle("is-active", button.dataset.mode === mode);
         });
         setText("mode-label", MODES[mode].label);
+        renderModeArchitecture(mode);
         if (mode === "cacheaside") {
-            setOperationMessage("已切换到旁路缓存模式：MySQL 行锁原子扣减、强一致不超卖，高并发时 DB 是瓶颈。");
-            pushEvent("切换库存模式", "MySQL 同步准入：库存与待支付订单同事务，过载时熔断降级。", "warning");
+            setOperationMessage("已切换到方案 A：MySQL 同步扣库存并在同一事务创建待支付订单，高并发瓶颈位于数据库。");
+            pushEvent("切换架构方案", "MySQL 同步准入：库存与待支付订单同事务，过载时熔断降级。", "warning");
         } else {
-            setOperationMessage("已切换到预扣库存模式：Redis 原子扣减 + MQ 补偿，扛高并发写。");
-            pushEvent("切换库存模式", "预扣库存：快，Redis 是权威源。", "success");
+            setOperationMessage("已切换到方案 B：Redis 原子准入，MQ 削平订单写峰值，MySQL 保存最终账本。");
+            pushEvent("切换架构方案", "Redis 准入 + MQ 异步落单：Redis 是实时准入权威。", "success");
         }
         renderLoadtestCommand();
         renderMySQLPressure(latestSnapshot, currentMode);
@@ -479,7 +510,7 @@
     }
 
     function pulseRequestFlow() {
-        ["browser", "api", "redis", "mq", "mysql"].forEach(function (step, index) {
+        ["browser", "api", "stage1", "stage2", "stage3"].forEach(function (step, index) {
             window.setTimeout(function () {
                 pulseStep(step);
             }, index * 170);
@@ -596,7 +627,10 @@
             updateMetrics();
             setOperationMessage("库存已抢完，本次请求被库存保护拦截。");
             setBadge("simulation-status", "库存不足", "is-warn");
-            pushEvent("库存不足", "Redis 中没有可扣减库存，系统直接返回失败。", "warning");
+            var stockSource = currentMode === "cacheaside" ?
+                "MySQL 条件扣减未命中可用库存，系统直接返回失败。" :
+                "Redis 中没有可准入库存，系统直接返回失败。";
+            pushEvent("库存不足", stockSource, "warning");
             showToast("抽奖结束，库存不足");
             spinning = false;
             var button = el("single-lottery");
@@ -980,6 +1014,8 @@
     }
 
     document.addEventListener("DOMContentLoaded", function () {
+        renderModeArchitecture(currentMode);
+        setMySQLPressureLabels(currentMode);
         updateMetrics();
         renderLoadtestCommand();
         bindEvents();

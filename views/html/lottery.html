@@ -15,13 +15,13 @@
         <div>
             <p class="eyebrow">Seckill Architecture Lab</p>
             <h1>秒杀系统实验室</h1>
-            <p class="subtitle">用一次抽奖，看清 Redis 预扣库存、MQ 排队、异步落库和超卖保护。</p>
+            <p class="subtitle">同一订单生命周期，对比 MySQL 同步准入与 Redis + MQ 异步落单。</p>
         </div>
         <div class="status-strip" aria-label="系统状态">
             <span class="status-pill is-live">活动进行中</span>
-            <span class="status-pill">Redis 预扣</span>
-            <span class="status-pill">RocketMQ 延迟取消</span>
-            <span class="status-pill">MySQL 最终落库</span>
+            <span class="status-pill">统一订单状态机</span>
+            <span class="status-pill">MySQL 同步准入</span>
+            <span class="status-pill">Redis + MQ 异步落单</span>
         </div>
     </header>
 
@@ -41,19 +41,19 @@
                     <strong>限量奖品秒杀</strong>
                 </div>
                 <div>
-                    <span class="summary-label">库存模式</span>
-                    <strong id="mode-label">Redis 预扣 + MQ 补偿</strong>
+                    <span class="summary-label">当前方案</span>
+                    <strong id="mode-label">方案 A · MySQL 权威库存同步扣减</strong>
                 </div>
             </div>
 
-            <div class="mode-switch" role="group" aria-label="库存模式切换">
-                <button id="mode-prededuct" class="mode-btn is-active" type="button" data-mode="prededuct">
-                    <strong>预扣库存（快）</strong>
-                    <span>Redis 权威 · Lua 原子 · MQ 补偿</span>
+            <div class="mode-switch" role="group" aria-label="架构方案切换">
+                <button id="mode-cacheaside" class="mode-btn is-active" type="button" data-mode="cacheaside">
+                    <strong>方案 A · MySQL 同步扣减</strong>
+                    <span>MySQL 权威库存 · 同事务创建待支付订单</span>
                 </button>
-                <button id="mode-cacheaside" class="mode-btn" type="button" data-mode="cacheaside">
-                    <strong>旁路缓存（慢但稳）</strong>
-                    <span>MySQL 权威 · 行锁不超卖 · 熔断降级</span>
+                <button id="mode-prededuct" class="mode-btn" type="button" data-mode="prededuct">
+                    <strong>方案 B · Redis + MQ 异步落单</strong>
+                    <span>Redis 原子准入 · MQ 削峰 · MySQL 最终账本</span>
                 </button>
             </div>
 
@@ -90,8 +90,8 @@
         <section class="panel system-panel" aria-labelledby="system-title">
             <div class="panel-header">
                 <div>
-                    <p class="eyebrow">Redis Admission Runtime</p>
-                    <h2 id="system-title">Redis 准入 + MQ 异步落单面板</h2>
+                    <p id="system-eyebrow" class="eyebrow">MySQL Synchronous Baseline</p>
+                    <h2 id="system-title">方案 A · MySQL 权威库存同步扣减</h2>
                 </div>
                 <div class="panel-actions">
                     <button id="reset-lab" class="ghost-btn danger-btn" type="button">真重置</button>
@@ -99,13 +99,13 @@
                 </div>
             </div>
 
-            <div class="metric-grid" aria-live="polite">
+            <div id="redis-runtime-metrics" class="metric-grid" aria-live="polite" hidden>
                 <article class="metric-card strong">
                     <span>活动初始库存</span>
                     <strong id="activity-stock">100</strong>
                 </article>
                 <article class="metric-card">
-                    <span>Redis 预扣库存剩余</span>
+                    <span>Redis 准入库存剩余</span>
                     <strong id="redis-stock">100</strong>
                 </article>
                 <article class="metric-card">
@@ -113,7 +113,7 @@
                     <strong id="db-stock">100 / 等待异步落库</strong>
                 </article>
                 <article class="metric-card">
-                    <span>预扣入口请求</span>
+                    <span>Redis 准入请求</span>
                     <strong id="total-requests">0</strong>
                 </article>
                 <article class="metric-card success">
@@ -125,11 +125,11 @@
                     <strong id="rate-limited">0</strong>
                 </article>
                 <article class="metric-card danger">
-                    <span>预扣失败 / 库存不足</span>
+                    <span>准入失败 / 库存不足</span>
                     <strong id="stock-failed">0</strong>
                 </article>
                 <article class="metric-card">
-                    <span>MQ 延时补偿待消费</span>
+                    <span>MQ 延迟取消待消费</span>
                     <strong id="mq-pending">0</strong>
                 </article>
                 <article class="metric-card success">
@@ -137,11 +137,11 @@
                     <strong id="completed-orders">0</strong>
                 </article>
                 <article class="metric-card">
-                    <span>预扣平均响应时间</span>
+                    <span>Redis 准入平均响应</span>
                     <strong id="avg-latency">0ms</strong>
                 </article>
                 <article class="metric-card">
-                    <span>预扣最大响应时间</span>
+                    <span>Redis 准入最大响应</span>
                     <strong id="max-latency">0ms</strong>
                 </article>
                 <article class="metric-card success">
@@ -150,39 +150,39 @@
                 </article>
             </div>
 
-            <div class="simulation-board">
+            <div id="redis-runtime-summary" class="simulation-board" hidden>
                 <div>
-                    <span class="summary-label">预扣已处理请求</span>
+                    <span class="summary-label">Redis 已处理请求</span>
                     <strong id="simulation-progress">0 / 0</strong>
                 </div>
                 <div>
-                    <span class="summary-label">预扣 QPS</span>
+                    <span class="summary-label">Redis 方案 QPS</span>
                     <strong id="qps">0</strong>
                 </div>
                 <div>
-                    <span class="summary-label">预扣 P95</span>
+                    <span class="summary-label">Redis 方案 P95</span>
                     <strong id="p95">0ms</strong>
                 </div>
                 <div>
-                    <span class="summary-label">预扣 P99</span>
+                    <span class="summary-label">Redis 方案 P99</span>
                     <strong id="p99">0ms</strong>
                 </div>
             </div>
 
             <div class="section-title-row">
-                <h3>预扣请求链路</h3>
-                <span class="soft-label">Redis / MQ 流向</span>
+                <h3 id="flow-title">方案 A 请求链路</h3>
+                <span id="flow-caption" class="soft-label">MySQL 同事务扣库存并创建订单</span>
             </div>
             <div class="architecture-flow" aria-label="秒杀请求架构链路">
                 <div class="flow-node" data-step="browser">Browser</div>
                 <div class="flow-arrow">-></div>
                 <div class="flow-node" data-step="api">Gin API</div>
                 <div class="flow-arrow">-></div>
-                <div class="flow-node" data-step="redis">Redis 预扣</div>
+                <div id="flow-stage-1" class="flow-node" data-step="stage1">MySQL 条件扣减</div>
                 <div class="flow-arrow">-></div>
-                <div class="flow-node" data-step="mq">RocketMQ</div>
+                <div id="flow-stage-2" class="flow-node" data-step="stage2">创建 pending_payment</div>
                 <div class="flow-arrow">-></div>
-                <div class="flow-node" data-step="mysql">MySQL</div>
+                <div id="flow-stage-3" class="flow-node" data-step="stage3">提交事务</div>
             </div>
 
             <div class="section-title-row">
@@ -195,13 +195,13 @@
                 <h3>实时 MySQL 压力</h3>
                 <div class="circuit-indicator">
                     <span id="circuit-lamp" class="circuit-lamp green" aria-hidden="true"></span>
-                    <span id="circuit-state" class="soft-label">预扣链路：正常</span>
+                    <span id="circuit-state" class="soft-label">MySQL 同步链路：正常</span>
                 </div>
             </div>
-            <p id="mysql-pressure-help" class="helper-text" style="text-align:left">当前展示预扣库存链路的 MySQL 轻量读压力：防重复查询和奖品详情查询会访问 MySQL，库存扣减仍由 Redis Lua 承担。</p>
+            <p id="mysql-pressure-help" class="helper-text" style="text-align:left">方案 A 的库存正确性只由 MySQL 条件 UPDATE 和订单事务保证；Cache-Aside 仅优化候选库存读取，不参与最终库存判定。</p>
             <div id="cacheaside-panel" class="metric-grid cacheaside-grid">
                 <article class="metric-card">
-                    <span id="mysql-qps-label">当前模式 QPS</span>
+                    <span id="mysql-qps-label">当前方案 QPS</span>
                     <strong id="ca-qps">0</strong>
                 </article>
                 <article class="metric-card">
@@ -233,7 +233,7 @@
                     <strong id="ca-pool">0%</strong>
                 </article>
                 <article class="metric-card">
-                    <span id="mysql-cache-label">缓存命中率</span>
+                    <span id="mysql-cache-label">候选库存读缓存命中率</span>
                     <strong id="ca-hit-rate">0%</strong>
                 </article>
                 <article class="metric-card warning">
@@ -266,7 +266,7 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260707-replay"></script>
+    <script src="/js/seckill-lab.js?v=20260715-architecture"></script>
 </body>
 
 </html>
