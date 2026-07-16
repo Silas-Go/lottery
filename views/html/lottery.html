@@ -1,281 +1,337 @@
 <!doctype html>
-<html lang="zh-CN" class="archive-story-document">
+<html lang="zh-CN">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#171714" />
-    <meta name="description" content="用一则可以亲手压测的故事，理解 Cache-Aside 为什么存在。" />
-    <title>第一章 · 那本不该被翻烂的《百职录》</title>
+    <meta name="theme-color" content="#08111d" />
+    <meta name="description" content="使用真实请求对比 MySQL 直读与 Redis Cache-Aside 的材料详情读取实验。" />
+    <title>Cache-Aside 读取实验 · Silas Architecture Lab</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=3" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260716-story-progression-3" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260717-cache-lab-1" />
 </head>
 
-<body class="archive-page">
-    <div class="paper-grain" aria-hidden="true"></div>
+<body class="cache-lab-page" data-lab-mode="direct" data-route-state="idle">
+    <div class="lab-background" aria-hidden="true">
+        <div class="lab-grid"></div>
+        <div class="lab-haze haze-one"></div>
+        <div class="lab-haze haze-two"></div>
+    </div>
 
-    <aside id="story-compass" class="story-compass" aria-label="故事进度">
-        <div class="compass-track" aria-hidden="true"><i id="compass-fill"></i></div>
-        <ol>
-            <li class="is-current" data-stage="prologue"><button type="button" data-story-target="prologue"><span>序</span><small>旧规矩</small></button></li>
-            <li class="is-locked" data-stage="the-ledger"><button type="button" data-story-target="the-ledger"><span>一</span><small>百职录</small></button></li>
-            <li class="is-locked" data-stage="the-crowd"><button type="button" data-story-target="the-crowd"><span>二</span><small>人群</small></button></li>
-            <li class="is-locked" data-stage="the-crystal"><button type="button" data-story-target="the-crystal"><span>三</span><small>水晶</small></button></li>
-            <li class="is-locked" data-stage="comparison"><button type="button" data-story-target="comparison"><span>四</span><small>答卷</small></button></li>
-            <li class="is-locked" data-stage="epilogue"><button type="button" data-story-target="epilogue"><span>终</span><small>余波</small></button></li>
-        </ol>
-    </aside>
-
-    <header class="archive-masthead">
-        <a class="brand-mark" href="#prologue" aria-label="回到本章开头">
-            <span class="brand-sigil">S</span>
-            <span><strong>SILAS</strong><small>ARCHITECTURE CHRONICLES</small></span>
+    <header class="cache-lab-header">
+        <a class="lab-brand" href="/" aria-label="Silas Architecture Lab">
+            <span class="lab-brand-mark">S</span>
+            <span><strong>SILAS</strong><small>ARCHITECTURE LAB</small></span>
         </a>
-        <nav class="chapter-rail" aria-label="章节进度">
-            <a class="is-current" data-story-target="prologue" href="#prologue"><span>01</span>旧规矩</a>
-            <a class="is-locked" data-story-target="the-crowd" href="#the-crowd" aria-disabled="true"><span>02</span>来访者</a>
-            <a class="is-locked" data-story-target="the-crystal" href="#the-crystal" aria-disabled="true"><span>03</span>记忆水晶</a>
-            <a class="is-locked" data-story-target="epilogue" href="#epilogue" aria-disabled="true"><span>04</span>余波</a>
-        </nav>
-        <div class="scribe-tools">
-            <span id="connection-state" class="scribe-status"><i></i>正在寻找档案员</span>
-            <button id="reset-story-top" class="reset-story-top" type="button">重新讲述</button>
+
+        <div class="lab-title">
+            <p>EXPERIMENT 01 · READ PATH</p>
+            <h1>Cache-Aside 读取实验</h1>
+            <span>使用同一份材料详情，对比 MySQL 直读与 Redis Cache-Aside。</span>
+        </div>
+
+        <div class="lab-header-status">
+            <span id="connection-state" class="connection-badge"><i></i>正在连接实验服务</span>
+            <button id="reset-story-top" class="header-reset" type="button">重置实验</button>
         </div>
     </header>
 
-    <main>
-        <section id="prologue" class="chapter-hero">
-            <div class="hero-copy">
-                <p class="chapter-kicker"><span>CHAPTER I</span> / CACHE-ASIDE</p>
-                <h1>那本不该被<br>翻烂的<br><em>《百职录》</em></h1>
-                <p class="hero-lead">很久以前，城中只有一条规矩：无论谁想知道一种职业，都必须请档案员走进长廊，从唯一的真本里翻出答案。</p>
-                <p class="hero-note">规矩足够诚实，也足够古老。它唯一没想过的，是同一个问题会在同一天被问上几千遍。</p>
-                <button id="open-ledger" class="ink-link" type="button">先翻开一页 <span>↓</span></button>
-            </div>
-            <div class="hero-book" aria-label="百职录封面">
-                <div id="book-cover" class="book-cover">
-                    <span class="book-corner corner-one"></span>
-                    <span class="book-corner corner-two"></span>
-                    <div class="book-spine"><i></i><i></i><i></i></div>
-                    <div class="book-title"><small>THE LEDGER OF</small><strong>百<br>职<br>录</strong><span>卷一</span></div>
-                    <div class="book-seal">真本</div>
-                    <div class="book-fracture" aria-hidden="true"></div>
-                </div>
-                <p id="book-whisper" class="book-whisper">书脊安静，纸页完整。此刻还没有人催促它。</p>
-            </div>
-        </section>
-
-        <section id="the-ledger" class="ledger-scene story-section story-gate is-concealed" data-act-label="第一幕 · 真本">
-            <div class="section-heading">
-                <p class="chapter-kicker">THE FIRST RULE</p>
-                <h2>每一个问题，都去翻真本</h2>
-                <p>先选一种职业。此刻每次点击都会真实查询 MySQL——这就是故事最初那套简单、可靠，却毫无防备的规矩。</p>
-            </div>
-
-            <div class="ledger-layout">
-                <div>
-                    <p class="folio-label">百职目录 · 现存四页</p>
-                    <div id="profession-tabs" class="profession-tabs" role="tablist" aria-label="选择职业">
-                        <span class="skeleton-tab"></span><span class="skeleton-tab"></span>
-                        <span class="skeleton-tab"></span><span class="skeleton-tab"></span>
+    <main class="cache-lab-main">
+        <section class="lab-workbench" aria-label="Cache-Aside 实验工作台">
+            <aside class="lab-surface material-panel">
+                <div class="surface-heading">
+                    <div>
+                        <span class="surface-index">01 / MATERIAL</span>
+                        <h2>稀有材料详情</h2>
                     </div>
-                    <button id="read-again" class="quill-button" type="button">请档案员再翻一次</button>
+                    <span class="surface-badge">DISPLAY THEME</span>
                 </div>
 
-                <article id="archive-sheet" class="archive-sheet" aria-live="polite">
-                    <div class="sheet-number">FOLIO <span id="archive-number">—</span></div>
-                    <div id="archive-sigil" class="archive-sigil">录</div>
-                    <div class="sheet-copy">
-                        <p id="archive-code" class="archive-code">ARCHIVE LOADING</p>
-                        <h3 id="archive-name">档案员正在寻找这一页</h3>
-                        <h4 id="archive-title">请稍候</h4>
-                        <p id="archive-summary">长廊深处传来纸张轻响。</p>
-                        <blockquote id="archive-oath">“每一次读取，都应该能被看见。”</blockquote>
+                <div id="material-tabs" class="material-selector" role="tablist" aria-label="选择魔法材料">
+                    <span class="material-skeleton"></span>
+                    <span class="material-skeleton"></span>
+                    <span class="material-skeleton"></span>
+                    <span class="material-skeleton"></span>
+                </div>
+
+                <article id="archive-sheet" class="material-profile" aria-live="polite">
+                    <div class="material-visual" aria-hidden="true">
+                        <div class="material-orbit orbit-a"></div>
+                        <div class="material-orbit orbit-b"></div>
+                        <div id="material-core" class="material-core"><i></i><i></i><i></i></div>
+                        <span id="archive-sigil" class="material-sigil">Ⅳ</span>
                     </div>
-                    <div class="source-stamp">
-                        <span>本次回答来自</span>
+
+                    <div class="material-copy">
+                        <div class="material-meta">
+                            <span id="archive-rarity" class="rarity-badge">LEGENDARY · 传说</span>
+                            <span>SPECIMEN <b id="archive-number">004</b></span>
+                        </div>
+                        <p id="archive-code" class="material-code">STAR MARROW</p>
+                        <h3 id="archive-name">星髓</h3>
+                        <h4 id="archive-title">高密度魔力结晶</h4>
+                        <p id="archive-summary">正在加载材料详情。</p>
+                        <p id="archive-note" class="material-note">材料主题只用于展示，不改变接口与缓存语义。</p>
+                    </div>
+
+                    <div class="material-source">
+                        <span>本次数据来源</span>
                         <strong id="detail-source">目录预览</strong>
                     </div>
                 </article>
-            </div>
 
-            <ol id="read-trace" class="read-trace" aria-label="最近的真实读取记录"></ol>
-
-            <div class="story-passage">
-                <p id="ledger-passage-copy">先亲手翻开任意一页。故事只承认真正发生过的读取。</p>
-                <button id="enter-crowd" class="passage-button" type="button" disabled>
-                    <span>这页档案将成为城邦的告示</span>
-                    <strong>带着它，走向城门 →</strong>
+                <button id="read-again" class="material-read-button" type="button">
+                    读取当前材料
+                    <span>发送一次真实请求</span>
                 </button>
-            </div>
-        </section>
 
-        <section id="the-crowd" class="crowd-scene story-section dark-section story-gate is-concealed" data-act-label="第二幕 · 人群">
-            <div class="scene-prose">
-                <p class="chapter-kicker light">THE DAY THE RULE BROKE</p>
-                <h2>然后，城邦宣布开放<br><em>“<span id="crowd-profession">观星者</span>”</em>的遴选。</h2>
-                <p>消息沿河而下。人们从码头、山谷和远方的城邦赶来。他们没有恶意，只是每个人都问了同一句话：</p>
-                <blockquote>“观星者，究竟是什么？”</blockquote>
-                <p>一个问题并不可怕。可当几千只手同时伸向同一本书，诚实的旧规矩开始发出断裂的声音。</p>
-            </div>
+                <ol id="read-trace" class="read-trace compact-trace" aria-label="最近的真实读取记录"></ol>
+            </aside>
 
-            <div class="experiment-card old-rule-card">
-                <div class="experiment-topline">
+            <section class="lab-surface route-panel">
+                <div class="surface-heading">
                     <div>
-                        <span class="experiment-index">实验 01</span>
-                        <h3>让人群依照旧规矩来访</h3>
+                        <span class="surface-index">02 / REQUEST PATH</span>
+                        <h2>实时请求链路</h2>
                     </div>
-                    <span class="path-badge mysql">MYSQL DIRECT</span>
-                </div>
-                <p class="experiment-copy">这不是网页动画。复制命令到项目终端，wrk2 会以固定速率反复读取同一页；右侧所有数字都来自服务端真实指标。</p>
-
-                <div class="pressure-picker" role="group" aria-label="选择来访强度">
-                    <button type="button" data-rate="100" data-connections="32">100 <small>人 / 秒</small></button>
-                    <button class="is-active" type="button" data-rate="300" data-connections="96">300 <small>人 / 秒</small></button>
-                    <button type="button" data-rate="600" data-connections="160">600 <small>人 / 秒</small></button>
+                    <span id="route-mode-badge" class="surface-badge mode-direct">MYSQL DIRECT</span>
                 </div>
 
-                <div class="terminal-window">
-                    <div class="terminal-bar"><i></i><i></i><i></i><span>lottery — zsh</span></div>
-                    <code id="direct-command"></code>
-                    <button id="copy-direct" class="terminal-copy" type="button">复制指令</button>
+                <div id="architecture-canvas" class="architecture-canvas" aria-label="Client、Go API、Redis 和 MySQL 请求链路">
+                    <svg class="route-svg" viewBox="0 0 900 440" role="img" aria-label="请求链路连线">
+                        <defs>
+                            <marker id="route-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                                <path d="M0,0 L8,4 L0,8 Z"></path>
+                            </marker>
+                            <filter id="pulse-glow" x="-200%" y="-200%" width="400%" height="400%">
+                                <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+                                <feMerge>
+                                    <feMergeNode in="blur"></feMergeNode>
+                                    <feMergeNode in="SourceGraphic"></feMergeNode>
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <path id="path-client-api" class="route-edge edge-client-api" d="M170 220 L310 220"></path>
+                        <path id="path-api-redis" class="route-edge edge-api-redis" d="M410 200 C485 145 535 110 600 110"></path>
+                        <path id="path-api-mysql" class="route-edge edge-api-mysql" d="M410 240 C485 295 535 330 600 330"></path>
+                        <path id="path-redis-mysql" class="route-edge edge-redis-mysql" d="M645 160 L645 280"></path>
+                        <path id="path-mysql-redis" class="route-edge edge-mysql-redis" d="M675 280 L675 160"></path>
+
+                        <circle class="request-pulse pulse-direct" r="7" filter="url(#pulse-glow)">
+                            <animateMotion id="motion-client-api" dur="0.34s" begin="indefinite" fill="freeze">
+                                <mpath href="#path-client-api"></mpath>
+                            </animateMotion>
+                        </circle>
+                        <circle class="request-pulse pulse-redis" r="7" filter="url(#pulse-glow)">
+                            <animateMotion id="motion-api-redis" dur="0.34s" begin="indefinite" fill="freeze">
+                                <mpath href="#path-api-redis"></mpath>
+                            </animateMotion>
+                        </circle>
+                        <circle class="request-pulse pulse-mysql" r="7" filter="url(#pulse-glow)">
+                            <animateMotion id="motion-api-mysql" dur="0.34s" begin="indefinite" fill="freeze">
+                                <mpath href="#path-api-mysql"></mpath>
+                            </animateMotion>
+                        </circle>
+                        <circle class="request-pulse pulse-miss" r="7" filter="url(#pulse-glow)">
+                            <animateMotion id="motion-redis-mysql" dur="0.30s" begin="indefinite" fill="freeze">
+                                <mpath href="#path-redis-mysql"></mpath>
+                            </animateMotion>
+                        </circle>
+                        <circle class="request-pulse pulse-writeback" r="7" filter="url(#pulse-glow)">
+                            <animateMotion id="motion-mysql-redis" dur="0.30s" begin="indefinite" fill="freeze">
+                                <mpath href="#path-mysql-redis"></mpath>
+                            </animateMotion>
+                        </circle>
+                    </svg>
+
+                    <article id="node-client" class="architecture-node client-node" data-node="client">
+                        <span class="node-icon">CL</span>
+                        <small>REQUEST ORIGIN</small>
+                        <strong>Client</strong>
+                        <p>浏览器 / wrk2</p>
+                    </article>
+
+                    <article id="node-api" class="architecture-node api-node" data-node="api">
+                        <span class="node-icon">GO</span>
+                        <small>APPLICATION</small>
+                        <strong>Go API</strong>
+                        <p>/api/archives/:id</p>
+                    </article>
+
+                    <article id="node-redis" class="architecture-node redis-node is-disabled" data-node="redis">
+                        <span class="node-icon">R</span>
+                        <small>CACHE LAYER</small>
+                        <strong>Redis</strong>
+                        <p id="redis-node-state">尚未启用</p>
+                    </article>
+
+                    <article id="node-mysql" class="architecture-node mysql-node" data-node="mysql">
+                        <span class="node-icon">MY</span>
+                        <small>AUTHORITATIVE DATA</small>
+                        <strong>MySQL</strong>
+                        <p id="mysql-pool-state">Pool 0 / 0</p>
+                        <i id="mysql-pressure-ring" class="pressure-ring"></i>
+                    </article>
+
+                    <div class="route-legend">
+                        <span><i class="legend-direct"></i>MySQL Direct</span>
+                        <span><i class="legend-hit"></i>Cache Hit</span>
+                        <span><i class="legend-miss"></i>Cache Miss / 回填</span>
+                    </div>
                 </div>
 
-                <div class="real-data-label"><i></i> LIVE DATA · 档案馆此刻的真实情况</div>
-                <div class="story-metrics direct-metrics">
-                    <article><span>赶来的访客<small>HTTP REQUESTS</small></span><strong id="direct-total">0</strong></article>
-                    <article><span>真本翻阅次数<small>MYSQL READS</small></span><strong id="direct-db-reads">0</strong></article>
-                    <article><span>每秒问询<small>CURRENT QPS</small></span><strong id="direct-qps">0</strong></article>
-                    <article><span>99% 回答不超过<small>P99 LATENCY</small></span><strong id="direct-p99">0 ms</strong></article>
-                    <article><span>档案馆差错<small>ERRORS</small></span><strong id="direct-errors">0</strong></article>
-                    <article><span>长廊最高占用<small>DB POOL PEAK</small></span><strong id="direct-pool">0 / 0</strong></article>
-                </div>
-
-                <div class="damage-meter">
-                    <div><span>真本磨损</span><strong id="damage-label">尚未开始</strong></div>
-                    <div class="damage-track"><i id="damage-fill"></i></div>
-                    <p id="damage-prose">终端中的第一位来访者抵达后，书页才会开始留下痕迹。</p>
-                </div>
-
-                <button id="awaken-crystal" class="reveal-button" type="button" disabled>
-                    <span>旧规矩已经留下证据</span>
-                    <strong>把记忆水晶带进档案馆 →</strong>
-                </button>
-            </div>
-        </section>
-
-        <section id="the-crystal" class="crystal-scene story-section story-gate is-dormant is-concealed" data-act-label="第三幕 · 水晶">
-            <div class="crystal-visual" aria-hidden="true">
-                <div class="crystal-halo halo-one"></div>
-                <div class="crystal-halo halo-two"></div>
-                <div class="memory-crystal"><span></span><i></i></div>
-                <p>REDIS</p>
-            </div>
-
-            <div class="crystal-copy">
-                <p class="chapter-kicker">A NEW KEEPER OF MEMORY</p>
-                <h2>水晶不是真本。<br>它只是<em>记住答案。</em></h2>
-                <p>档案员没有烧掉《百职录》，也没有把真相交给水晶。他只改了来访的次序：</p>
-                <ol class="cache-rules">
-                    <li><span>01</span><div><strong>先问水晶</strong><small>GET archive:profession:{id}</small></div></li>
-                    <li><span>02</span><div><strong>水晶忘了，才翻真本</strong><small>CACHE MISS → SELECT MYSQL</small></div></li>
-                    <li><span>03</span><div><strong>把答案留在水晶里</strong><small>SET + TTL <b id="ttl-seconds">300</b>s</small></div></li>
-                </ol>
-                <p class="crystal-truth">MySQL 仍是唯一真本。Redis 随时可以被清空；它的价值，不是替代真相，而是替真相挡住重复的追问。</p>
-            </div>
-
-            <div class="experiment-card crystal-rule-card">
-                <div class="experiment-topline">
+                <div class="route-status-bar">
                     <div>
-                        <span class="experiment-index">实验 02</span>
-                        <h3>让同一群人重新来访</h3>
+                        <span>当前链路状态</span>
+                        <strong id="route-status">等待真实请求</strong>
                     </div>
-                    <span class="path-badge redis">REDIS CACHE-ASIDE</span>
-                </div>
-                <p class="experiment-copy">速率、时长、并发数、返回内容全部不变。唯一变化：请求会先经过记忆水晶。</p>
-
-                <div class="terminal-window crystal-terminal">
-                    <div class="terminal-bar"><i></i><i></i><i></i><span>lottery — zsh</span></div>
-                    <code id="cached-command"></code>
-                    <button id="copy-cached" class="terminal-copy" type="button">复制指令</button>
-                </div>
-
-                <div class="real-data-label"><i></i> LIVE DATA · 记忆水晶此刻的真实情况</div>
-                <div class="story-metrics cached-metrics">
-                    <article><span>赶来的访客<small>HTTP REQUESTS</small></span><strong id="cached-total">0</strong></article>
-                    <article><span>水晶回答次数<small>CACHE HITS</small></span><strong id="cached-hits">0</strong></article>
-                    <article><span>水晶遗忘次数<small>CACHE MISSES</small></span><strong id="cached-misses">0</strong></article>
-                    <article><span>真本翻阅次数<small>MYSQL READS</small></span><strong id="cached-db-reads">0</strong></article>
-                    <article><span>记忆命中率<small>HIT RATE</small></span><strong id="cached-hit-rate">0%</strong></article>
-                    <article><span>99% 回答不超过<small>P99 LATENCY</small></span><strong id="cached-p99">0 ms</strong></article>
+                    <div>
+                        <span>最近来源</span>
+                        <strong id="route-source">—</strong>
+                    </div>
+                    <div>
+                        <span>当前流量</span>
+                        <strong><b id="route-qps">0</b> req/s</strong>
+                    </div>
                 </div>
 
-                <button id="reveal-comparison" class="reveal-button crystal-reveal-button" type="button" disabled>
-                    <span>至少让水晶回答 20 次，才足以形成答卷</span>
-                    <strong>让水晶交出答卷 →</strong>
-                </button>
-            </div>
+                <div class="technical-note">
+                    <span>实验边界</span>
+                    <p>MySQL 是材料详情权威源。Redis 只保存带 TTL 的可丢弃副本；两条路径返回相同响应体。</p>
+                </div>
+            </section>
+
+            <aside class="lab-surface control-panel">
+                <div class="surface-heading">
+                    <div>
+                        <span class="surface-index">03 / CONTROL</span>
+                        <h2>实验控制</h2>
+                    </div>
+                    <span id="control-mode" class="surface-badge mode-direct">DIRECT</span>
+                </div>
+
+                <div class="control-field">
+                    <div class="control-label">
+                        <label for="rate-range">请求速率</label>
+                        <output id="rate-value" for="rate-range">300 req/s</output>
+                    </div>
+                    <input id="rate-range" type="range" min="50" max="800" step="50" value="300" />
+                    <div class="range-scale"><span>50</span><span>800</span></div>
+                </div>
+
+                <div class="control-field">
+                    <div class="control-label">
+                        <label for="connections-range">并发连接数</label>
+                        <output id="connections-value" for="connections-range">96</output>
+                    </div>
+                    <input id="connections-range" type="range" min="16" max="192" step="16" value="96" />
+                    <div class="range-scale"><span>16</span><span>192</span></div>
+                </div>
+
+                <div class="control-readonly-grid">
+                    <div><span>服务端缓存 TTL</span><strong><b id="ttl-seconds">300</b>s</strong></div>
+                    <div><span>压测时长</span><strong id="duration-value">20s</strong></div>
+                </div>
+
+                <p id="parameter-feedback" class="parameter-feedback" aria-live="polite">命令已同步：300 req/s · 96 connections</p>
+
+                <div class="mode-actions" role="group" aria-label="选择实验路径">
+                    <button id="start-direct" class="mode-action direct-action" type="button">
+                        <span>MYSQL DIRECT</span>
+                        <strong>启动 MySQL 直读</strong>
+                        <small>每次请求直接查询 MySQL</small>
+                    </button>
+                    <button id="start-cached" class="mode-action cache-action" type="button">
+                        <span>REDIS CACHE-ASIDE</span>
+                        <strong>启用 Cache-Aside</strong>
+                        <small>先查 Redis，MISS 后回源并回填</small>
+                    </button>
+                </div>
+
+                <div class="command-console">
+                    <div class="console-header">
+                        <span id="command-mode-label">MYSQL DIRECT COMMAND</span>
+                        <button id="copy-command" type="button">复制命令</button>
+                    </div>
+                    <code id="active-command"></code>
+                </div>
+
+                <div id="loadtest-state" class="loadtest-state">
+                    <i></i>
+                    <div>
+                        <span>LOAD TEST STATUS</span>
+                        <strong>等待终端流量</strong>
+                        <p>运行上方命令后，SSE 检测到请求增长才会驱动链路动画。</p>
+                    </div>
+                </div>
+
+                <button id="reset-chapter" class="reset-experiment-button" type="button">清空缓存与指标</button>
+            </aside>
         </section>
 
-        <section id="comparison" class="comparison-scene story-section story-gate is-concealed" data-act-label="第四幕 · 答卷">
-            <div class="section-heading centered">
-                <p class="chapter-kicker">THE SAME CROWD, ONE DIFFERENT RULE</p>
-                <h2>不是两套业务。只是一次改道。</h2>
-                <p>同一页、同一批请求、同样的响应。下面只比较每一千次问询，需要真正翻阅多少次 MySQL。</p>
-            </div>
-
-            <div class="comparison-board">
-                <div class="comparison-head"><span>旧规矩 · MySQL 直读</span><span>唯一变量</span><span>新规矩 · Cache-Aside</span></div>
-                <div class="comparison-row hero-row">
-                    <strong id="direct-per-thousand">—</strong>
-                    <div><span>每千次请求</span><b>MYSQL READS</b></div>
-                    <strong id="cached-per-thousand">—</strong>
-                </div>
-                <div class="comparison-row">
-                    <span id="direct-compare-p99">—</span><div>尾延迟 P99</div><span id="cached-compare-p99">—</span>
-                </div>
-                <div class="comparison-row">
-                    <span>每次翻真本</span><div>读取路径</div><span>命中时只问水晶</span>
-                </div>
-                <div class="comparison-verdict">
-                    <span>真本翻阅减少</span>
-                    <strong id="read-reduction">等待两轮实验</strong>
-                    <p id="verdict-copy">完成旧规矩与记忆水晶的两轮来访后，这里才会给出结论。</p>
-                </div>
-            </div>
-
-            <button id="enter-epilogue" class="epilogue-button" type="button" disabled>
-                <span>让数字停在这里，让故事继续往前</span>
-                <strong>合上答卷，去看余波 →</strong>
-            </button>
-        </section>
-
-        <section id="epilogue" class="epilogue-scene story-section story-gate is-concealed" data-act-label="终幕 · 余波">
-            <p class="chapter-kicker light">END OF CHAPTER I</p>
-            <div class="epilogue-grid">
+        <section class="lab-surface metrics-panel" aria-label="真实实验指标">
+            <div class="surface-heading metrics-heading">
                 <div>
-                    <h2>那天以后，《百职录》仍锁在长廊尽头。</h2>
-                    <p>只是绝大多数来访者，再也不必惊动它。</p>
-                    <p>档案员终于可以坐下喝完一杯还热着的茶。水晶替他回答那些重复的问题；而当答案改变，他仍会先改写真本，再让旧记忆失效。</p>
+                    <span class="surface-index">04 / LIVE METRICS</span>
+                    <h2>真实指标对比</h2>
                 </div>
-                <blockquote>缓存适合回答“它是什么”。<br>却不能裁决——<em>最后一个名额，究竟属于谁。</em></blockquote>
+                <span class="metrics-live"><i></i>SERVER-SENT EVENTS</span>
             </div>
-            <div id="next-chapter" class="next-chapter is-locked">
-                <span>NEXT CHAPTER · LOCKED</span>
-                <strong>当一千只手同时伸向最后一枚星印</strong>
-                <p>下一章，故事将从“重复读取”进入“并发争夺”。</p>
+
+            <div class="metrics-table" role="table" aria-label="MySQL Direct 与 Cache-Aside 指标对比">
+                <div class="metrics-row metrics-header" role="row">
+                    <span role="columnheader">读取路径</span>
+                    <span role="columnheader">QPS</span>
+                    <span role="columnheader">P99</span>
+                    <span role="columnheader">DB Reads</span>
+                    <span role="columnheader">Cache Hits</span>
+                    <span role="columnheader">Cache Misses</span>
+                    <span role="columnheader">Hit Rate</span>
+                    <span role="columnheader">Pool Peak</span>
+                    <span role="columnheader">Errors</span>
+                </div>
+
+                <div id="direct-metrics-row" class="metrics-row path-direct-row is-active" role="row">
+                    <div class="metrics-path" role="cell">
+                        <i></i>
+                        <span><strong>MySQL Direct</strong><small><b id="direct-total">0</b> requests</small></span>
+                    </div>
+                    <strong id="direct-qps" class="metric-number" role="cell">0</strong>
+                    <strong id="direct-p99" class="metric-number" role="cell">0 ms</strong>
+                    <strong id="direct-db-reads" class="metric-number" role="cell">0</strong>
+                    <strong class="metric-empty" role="cell">—</strong>
+                    <strong class="metric-empty" role="cell">—</strong>
+                    <strong class="metric-empty" role="cell">—</strong>
+                    <strong id="direct-pool" role="cell">0 / 0</strong>
+                    <strong id="direct-errors" class="metric-number" role="cell">0</strong>
+                </div>
+
+                <div id="cached-metrics-row" class="metrics-row path-cached-row" role="row">
+                    <div class="metrics-path" role="cell">
+                        <i></i>
+                        <span><strong>Redis Cache-Aside</strong><small><b id="cached-total">0</b> requests</small></span>
+                    </div>
+                    <strong id="cached-qps" class="metric-number" role="cell">0</strong>
+                    <strong id="cached-p99" class="metric-number" role="cell">0 ms</strong>
+                    <strong id="cached-db-reads" class="metric-number" role="cell">0</strong>
+                    <strong id="cached-hits" class="metric-number" role="cell">0</strong>
+                    <strong id="cached-misses" class="metric-number" role="cell">0</strong>
+                    <strong id="cached-hit-rate" class="metric-number" role="cell">0%</strong>
+                    <strong id="cached-pool" role="cell">0 / 0</strong>
+                    <strong id="cached-errors" class="metric-number" role="cell">0</strong>
+                </div>
+            </div>
+
+            <div class="metrics-footer">
+                <span>同一材料 ID · 同一响应体 · 同一压测参数</span>
+                <strong id="comparison-summary">等待两条路径产生真实请求</strong>
             </div>
         </section>
     </main>
 
-    <footer id="archive-footer" class="archive-footer story-gate is-concealed">
-        <span>第一章 · Cache-Aside Read Path</span>
-        <button id="reset-chapter" type="button">合拢书本，重新讲述</button>
-        <span>所有实验数字均来自当前服务端</span>
-    </footer>
-
-    <div id="story-toast" class="story-toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260716-story-progression-2"></script>
+    <div id="story-toast" class="lab-toast" role="status" aria-live="polite"></div>
+    <script src="/js/seckill-lab.js?v=20260717-cache-lab-1"></script>
 </body>
 
 </html>
