@@ -8,7 +8,7 @@
     <meta name="description" content="使用真实请求对比 MySQL 直读与 Redis Cache-Aside 的材料详情读取实验。" />
     <title>Cache-Aside 读取实验 · Silas Architecture Lab</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=3" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260717-cache-lab-1" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260717-routing-engine-1" />
 </head>
 
 <body class="cache-lab-page" data-lab-mode="direct" data-route-state="idle">
@@ -91,108 +91,228 @@
             <section class="lab-surface route-panel">
                 <div class="surface-heading">
                     <div>
-                        <span class="surface-index">02 / REQUEST PATH</span>
+                        <span class="surface-index">02 / DATA ROUTING ENGINE</span>
                         <h2>实时请求链路</h2>
                     </div>
                     <span id="route-mode-badge" class="surface-badge mode-direct">MYSQL DIRECT</span>
                 </div>
 
-                <div id="architecture-canvas" class="architecture-canvas" aria-label="Client、Go API、Redis 和 MySQL 请求链路">
-                    <svg class="route-svg" viewBox="0 0 900 440" role="img" aria-label="请求链路连线">
+                <div id="architecture-canvas" class="architecture-canvas" aria-label="透明机械剖面的双路数据检索机">
+                    <svg class="route-svg" viewBox="0 0 1000 540" role="img" aria-labelledby="routing-engine-title routing-engine-desc">
+                        <title id="routing-engine-title">DATA ROUTING ENGINE 双路数据检索机</title>
+                        <desc id="routing-engine-desc">Client 请求进入 Go API 分流阀后，经 Redis Cache-Aside 或 MySQL Direct 路径检索，并通过独立响应与缓存回填管线返回。</desc>
                         <defs>
-                            <marker id="route-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                                <path d="M0,0 L8,4 L0,8 Z"></path>
-                            </marker>
-                            <filter id="pulse-glow" x="-200%" y="-200%" width="400%" height="400%">
-                                <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
-                                <feMerge>
-                                    <feMergeNode in="blur"></feMergeNode>
-                                    <feMergeNode in="SourceGraphic"></feMergeNode>
-                                </feMerge>
+                            <linearGradient id="machine-shell" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#13263a" stop-opacity=".94"></stop>
+                                <stop offset=".48" stop-color="#081522" stop-opacity=".84"></stop>
+                                <stop offset="1" stop-color="#172638" stop-opacity=".9"></stop>
+                            </linearGradient>
+                            <linearGradient id="glass-panel" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0" stop-color="#7ebbc7" stop-opacity=".12"></stop>
+                                <stop offset=".55" stop-color="#24465b" stop-opacity=".04"></stop>
+                                <stop offset="1" stop-color="#0c1a29" stop-opacity=".18"></stop>
+                            </linearGradient>
+                            <linearGradient id="capsule-metal" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0" stop-color="#6d8799"></stop>
+                                <stop offset=".35" stop-color="#d7e6e8"></stop>
+                                <stop offset=".65" stop-color="#7697a4"></stop>
+                                <stop offset="1" stop-color="#314c5f"></stop>
+                            </linearGradient>
+                            <filter id="machine-glow" x="-100%" y="-100%" width="300%" height="300%">
+                                <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                                <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+                            </filter>
+                            <filter id="machine-shadow" x="-30%" y="-30%" width="160%" height="180%">
+                                <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000711" flood-opacity=".55"></feDropShadow>
                             </filter>
                         </defs>
 
-                        <path id="path-client-api" class="route-edge edge-client-api" d="M170 220 L310 220"></path>
-                        <path id="path-api-redis" class="route-edge edge-api-redis" d="M410 200 C485 145 535 110 600 110"></path>
-                        <path id="path-api-mysql" class="route-edge edge-api-mysql" d="M410 240 C485 295 535 330 600 330"></path>
-                        <path id="path-redis-mysql" class="route-edge edge-redis-mysql" d="M645 160 L645 280"></path>
-                        <path id="path-mysql-redis" class="route-edge edge-mysql-redis" d="M675 280 L675 160"></path>
+                        <rect class="machine-base-shadow" x="28" y="33" width="944" height="475" rx="26"></rect>
+                        <rect class="machine-chassis" x="20" y="22" width="960" height="478" rx="24"></rect>
+                        <path class="machine-rib" d="M44 83 H956 M44 454 H956"></path>
+                        <g class="machine-bolts" aria-hidden="true">
+                            <circle cx="42" cy="44" r="5"></circle><circle cx="958" cy="44" r="5"></circle>
+                            <circle cx="42" cy="478" r="5"></circle><circle cx="958" cy="478" r="5"></circle>
+                        </g>
 
-                        <circle class="request-pulse pulse-direct" r="7" filter="url(#pulse-glow)">
-                            <animateMotion id="motion-client-api" dur="0.34s" begin="indefinite" fill="freeze">
-                                <mpath href="#path-client-api"></mpath>
-                            </animateMotion>
-                        </circle>
-                        <circle class="request-pulse pulse-redis" r="7" filter="url(#pulse-glow)">
-                            <animateMotion id="motion-api-redis" dur="0.34s" begin="indefinite" fill="freeze">
-                                <mpath href="#path-api-redis"></mpath>
-                            </animateMotion>
-                        </circle>
-                        <circle class="request-pulse pulse-mysql" r="7" filter="url(#pulse-glow)">
-                            <animateMotion id="motion-api-mysql" dur="0.34s" begin="indefinite" fill="freeze">
-                                <mpath href="#path-api-mysql"></mpath>
-                            </animateMotion>
-                        </circle>
-                        <circle class="request-pulse pulse-miss" r="7" filter="url(#pulse-glow)">
-                            <animateMotion id="motion-redis-mysql" dur="0.30s" begin="indefinite" fill="freeze">
-                                <mpath href="#path-redis-mysql"></mpath>
-                            </animateMotion>
-                        </circle>
-                        <circle class="request-pulse pulse-writeback" r="7" filter="url(#pulse-glow)">
-                            <animateMotion id="motion-mysql-redis" dur="0.30s" begin="indefinite" fill="freeze">
-                                <mpath href="#path-mysql-redis"></mpath>
-                            </animateMotion>
-                        </circle>
+                        <g class="machine-nameplate">
+                            <text x="52" y="57">DATA ROUTING ENGINE</text>
+                            <text class="machine-nameplate-cn" x="52" y="76">双路数据检索机 · 透明机械剖面</text>
+                        </g>
+                        <g class="flow-key" aria-hidden="true">
+                            <circle class="flow-key-request" cx="756" cy="56" r="4"></circle><text x="768" y="60">请求脉冲</text>
+                            <rect class="flow-key-data" x="841" y="52" width="11" height="7" rx="3"></rect><text x="860" y="60">数据胶囊</text>
+                        </g>
+
+                        <g class="pipe-bed" aria-hidden="true">
+                            <path d="M150 268 H286"></path>
+                            <path d="M384 238 C425 216 428 148 487 148"></path>
+                            <path d="M384 299 C432 315 438 389 490 389"></path>
+                            <path d="M710 198 C710 249 450 278 490 350"></path>
+                            <path d="M700 424 C790 470 830 415 830 177 H710"></path>
+                            <path d="M710 132 H854 V268 H924"></path>
+                            <path d="M728 389 H854 V268 H924"></path>
+                        </g>
+
+                        <g class="route-pipelines" aria-hidden="true">
+                            <path id="path-client-api" class="route-edge edge-client-api" d="M150 268 H286"></path>
+                            <path id="path-api-redis" class="route-edge edge-api-redis" d="M384 238 C425 216 428 148 487 148"></path>
+                            <path id="path-api-mysql" class="route-edge edge-api-mysql" d="M384 299 C432 315 438 389 490 389"></path>
+                            <path id="path-redis-mysql" class="route-edge edge-redis-mysql" d="M710 198 C710 249 450 278 490 350"></path>
+                            <path id="path-mysql-redis" class="route-edge edge-mysql-redis refill-edge" d="M700 424 C790 470 830 415 830 177 H710"></path>
+                            <path id="path-redis-response" class="route-edge edge-redis-response response-edge" d="M710 132 H854 V268 H924"></path>
+                            <path id="path-mysql-response" class="route-edge edge-mysql-response response-edge" d="M728 389 H854 V268 H924"></path>
+                        </g>
+
+                        <g id="node-client" class="architecture-node client-node" data-node="client">
+                            <rect class="device-shell" x="44" y="208" width="108" height="120" rx="18"></rect>
+                            <rect class="device-glass" x="57" y="224" width="80" height="50" rx="8"></rect>
+                            <path class="injector-rail" d="M68 249 H128 M116 240 L128 249 L116 258"></path>
+                            <rect class="injector-grip" x="65" y="286" width="64" height="9" rx="4"></rect>
+                            <circle class="device-port" cx="150" cy="268" r="9"></circle>
+                            <text class="device-title" x="44" y="352">Client</text>
+                            <text class="device-subtitle" x="44" y="371">请求注入器 · Request Injector</text>
+                            <text class="device-detail" x="44" y="389">Browser / wrk2</text>
+                        </g>
+
+                        <g id="node-api" class="architecture-node api-node" data-node="api">
+                            <path class="valve-mount" d="M292 218 L334 193 L378 218 L397 268 L378 318 L334 343 L292 318 L273 268 Z"></path>
+                            <circle class="valve-ring" cx="334" cy="268" r="50"></circle>
+                            <circle class="valve-face" cx="334" cy="268" r="35"></circle>
+                            <g id="routing-valve-pointer" class="valve-pointer">
+                                <path d="M334 268 L334 235"></path>
+                                <path d="M326 242 L334 230 L342 242 Z"></path>
+                            </g>
+                            <circle class="valve-hub" cx="334" cy="268" r="9"></circle>
+                            <circle class="device-port" cx="282" cy="268" r="8"></circle>
+                            <circle class="device-port port-cache" cx="382" cy="238" r="8"></circle>
+                            <circle class="device-port port-direct" cx="382" cy="299" r="8"></circle>
+                            <text class="device-title centered" x="334" y="373">Go API</text>
+                            <text class="device-subtitle centered" x="334" y="392">中央分流阀 · Routing Core</text>
+                            <text id="valve-route-label" class="device-state centered" x="334" y="413">DIRECT BYPASS</text>
+                        </g>
+
+                        <g id="node-redis" class="architecture-node redis-node is-disabled" data-node="redis">
+                            <rect class="device-shell redis-shell" x="487" y="88" width="225" height="122" rx="18"></rect>
+                            <rect class="device-glass redis-glass" x="500" y="100" width="199" height="96" rx="13"></rect>
+                            <circle class="device-port port-cache" cx="487" cy="148" r="8"></circle>
+                            <circle class="device-port" cx="710" cy="132" r="8"></circle>
+                            <circle class="device-port refill-port" cx="710" cy="177" r="8"></circle>
+                            <circle class="ttl-track" cx="572" cy="148" r="43" pathLength="100"></circle>
+                            <circle id="redis-ttl-ring" class="ttl-ring" cx="572" cy="148" r="43" pathLength="100"></circle>
+                            <g id="redis-rotor" class="redis-rotor">
+                                <circle class="rotor-core" cx="572" cy="148" r="32"></circle>
+                                <g class="cache-slots">
+                                    <rect id="redis-slot-active" class="cache-slot current-slot" x="566" y="111" width="12" height="18" rx="3"></rect>
+                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(45 572 148)"></rect>
+                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(90 572 148)"></rect>
+                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(135 572 148)"></rect>
+                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(180 572 148)"></rect>
+                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(225 572 148)"></rect>
+                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(270 572 148)"></rect>
+                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(315 572 148)"></rect>
+                                </g>
+                                <circle class="rotor-hub" cx="572" cy="148" r="8"></circle>
+                            </g>
+                            <circle id="redis-hit-light" class="status-light hit-light" cx="641" cy="124" r="5"></circle>
+                            <text class="device-detail" x="651" y="128">HIT</text>
+                            <circle id="redis-miss-light" class="status-light miss-light" cx="641" cy="145" r="5"></circle>
+                            <text class="device-detail" x="651" y="149">MISS</text>
+                            <text id="redis-node-state" class="device-state" x="620" y="174">STANDBY</text>
+                            <text id="redis-key-label" class="device-micro" x="620" y="190">archive:profession:4</text>
+                            <text class="device-title" x="487" y="235">Redis</text>
+                            <text class="device-subtitle" x="487" y="254">高速缓存转鼓 · Cache Rotor</text>
+                            <text id="redis-ttl-value" class="device-detail" x="645" y="235">TTL 300s</text>
+                        </g>
+
+                        <g id="node-mysql" class="architecture-node mysql-node" data-node="mysql">
+                            <rect class="device-shell mysql-shell" x="490" y="330" width="240" height="125" rx="19"></rect>
+                            <rect class="device-glass mysql-glass" x="505" y="343" width="208" height="98" rx="13"></rect>
+                            <circle class="device-port port-direct" cx="490" cy="389" r="8"></circle>
+                            <circle class="device-port" cx="728" cy="389" r="8"></circle>
+                            <circle id="mysql-pressure-ring" class="pressure-ring" cx="576" cy="390" r="52" pathLength="100"></circle>
+                            <circle class="pressure-ticks" cx="576" cy="390" r="46" pathLength="100"></circle>
+                            <g id="mysql-spindle" class="mysql-spindle">
+                                <ellipse class="data-platter platter-back" cx="576" cy="374" rx="42" ry="11"></ellipse>
+                                <rect class="platter-body" x="534" y="374" width="84" height="28"></rect>
+                                <ellipse class="data-platter" cx="576" cy="388" rx="42" ry="11"></ellipse>
+                                <ellipse class="data-platter platter-front" cx="576" cy="402" rx="42" ry="11"></ellipse>
+                                <circle class="spindle-hub" cx="576" cy="388" r="7"></circle>
+                            </g>
+                            <g id="mysql-read-arm" class="mysql-read-arm">
+                                <circle cx="650" cy="365" r="8"></circle>
+                                <path d="M650 365 L615 389"></path>
+                                <rect x="607" y="385" width="14" height="8" rx="3"></rect>
+                            </g>
+                            <text id="mysql-pool-state" class="device-state" x="634" y="420">POOL 0 / 0</text>
+                            <text class="device-title" x="490" y="479">MySQL</text>
+                            <text class="device-subtitle" x="490" y="497">主数据机芯 · Primary Store</text>
+                        </g>
+
+                        <g class="response-manifold">
+                            <rect class="manifold-shell" x="846" y="207" width="112" height="123" rx="16"></rect>
+                            <path d="M870 228 H936 M870 244 H936 M870 260 H936"></path>
+                            <circle class="device-port" cx="854" cy="268" r="9"></circle>
+                            <circle class="device-port" cx="924" cy="268" r="9"></circle>
+                            <text class="device-title centered" x="902" y="357">Response</text>
+                            <text class="device-subtitle centered" x="902" y="376">响应回流 · Return</text>
+                            <text class="device-micro centered" x="902" y="394">Go API RESPONSE</text>
+                        </g>
+
+                        <text class="pipe-label cache-label" x="406" y="121">CACHE PATH</text>
+                        <text class="pipe-label direct-label" x="404" y="354">DIRECT BYPASS</text>
+                        <text class="pipe-label refill-label" x="747" y="465">REFILL LOOP</text>
+                        <text class="pipe-label response-label" x="842" y="185">RESPONSE RETURN</text>
+
+                        <g class="reusable-carriers" aria-hidden="true">
+                            <circle id="request-pulse-1" class="request-pulse" r="6"></circle>
+                            <circle id="request-pulse-2" class="request-pulse" r="5"></circle>
+                            <circle id="request-pulse-3" class="request-pulse" r="4"></circle>
+                            <g id="redis-data-capsule" class="data-capsule redis-data-capsule">
+                                <rect x="-15" y="-7" width="30" height="14" rx="7"></rect><path d="M-3 -5 V5 M4 -5 V5"></path>
+                            </g>
+                            <g id="mysql-data-capsule" class="data-capsule mysql-data-capsule">
+                                <rect x="-17" y="-8" width="34" height="16" rx="8"></rect><path d="M-4 -6 V6 M4 -6 V6"></path>
+                            </g>
+                            <g id="refill-capsule" class="data-capsule refill-capsule">
+                                <rect x="-16" y="-8" width="32" height="16" rx="8"></rect><path d="M-4 -6 V6 M4 -6 V6"></path>
+                            </g>
+                        </g>
+
+                        <g id="machine-alert" class="machine-alert" aria-hidden="true">
+                            <rect x="527" y="263" width="173" height="37" rx="8"></rect>
+                            <circle cx="545" cy="281" r="5"></circle>
+                            <text id="machine-alert-text" x="558" y="286">CACHE MISS</text>
+                        </g>
+
+                        <g class="machine-legend" aria-hidden="true">
+                            <path class="legend-line legend-request" d="M52 470 H79"></path><text x="87" y="474">Request</text>
+                            <path class="legend-line legend-return" d="M151 470 H178"></path><text x="186" y="474">Return</text>
+                            <path class="legend-line legend-refill" d="M239 470 H266"></path><text x="274" y="474">Refill</text>
+                        </g>
                     </svg>
-
-                    <article id="node-client" class="architecture-node client-node" data-node="client">
-                        <span class="node-icon">CL</span>
-                        <small>REQUEST ORIGIN</small>
-                        <strong>Client</strong>
-                        <p>浏览器 / wrk2</p>
-                    </article>
-
-                    <article id="node-api" class="architecture-node api-node" data-node="api">
-                        <span class="node-icon">GO</span>
-                        <small>APPLICATION</small>
-                        <strong>Go API</strong>
-                        <p>/api/archives/:id</p>
-                    </article>
-
-                    <article id="node-redis" class="architecture-node redis-node is-disabled" data-node="redis">
-                        <span class="node-icon">R</span>
-                        <small>CACHE LAYER</small>
-                        <strong>Redis</strong>
-                        <p id="redis-node-state">尚未启用</p>
-                    </article>
-
-                    <article id="node-mysql" class="architecture-node mysql-node" data-node="mysql">
-                        <span class="node-icon">MY</span>
-                        <small>AUTHORITATIVE DATA</small>
-                        <strong>MySQL</strong>
-                        <p id="mysql-pool-state">Pool 0 / 0</p>
-                        <i id="mysql-pressure-ring" class="pressure-ring"></i>
-                    </article>
-
-                    <div class="route-legend">
-                        <span><i class="legend-direct"></i>MySQL Direct</span>
-                        <span><i class="legend-hit"></i>Cache Hit</span>
-                        <span><i class="legend-miss"></i>Cache Miss / 回填</span>
-                    </div>
                 </div>
 
                 <div class="route-status-bar">
                     <div>
-                        <span>当前链路状态</span>
+                        <span>当前路径</span>
                         <strong id="route-status">等待真实请求</strong>
                     </div>
                     <div>
-                        <span>最近来源</span>
+                        <span>当前响应来源</span>
                         <strong id="route-source">—</strong>
                     </div>
                     <div>
-                        <span>当前流量</span>
+                        <span>当前 QPS</span>
                         <strong><b id="route-qps">0</b> req/s</strong>
+                    </div>
+                    <div>
+                        <span>DB Reads</span>
+                        <strong id="route-db-reads">0</strong>
+                    </div>
+                    <div>
+                        <span>Cache Hit Rate</span>
+                        <strong><b id="route-hit-rate">0</b>%</strong>
                     </div>
                 </div>
 
@@ -331,7 +451,8 @@
     </main>
 
     <div id="story-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260717-cache-lab-1"></script>
+    <script src="/js/gsap.min.js?v=3.13.0-local2"></script>
+    <script src="/js/seckill-lab.js?v=20260717-routing-engine-1"></script>
 </body>
 
 </html>

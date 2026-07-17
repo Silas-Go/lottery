@@ -14,8 +14,8 @@
         stream: null,
         pollTimer: null,
         waitingMode: null,
-        routeBusy: false,
-        queuedRoute: null,
+        routeTimeline: null,
+        ttlTween: null,
         numberFrames: {},
         reducedMotion: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
     };
@@ -154,6 +154,7 @@
         byId("archive-title").textContent = material.title;
         byId("archive-summary").textContent = material.summary;
         byId("archive-note").textContent = material.note;
+        byId("redis-key-label").textContent = "archive:profession:" + material.id;
         if (source) {
             byId("detail-source").textContent = source;
         }
@@ -315,7 +316,8 @@
 
         try {
             var result = await requestJSON("/api/archives/" + state.selectedId + "/" + path);
-            var source = result.response.headers.get("X-Archive-Source") || "mysql";
+            // 单次读取只相信协议头；缺失时明确显示 UNKNOWN，不根据当前按钮猜测来源。
+            var source = result.response.headers.get("X-Archive-Source") || "unknown";
             renderMaterial(result.body, sourceLabel(source));
             addTrace(result.body, source);
             playRoute(source, 0);
@@ -340,139 +342,344 @@
             node.classList.remove("is-active", "is-hit", "is-miss", "is-error");
         });
         Array.prototype.forEach.call(document.querySelectorAll(".route-edge"), function (edge) {
-            edge.classList.remove("is-active", "is-hit", "is-miss", "is-error");
+            edge.classList.remove("is-active", "is-direct", "is-hit", "is-miss", "is-refill", "is-error");
         });
         Array.prototype.forEach.call(document.querySelectorAll(".request-pulse"), function (pulse) {
             pulse.classList.remove("is-visible");
         });
+        byId("machine-alert").classList.remove("is-error");
+        byId("machine-alert").style.opacity = "0";
+    }
+
+    function resetMechanicalTransforms() {
+        ["request-pulse-1", "request-pulse-2", "request-pulse-3", "redis-data-capsule",
+            "mysql-data-capsule", "refill-capsule"].forEach(function (id) {
+            var element = byId(id);
+            element.style.opacity = "0";
+            element.removeAttribute("transform");
+        });
+
+        if (window.gsap) {
+            window.gsap.set("#routing-valve-pointer, #redis-rotor, #mysql-spindle, #mysql-read-arm", {
+                clearProps: "transform"
+            });
+        }
+    }
+
+    // 新状态直接终止旧 Timeline，避免高频 SSE 把已经过时的路径排队播放。
+    function killRouteAnimation() {
+        if (state.routeTimeline) {
+            state.routeTimeline.kill();
+            state.routeTimeline = null;
+        }
+        if (window.gsap) {
+            window.gsap.killTweensOf([
+                "#routing-valve-pointer", "#redis-rotor", "#mysql-spindle", "#mysql-read-arm",
+                "#request-pulse-1", "#request-pulse-2", "#request-pulse-3",
+                "#redis-data-capsule", "#mysql-data-capsule", "#refill-capsule", "#machine-alert"
+            ]);
+        }
+        clearRouteClasses();
+        resetMechanicalTransforms();
     }
 
     function resetRouteVisual() {
-        clearRouteClasses();
+        killRouteAnimation();
         document.body.dataset.routeState = "idle";
         byId("route-status").textContent = "等待真实请求";
         byId("route-source").textContent = "—";
-        byId("route-qps").textContent = "0";
         byId("redis-node-state").textContent =
-            state.mode === "cached" ? "已进入读取路径" : "当前路径跳过";
+            state.mode === "cached" ? "CACHE PATH READY" : "CACHE PATH CLOSED";
+        byId("valve-route-label").textContent = state.mode === "cached" ? "CACHE PATH" : "DIRECT BYPASS";
+        if (window.gsap) {
+            window.gsap.set("#routing-valve-pointer", {
+                rotation: state.mode === "cached" ? 58 : 123,
+                svgOrigin: "334 268"
+            });
+        }
+        renderMachineMetrics();
     }
 
     var segmentConfig = {
-        "client-api": { edge: "path-client-api", motion: "motion-client-api", nodes: ["node-client", "node-api"] },
-        "api-redis": { edge: "path-api-redis", motion: "motion-api-redis", nodes: ["node-api", "node-redis"] },
-        "api-mysql": { edge: "path-api-mysql", motion: "motion-api-mysql", nodes: ["node-api", "node-mysql"] },
-        "redis-mysql": { edge: "path-redis-mysql", motion: "motion-redis-mysql", nodes: ["node-redis", "node-mysql"] },
-        "mysql-redis": { edge: "path-mysql-redis", motion: "motion-mysql-redis", nodes: ["node-mysql", "node-redis"] }
+        "client-api": { edge: "path-client-api", nodes: ["node-client", "node-api"] },
+        "api-redis": { edge: "path-api-redis", nodes: ["node-api", "node-redis"] },
+        "api-mysql": { edge: "path-api-mysql", nodes: ["node-api", "node-mysql"] },
+        "redis-mysql": { edge: "path-redis-mysql", nodes: ["node-redis", "node-api", "node-mysql"] },
+        "mysql-redis": { edge: "path-mysql-redis", nodes: ["node-mysql", "node-redis"] },
+        "redis-response": { edge: "path-redis-response", nodes: ["node-redis", "node-api"] },
+        "mysql-response": { edge: "path-mysql-response", nodes: ["node-mysql", "node-api"] }
     };
 
-    async function animateSegment(name, tone, qps) {
+    function setSegmentActive(name, tone) {
         var config = segmentConfig[name];
         if (!config) {
             return;
         }
-        var edge = byId(config.edge);
-        var motion = byId(config.motion);
-        var pulse = motion && motion.parentNode;
-        var duration = clamp(420 - Number(qps || 0) * 0.22, 190, 380);
-
-        edge.classList.add("is-active", tone);
+        byId(config.edge).classList.add("is-active", tone);
         config.nodes.forEach(function (id) {
-            byId(id).classList.add("is-active", tone);
+            byId(id).classList.add("is-active");
         });
-
-        if (!state.reducedMotion && motion && typeof motion.beginElement === "function") {
-            motion.setAttribute("dur", (duration / 1000).toFixed(2) + "s");
-            pulse.classList.add("is-visible");
-            motion.beginElement();
-        }
-        await wait(state.reducedMotion ? 90 : duration);
-        if (pulse) {
-            pulse.classList.remove("is-visible");
-        }
     }
 
     function routeDefinition(source) {
         switch (source) {
+        case "mysql":
+            return {
+                state: "direct",
+                status: "MySQL Direct · Direct Bypass",
+                source: source,
+                valve: 123
+            };
         case "redis-hit":
             return {
                 state: "hit",
-                status: "Redis Cache Hit · 请求未访问 MySQL",
-                segments: ["client-api", "api-redis"],
-                tone: "is-hit"
+                status: "Cache Hit · MySQL 未参与",
+                source: source,
+                valve: 58
             };
         case "redis-miss":
             return {
                 state: "miss",
-                status: "Cache Miss · 回源 MySQL 并回填 Redis",
-                segments: ["client-api", "api-redis", "redis-mysql", "mysql-redis"],
-                tone: "is-miss"
+                status: "Cache Miss · MySQL → Redis SET EX → Response",
+                source: source,
+                valve: 58
             };
         case "redis-fallback":
             return {
                 state: "fallback",
-                status: "Redis 异常 · 降级回源 MySQL",
-                segments: ["client-api", "api-redis", "redis-mysql"],
-                tone: "is-error"
+                status: "Redis Fallback · Safety Bypass → MySQL",
+                source: source,
+                valve: 58
             };
         default:
-            return {
-                state: "direct",
-                status: "MySQL Direct · 每次请求读取数据库",
-                segments: ["client-api", "api-mysql"],
-                tone: "is-direct"
-            };
+            return null;
         }
     }
 
-    async function runRoute(source, qps) {
-        state.routeBusy = true;
-        clearRouteClasses();
+    function placeCarrierOnPath(element, path, progress) {
+        var length = path.getTotalLength();
+        var distance = clamp(progress, 0, 1) * length;
+        var point = path.getPointAtLength(distance);
+        var next = path.getPointAtLength(Math.min(length, distance + 1));
+        var angle = Math.atan2(next.y - point.y, next.x - point.x) * 180 / Math.PI;
+        element.setAttribute("transform", "translate(" + point.x + " " + point.y + ") rotate(" + angle + ")");
+    }
 
-        var route = routeDefinition(source);
-        document.body.dataset.routeState = route.state;
-        byId("route-status").textContent = route.status;
-        byId("route-source").textContent = sourceLabel(source);
-        byId("route-qps").textContent = formatNumber(qps);
+    // 固定复用三个脉冲和三个胶囊；QPS 只改变时长与复用密度，不逐请求创建 DOM。
+    function addPathCarrier(timeline, carrierId, pathId, at, duration, ease) {
+        var carrier = byId(carrierId);
+        var path = byId(pathId);
+        var progress = { value: 0 };
+        timeline.set(carrier, { opacity: 1 }, at);
+        timeline.to(progress, {
+            value: 1,
+            duration: duration,
+            ease: ease || "power1.inOut",
+            onStart: function () { placeCarrierOnPath(carrier, path, 0); },
+            onUpdate: function () { placeCarrierOnPath(carrier, path, progress.value); }
+        }, at);
+        timeline.set(carrier, { opacity: 0 }, at + duration);
+        return at + duration;
+    }
 
-        if (source === "redis-hit") {
-            byId("redis-node-state").textContent = "CACHE HIT";
-        } else if (source === "redis-miss") {
-            byId("redis-node-state").textContent = "MISS → 已回填";
-        } else if (source === "redis-fallback") {
-            byId("redis-node-state").textContent = "REDIS ERROR";
+    function addRequestBurst(timeline, segment, tone, at, qps) {
+        var duration = clamp(.48 - Number(qps || 0) * .00045, .2, .48);
+        var density = clamp(Math.ceil(Number(qps || 1) / 180), 1, 3);
+        timeline.call(function () { setSegmentActive(segment, tone); }, null, at);
+        for (var i = 0; i < density; i++) {
+            addPathCarrier(timeline, "request-pulse-" + (i + 1), segmentConfig[segment].edge,
+                at + i * .08, duration, "power1.inOut");
+        }
+        return at + duration + (density - 1) * .08;
+    }
+
+    function showMachineAlert(text, isError) {
+        byId("machine-alert-text").textContent = text;
+        byId("machine-alert").classList.toggle("is-error", Boolean(isError));
+    }
+
+    function startTTLDecay() {
+        var chapter = state.snapshot && state.snapshot.archiveRead;
+        var ttl = Number(chapter && chapter.cacheTTLSeconds || 0);
+        var ring = byId("redis-ttl-ring");
+        ring.style.setProperty("--ttl-remaining", 100);
+        if (state.ttlTween) {
+            state.ttlTween.kill();
+            state.ttlTween = null;
+        }
+        if (!window.gsap || state.reducedMotion || ttl <= 0) {
+            return;
+        }
+        var remaining = { value: 100 };
+        state.ttlTween = window.gsap.to(remaining, {
+            value: 0,
+            duration: ttl,
+            ease: "none",
+            onUpdate: function () {
+                ring.style.setProperty("--ttl-remaining", remaining.value.toFixed(2));
+            }
+        });
+    }
+
+    function applyStaticRoute(route) {
+        var tone = route.state === "hit" ? "is-hit" :
+            (route.state === "fallback" ? "is-error" :
+                (route.state === "miss" ? "is-miss" : "is-direct"));
+        var segments = route.state === "direct" ? ["client-api", "api-mysql", "mysql-response"] :
+            (route.state === "hit" ? ["client-api", "api-redis", "redis-response"] :
+                ["client-api", "api-redis", "redis-mysql", "mysql-response"]);
+        segments.forEach(function (segment) { setSegmentActive(segment, tone); });
+        if (window.gsap) {
+            window.gsap.set("#routing-valve-pointer", {
+                rotation: route.state === "hit" ? 58 : 123,
+                svgOrigin: "334 268"
+            });
         }
 
-        for (var i = 0; i < route.segments.length; i++) {
-            await animateSegment(route.segments[i], route.tone, qps);
-        }
-
-        if (source === "redis-hit") {
+        if (route.state === "direct") {
+            byId("node-mysql").classList.add("is-active");
+            byId("valve-route-label").textContent = "DIRECT BYPASS";
+        } else if (route.state === "hit") {
             byId("node-redis").classList.add("is-hit");
-        } else if (source === "redis-miss") {
+            byId("redis-slot-active").classList.add("is-filled");
+            byId("redis-node-state").textContent = "CACHE HIT";
+            byId("valve-route-label").textContent = "CACHE PATH";
+        } else if (route.state === "miss") {
+            setSegmentActive("mysql-redis", "is-refill");
             byId("node-redis").classList.add("is-miss");
             byId("node-mysql").classList.add("is-miss");
-        } else if (source === "redis-fallback") {
+            byId("redis-slot-active").classList.add("is-filled");
+            byId("redis-node-state").textContent = "CACHE FILLED";
+            byId("valve-route-label").textContent = "CACHE → DB → REFILL";
+            showMachineAlert("CACHE FILLED", false);
+            byId("machine-alert").style.opacity = "1";
+            startTTLDecay();
+        } else {
             byId("node-redis").classList.add("is-error");
             byId("node-mysql").classList.add("is-active");
-        } else {
-            byId("node-mysql").classList.add("is-active");
+            byId("redis-node-state").textContent = "REDIS FALLBACK";
+            byId("valve-route-label").textContent = "SAFETY BYPASS";
+            showMachineAlert("REDIS FALLBACK", true);
+            byId("machine-alert").style.opacity = "1";
         }
+    }
 
-        await wait(state.reducedMotion ? 40 : 260);
-        state.routeBusy = false;
-        if (state.queuedRoute) {
-            var queued = state.queuedRoute;
-            state.queuedRoute = null;
-            runRoute(queued.source, queued.qps);
-        }
+    function buildDirectTimeline(timeline, route, qps) {
+        var cursor = addRequestBurst(timeline, "client-api", "is-direct", 0, qps);
+        timeline.to("#routing-valve-pointer", { rotation: 123, svgOrigin: "334 268", duration: .34, ease: "power2.inOut" }, .08);
+        timeline.call(function () { byId("valve-route-label").textContent = "DIRECT BYPASS"; }, null, .2);
+        cursor = addRequestBurst(timeline, "api-mysql", "is-direct", cursor + .02, qps);
+        timeline.call(function () { byId("node-mysql").classList.add("is-active"); }, null, cursor - .08);
+        timeline.to("#mysql-spindle", { rotation: 150, svgOrigin: "576 388", duration: .62, ease: "power2.inOut" }, cursor - .04);
+        timeline.to("#mysql-read-arm", { rotation: -16, svgOrigin: "650 365", duration: .28, ease: "power2.inOut", yoyo: true, repeat: 1 }, cursor + .08);
+        timeline.call(function () { setSegmentActive("mysql-response", "is-direct"); }, null, cursor + .48);
+        addPathCarrier(timeline, "mysql-data-capsule", "path-mysql-response", cursor + .48, .62, "power1.inOut");
+    }
+
+    function buildHitTimeline(timeline, route, qps) {
+        var cursor = addRequestBurst(timeline, "client-api", "is-hit", 0, qps);
+        timeline.to("#routing-valve-pointer", { rotation: 58, svgOrigin: "334 268", duration: .34, ease: "power2.inOut" }, .08);
+        timeline.call(function () { byId("valve-route-label").textContent = "CACHE PATH"; }, null, .2);
+        cursor = addRequestBurst(timeline, "api-redis", "is-hit", cursor + .02, qps);
+        timeline.to("#redis-rotor", { rotation: 45, svgOrigin: "572 148", duration: .42, ease: "power2.inOut" }, cursor - .26);
+        timeline.call(function () {
+            byId("node-redis").classList.add("is-hit");
+            byId("redis-slot-active").classList.add("is-filled");
+            byId("redis-node-state").textContent = "CACHE HIT";
+            setSegmentActive("redis-response", "is-hit");
+        }, null, cursor);
+        addPathCarrier(timeline, "redis-data-capsule", "path-redis-response", cursor, .56, "power1.inOut");
+    }
+
+    function buildMissTimeline(timeline, route, qps) {
+        var cursor = addRequestBurst(timeline, "client-api", "is-miss", 0, qps);
+        timeline.to("#routing-valve-pointer", { rotation: 58, svgOrigin: "334 268", duration: .34, ease: "power2.inOut" }, .08);
+        cursor = addRequestBurst(timeline, "api-redis", "is-miss", cursor + .02, qps);
+        timeline.to("#redis-rotor", { rotation: 45, svgOrigin: "572 148", duration: .42, ease: "power2.inOut" }, cursor - .28);
+        timeline.call(function () {
+            byId("node-redis").classList.add("is-miss");
+            byId("redis-slot-active").classList.remove("is-filled");
+            byId("redis-node-state").textContent = "CACHE MISS";
+            byId("valve-route-label").textContent = "MISS → PRIMARY STORE";
+            showMachineAlert("CACHE MISS", false);
+        }, null, cursor - .02);
+        timeline.to("#machine-alert", { opacity: 1, duration: .18 }, cursor - .02);
+        timeline.to("#routing-valve-pointer", { rotation: 123, svgOrigin: "334 268", duration: .38, ease: "power2.inOut" }, cursor + .18);
+        cursor = addRequestBurst(timeline, "redis-mysql", "is-miss", cursor + .26, qps);
+        timeline.call(function () { byId("node-mysql").classList.add("is-miss"); }, null, cursor - .08);
+        timeline.to("#mysql-spindle", { rotation: 150, svgOrigin: "576 388", duration: .64, ease: "power2.inOut" }, cursor - .04);
+        timeline.to("#mysql-read-arm", { rotation: -16, svgOrigin: "650 365", duration: .28, ease: "power2.inOut", yoyo: true, repeat: 1 }, cursor + .08);
+
+        // 后端真实顺序是 read MySQL -> SET EX Redis -> HTTP return，回填先于响应胶囊。
+        timeline.call(function () { setSegmentActive("mysql-redis", "is-refill"); }, null, cursor + .48);
+        addPathCarrier(timeline, "refill-capsule", "path-mysql-redis", cursor + .48, .76, "power1.inOut");
+        timeline.call(function () {
+            byId("redis-slot-active").classList.add("is-filled");
+            byId("redis-node-state").textContent = "CACHE FILLED";
+            byId("valve-route-label").textContent = "CACHE → DB → REFILL";
+            showMachineAlert("CACHE FILLED", false);
+            startTTLDecay();
+        }, null, cursor + 1.24);
+        timeline.call(function () { setSegmentActive("mysql-response", "is-miss"); }, null, cursor + 1.34);
+        addPathCarrier(timeline, "mysql-data-capsule", "path-mysql-response", cursor + 1.34, .64, "power1.inOut");
+        timeline.to("#machine-alert", { opacity: 0, duration: .25 }, cursor + 1.82);
+    }
+
+    function buildFallbackTimeline(timeline, route, qps) {
+        var cursor = addRequestBurst(timeline, "client-api", "is-error", 0, qps);
+        timeline.to("#routing-valve-pointer", { rotation: 58, svgOrigin: "334 268", duration: .34, ease: "power2.inOut" }, .08);
+        cursor = addRequestBurst(timeline, "api-redis", "is-error", cursor + .02, qps);
+        timeline.call(function () {
+            byId("node-redis").classList.add("is-error");
+            byId("redis-node-state").textContent = "REDIS FALLBACK";
+            byId("valve-route-label").textContent = "SAFETY BYPASS";
+            showMachineAlert("REDIS FALLBACK", true);
+        }, null, cursor - .02);
+        timeline.to("#machine-alert", { opacity: 1, duration: .18 }, cursor - .02);
+        timeline.to("#routing-valve-pointer", { rotation: 123, svgOrigin: "334 268", duration: .38, ease: "power2.inOut" }, cursor + .12);
+        cursor = addRequestBurst(timeline, "redis-mysql", "is-error", cursor + .2, qps);
+        timeline.call(function () { byId("node-mysql").classList.add("is-active"); }, null, cursor - .08);
+        timeline.to("#mysql-spindle", { rotation: 150, svgOrigin: "576 388", duration: .64, ease: "power2.inOut" }, cursor - .04);
+        timeline.to("#mysql-read-arm", { rotation: -16, svgOrigin: "650 365", duration: .28, ease: "power2.inOut", yoyo: true, repeat: 1 }, cursor + .08);
+        timeline.call(function () { setSegmentActive("mysql-response", "is-error"); }, null, cursor + .5);
+        addPathCarrier(timeline, "mysql-data-capsule", "path-mysql-response", cursor + .5, .64, "power1.inOut");
     }
 
     function playRoute(source, qps) {
-        if (state.routeBusy) {
-            state.queuedRoute = { source: source, qps: qps };
+        var route = routeDefinition(source);
+        killRouteAnimation();
+
+        if (!route) {
+            document.body.dataset.routeState = "unknown";
+            byId("route-status").textContent = "未知响应来源 · 未推断链路";
+            byId("route-source").textContent = sourceLabel(source);
             return;
         }
-        runRoute(source, qps);
+
+        document.body.dataset.routeState = route.state;
+        byId("route-status").textContent = route.status;
+        byId("route-source").textContent = sourceLabel(source);
+
+        if (state.reducedMotion || !window.gsap) {
+            applyStaticRoute(route);
+            return;
+        }
+
+        state.routeTimeline = window.gsap.timeline({
+            defaults: { ease: "power2.inOut" },
+            onComplete: function () {
+                state.routeTimeline = null;
+            }
+        });
+        if (route.state === "direct") {
+            buildDirectTimeline(state.routeTimeline, route, qps);
+        } else if (route.state === "hit") {
+            buildHitTimeline(state.routeTimeline, route, qps);
+        } else if (route.state === "miss") {
+            buildMissTimeline(state.routeTimeline, route, qps);
+        } else {
+            buildFallbackTimeline(state.routeTimeline, route, qps);
+        }
     }
 
     function animateMetric(id, value, suffix) {
@@ -623,6 +830,32 @@
         }
     }
 
+    function renderMachineMetrics() {
+        var chapter = state.snapshot && state.snapshot.archiveRead;
+        if (!chapter) {
+            byId("route-qps").textContent = "0";
+            byId("route-db-reads").textContent = "0";
+            byId("route-hit-rate").textContent = "0";
+            byId("mysql-pool-state").textContent = "POOL 0 / 0";
+            byId("mysql-pressure-ring").style.setProperty("--pool-usage", 0);
+            return;
+        }
+
+        var activePath = state.mode === "cached" ? chapter.cached : chapter.direct;
+        var ttl = Number(chapter.cacheTTLSeconds || 0);
+        var usage = activePath.poolCapacity > 0 ?
+            clamp(activePath.poolPeak * 100 / activePath.poolCapacity, 0, 100) : 0;
+
+        // 中央锚点数字直接取 SSE snapshot，不对 QPS、DB Reads 或命中率做视觉插值。
+        byId("route-qps").textContent = formatNumber(activePath.qps);
+        byId("route-db-reads").textContent = formatNumber(activePath.dbReads);
+        byId("route-hit-rate").textContent = formatNumber(activePath.cacheHitRate);
+        byId("mysql-pool-state").textContent =
+            "POOL " + formatNumber(activePath.poolPeak) + " / " + formatNumber(activePath.poolCapacity);
+        byId("mysql-pressure-ring").style.setProperty("--pool-usage", usage.toFixed(2));
+        byId("redis-ttl-value").textContent = "TTL " + formatNumber(ttl) + "s";
+    }
+
     function renderSnapshot(snapshot) {
         if (!snapshot || !snapshot.archiveRead) {
             return;
@@ -633,14 +866,8 @@
         renderPath("direct", chapter.direct);
         renderPath("cached", chapter.cached);
         renderComparison(chapter.direct, chapter.cached);
+        renderMachineMetrics();
         detectRealActivity(chapter);
-
-        var activePath = state.mode === "cached" ? chapter.cached : chapter.direct;
-        byId("mysql-pool-state").textContent =
-            "Pool " + formatNumber(activePath.poolPeak) + " / " + formatNumber(activePath.poolCapacity);
-        var usage = activePath.poolCapacity > 0 ?
-            clamp(activePath.poolPeak * 100 / activePath.poolCapacity, 0, 100) : 0;
-        byId("mysql-pressure-ring").style.setProperty("--pool-usage", usage + "%");
     }
 
     async function fetchSnapshot() {
@@ -689,6 +916,12 @@
             state.trace = [];
             state.previousArchiveRead = null;
             byId("read-trace").innerHTML = "";
+            byId("redis-slot-active").classList.remove("is-filled");
+            byId("redis-ttl-ring").style.setProperty("--ttl-remaining", 0);
+            if (state.ttlTween) {
+                state.ttlTween.kill();
+                state.ttlTween = null;
+            }
             renderSnapshot({
                 archiveRead: result.body.snapshot || {
                     cacheTTLSeconds: 300,
@@ -743,6 +976,8 @@
     }
 
     async function start() {
+        document.documentElement.dataset.animationEngine = window.gsap ?
+            "gsap-" + window.gsap.version : "static-fallback";
         bindEvents();
         setMode("direct");
         updateParameters();
@@ -764,6 +999,10 @@
         }
         if (state.pollTimer) {
             window.clearInterval(state.pollTimer);
+        }
+        killRouteAnimation();
+        if (state.ttlTween) {
+            state.ttlTween.kill();
         }
         Object.keys(state.numberFrames).forEach(function (id) {
             window.cancelAnimationFrame(state.numberFrames[id]);
