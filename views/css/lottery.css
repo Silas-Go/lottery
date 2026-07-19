@@ -684,6 +684,81 @@ select:focus-visible {
     background: #865638;
 }
 
+.crowd-queue {
+    position: absolute;
+    z-index: 20;
+    left: 65%;
+    bottom: 12%;
+    display: flex;
+    width: 43%;
+    height: 31%;
+    align-items: flex-end;
+    gap: clamp(3px, .7vw, 10px);
+    pointer-events: none;
+}
+
+.crowd-queue i {
+    position: relative;
+    display: block;
+    width: clamp(24px, 3vw, 42px);
+    height: clamp(58px, 8vw, 112px);
+    flex: 0 1 42px;
+    border-radius: 19px 19px 7px 7px;
+    background: linear-gradient(90deg, #52686d, #72888a 58%, #485e64);
+    filter: drop-shadow(0 8px 6px rgba(65, 39, 26, .18));
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .32s ease, transform .32s ease;
+}
+
+.crowd-queue i::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% - 8px);
+    width: 68%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #5a514d;
+    transform: translateX(-50%);
+}
+
+.crowd-queue i:nth-child(3n + 1) { height: clamp(52px, 7vw, 96px); background: #776050; }
+.crowd-queue i:nth-child(3n + 2) { height: clamp(63px, 8.4vw, 118px); background: #4e6b7b; }
+.crowd-queue i:nth-child(4n) { background: #6b5c7d; }
+
+.crowd-tickets {
+    position: absolute;
+    z-index: 18;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.crowd-tickets i {
+    position: absolute;
+    left: 76%;
+    bottom: 27%;
+    display: grid;
+    width: 68px;
+    height: 33px;
+    place-items: center;
+    border: 1px solid #54402f;
+    border-radius: 3px;
+    background: #d8e5d7;
+    color: #394c47;
+    box-shadow: 0 8px 15px rgba(58, 37, 24, .18);
+    font: normal 800 7px/1 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .05em;
+    opacity: 0;
+}
+
+.crowd-tickets i:nth-child(2) { left: 69%; bottom: 22%; }
+.crowd-tickets i:nth-child(3) { left: 83%; bottom: 20%; }
+.crowd-tickets i:nth-child(4) { left: 72%; bottom: 31%; }
+.crowd-tickets i:nth-child(5) { left: 86%; bottom: 33%; }
+.crowd-tickets i:nth-child(6) { left: 66%; bottom: 19%; }
+
 .dust-field {
     position: absolute;
     z-index: 13;
@@ -858,6 +933,160 @@ select:focus-visible {
     gap: 22px;
 }
 
+.record-copy {
+    min-width: 0;
+}
+
+.delivery-prompt > strong {
+    display: block;
+    margin-bottom: 9px;
+    color: #5f351f;
+    font: 700 21px/1.2 Georgia, "Songti SC", serif;
+}
+
+.delivery-choice {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin-top: 13px;
+}
+
+.delivery-choice button {
+    display: grid;
+    gap: 5px;
+    min-height: 70px;
+    padding: 13px 14px;
+    cursor: pointer;
+    text-align: left;
+    border: 1px solid rgba(112, 66, 37, .28);
+    border-radius: 3px;
+    background: rgba(255, 249, 226, .76);
+    color: #553724;
+    transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.delivery-choice button:hover {
+    border-color: #8f522d;
+    background: #fff8df;
+    transform: translateY(-1px);
+}
+
+.delivery-choice button:last-child {
+    border-color: rgba(118, 74, 43, .45);
+    background: rgba(124, 76, 44, .1);
+}
+
+.delivery-choice strong {
+    font-size: 14px;
+}
+
+.delivery-choice small,
+.purchase-boundary {
+    color: #7b6656;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.purchase-boundary {
+    display: block;
+    margin-top: 9px;
+}
+
+.crowd-panel {
+    display: none;
+    min-width: 0;
+}
+
+.crowd-panel header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 15px;
+}
+
+.crowd-panel header > div {
+    display: grid;
+    gap: 3px;
+}
+
+.crowd-panel header small {
+    color: #9a5a30;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: .14em;
+}
+
+.crowd-panel header strong {
+    color: #5c3926;
+    font: 700 19px/1.2 Georgia, "Songti SC", serif;
+}
+
+.crowd-panel header button {
+    min-height: 31px;
+    padding: 0 10px;
+    cursor: pointer;
+    border: 1px solid rgba(105, 63, 37, .25);
+    border-radius: 3px;
+    background: transparent;
+    color: #715340;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.crowd-panel code {
+    display: block;
+    max-width: 100%;
+    margin-top: 11px;
+    padding: 11px 12px;
+    overflow: auto;
+    border: 1px solid rgba(79, 52, 36, .3);
+    border-radius: 3px;
+    background: #33281f;
+    color: #f5ddb5;
+    font: 9px/1.55 "SFMono-Regular", Consolas, monospace;
+    white-space: nowrap;
+}
+
+.crowd-panel .event-primary {
+    margin-top: 9px;
+}
+
+.crowd-status {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(107, 69, 43, .2);
+    border-radius: 3px;
+    background: rgba(255, 248, 221, .66);
+}
+
+.crowd-status > i {
+    width: 9px;
+    height: 9px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #b18453;
+    box-shadow: 0 0 0 5px rgba(177, 132, 83, .12);
+}
+
+.crowd-status > span {
+    display: grid;
+    gap: 3px;
+}
+
+.crowd-status strong {
+    color: #5f402d;
+    font-size: 11px;
+}
+
+.crowd-status small {
+    color: #806b5b;
+    font-size: 9px;
+    line-height: 1.4;
+}
+
 .record-card {
     --record-color: #6ba7a1;
     position: relative;
@@ -927,6 +1156,30 @@ select:focus-visible {
     gap: 8px;
 }
 
+.market-toast {
+    position: fixed;
+    z-index: 160;
+    top: 92px;
+    left: 50%;
+    padding: 11px 16px;
+    border: 1px solid rgba(88, 52, 30, .38);
+    border-radius: 3px;
+    background: rgba(74, 47, 31, .94);
+    color: #ffeac0;
+    box-shadow: 0 13px 32px rgba(67, 39, 24, .24);
+    font-size: 12px;
+    font-weight: 900;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -8px);
+    transition: opacity .2s ease, transform .2s ease;
+}
+
+.market-toast.is-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
 .accepted-stamp {
     position: absolute;
     z-index: 40;
@@ -974,6 +1227,9 @@ select:focus-visible {
 .market-page[data-event-state="arrival"] .arrival-copy,
 .market-page[data-event-state="dialogue"] .dialogue-copy,
 .market-page[data-event-state="record_selected"] .record-selection,
+.market-page[data-event-state="crowd_preparing"] .record-selection,
+.market-page[data-event-state="crowd_armed"] .record-selection,
+.market-page[data-event-state="crowd_submitting"] .record-selection,
 .market-page[data-event-state="inserting_record"] .inserting-copy,
 .market-page[data-event-state="entering_lab"] .inserting-copy {
     display: block;
@@ -987,6 +1243,83 @@ select:focus-visible {
 
 .market-page[data-event-state="record_selected"] .record-selection {
     display: grid;
+}
+
+.market-page[data-event-state="crowd_preparing"] .record-selection,
+.market-page[data-event-state="crowd_armed"] .record-selection,
+.market-page[data-event-state="crowd_submitting"] .record-selection {
+    display: grid;
+}
+
+.market-page[data-event-state="crowd_preparing"] .event-card,
+.market-page[data-event-state="crowd_armed"] .event-card,
+.market-page[data-event-state="crowd_submitting"] .event-card {
+    width: min(760px, calc(100vw - 40px));
+}
+
+.market-page[data-event-state="crowd_preparing"] .delivery-prompt,
+.market-page[data-event-state="crowd_armed"] .delivery-prompt,
+.market-page[data-event-state="crowd_submitting"] .delivery-prompt {
+    display: none;
+}
+
+.market-page[data-event-state="crowd_preparing"] .crowd-panel,
+.market-page[data-event-state="crowd_armed"] .crowd-panel,
+.market-page[data-event-state="crowd_submitting"] .crowd-panel {
+    display: block;
+    animation: event-copy-in .26s ease both;
+}
+
+.market-page[data-event-state="crowd_preparing"] .crowd-queue i:nth-child(-n + 6),
+.market-page[data-event-state="crowd_armed"] .crowd-queue i,
+.market-page[data-event-state="crowd_submitting"] .crowd-queue i {
+    opacity: .88;
+    transform: translateY(0);
+}
+
+.market-page[data-event-state="crowd_armed"] .crowd-queue i:nth-child(n + 7) {
+    transition-delay: calc((var(--queue-index, 1) - 1) * 35ms);
+}
+
+.market-page[data-event-state="crowd_armed"] .crowd-status > i {
+    background: #6f965a;
+    box-shadow: 0 0 0 5px rgba(111, 150, 90, .12);
+}
+
+.market-page[data-event-state="crowd_submitting"] .crowd-status > i {
+    background: #b75c38;
+    box-shadow: 0 0 0 5px rgba(183, 92, 56, .14);
+    animation: crowd-status-pulse .7s ease-in-out infinite alternate;
+}
+
+.market-page[data-event-state="crowd_submitting"] .crowd-queue i {
+    animation: crowd-submit 1s ease-in forwards;
+}
+
+.market-page[data-event-state="crowd_submitting"] .crowd-queue i:nth-child(2n) { animation-delay: .08s; }
+.market-page[data-event-state="crowd_submitting"] .crowd-queue i:nth-child(3n) { animation-delay: .16s; }
+
+.market-page[data-event-state="crowd_submitting"] .crowd-tickets i {
+    animation: crowd-ticket-submit .78s cubic-bezier(.4, 0, .2, 1) forwards;
+}
+
+.market-page[data-event-state="crowd_submitting"] .crowd-tickets i:nth-child(2) { animation-delay: .08s; }
+.market-page[data-event-state="crowd_submitting"] .crowd-tickets i:nth-child(3) { animation-delay: .16s; }
+.market-page[data-event-state="crowd_submitting"] .crowd-tickets i:nth-child(4) { animation-delay: .24s; }
+.market-page[data-event-state="crowd_submitting"] .crowd-tickets i:nth-child(5) { animation-delay: .32s; }
+.market-page[data-event-state="crowd_submitting"] .crowd-tickets i:nth-child(6) { animation-delay: .4s; }
+
+.market-page[data-event-state="crowd_submitting"] #record-card {
+    visibility: hidden;
+}
+
+.market-page[data-event-state="crowd_submitting"] .record-actions {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.market-page[data-event-state="crowd_submitting"] .market-scene {
+    transform: scale(1.045) translate3d(-1%, 0, 0);
 }
 
 .market-page[data-event-state="inserting_record"] #record-card {
@@ -2241,6 +2574,23 @@ select:focus-visible {
     to { transform: translateY(-3px); }
 }
 
+@keyframes crowd-submit {
+    0% { opacity: .9; transform: translate(0, 0); }
+    70% { opacity: .9; }
+    100% { opacity: 0; transform: translate(clamp(80px, 11vw, 160px), -17vh) scale(.72); }
+}
+
+@keyframes crowd-ticket-submit {
+    0% { opacity: 0; transform: translate(0, 10px) scale(.82); }
+    16% { opacity: 1; }
+    78% { opacity: 1; }
+    100% { opacity: 0; transform: translate(clamp(60px, 9vw, 130px), -22vh) scale(.38); filter: brightness(1.6); }
+}
+
+@keyframes crowd-status-pulse {
+    to { transform: scale(1.16); opacity: .72; }
+}
+
 @media (max-width: 1180px) {
     .alchemy-shop { right: -4%; width: 57vw; }
     .visitor { left: 37%; }
@@ -2261,6 +2611,7 @@ select:focus-visible {
     .visitor { left: 24%; bottom: 31%; transform: scale(.88); }
     .shopkeeper { right: 37%; bottom: 35%; transform: scale(.73); }
     .event-card { position: absolute; bottom: 20px; }
+    .crowd-queue { left: 60%; bottom: 32%; width: 38%; }
     .accepted-stamp { top: 30%; right: 5%; }
     .lab-header { grid-template-columns: 1fr; gap: 10px; }
     .current-material { grid-row: 2; }
@@ -2297,6 +2648,12 @@ select:focus-visible {
     .event-heading span { max-width: 72%; }
     .material-choices { grid-template-columns: 1fr; max-height: 360px; overflow: auto; }
     .record-selection { grid-template-columns: 1fr; gap: 14px; }
+    .delivery-choice { grid-template-columns: 1fr; }
+    .crowd-panel header { align-items: stretch; flex-direction: column; gap: 8px; }
+    .crowd-panel header button { align-self: flex-start; }
+    .crowd-queue { left: 45%; bottom: 47%; width: 53%; gap: 2px; }
+    .crowd-queue i { width: 22px; flex-basis: 22px; }
+    .crowd-tickets i { width: 54px; height: 27px; }
     .record-card { width: 150px; min-height: 108px; }
     .record-card > strong { margin-top: 10px; font-size: 20px; }
     .record-card > em { margin-top: 7px; }

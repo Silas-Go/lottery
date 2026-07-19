@@ -8,7 +8,7 @@
     <meta name="description" content="在阳光下的 Silas 炼金市选择材料档案片，再进入 Cache-Aside 技术实验室。" />
     <title>Silas 炼金市 · 材料情报店</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-market-event" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260719-crowd-flow" />
 </head>
 
 <body class="market-page" data-event-state="arrival">
@@ -71,6 +71,19 @@
                 <i class="visitor-satchel"></i>
             </div>
 
+            <div id="crowd-queue" class="crowd-queue" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <div id="crowd-tickets" class="crowd-tickets" aria-hidden="true">
+                <i><span data-crowd-ticket>ARC-002</span></i>
+                <i><span data-crowd-ticket>ARC-002</span></i>
+                <i><span data-crowd-ticket>ARC-002</span></i>
+                <i><span data-crowd-ticket>ARC-002</span></i>
+                <i><span data-crowd-ticket>ARC-002</span></i>
+                <i><span data-crowd-ticket>ARC-002</span></i>
+            </div>
+
             <div class="stone-street" aria-hidden="true"></div>
             <div class="sun-shade" aria-hidden="true"></div>
             <div class="dust-field" aria-hidden="true">
@@ -126,10 +139,34 @@
                     <em>UNREAD RECORD</em>
                 </div>
                 <div class="record-copy">
-                    <strong>店主</strong>
-                    <p>“完整资料不在这里。把档案片插入检索槽，机器会调取它的记录。”</p>
+                    <div id="delivery-prompt" class="delivery-prompt">
+                        <strong>店主</strong>
+                        <p>“你可以亲自投递这一张档案片，也可以召集一批访客同时提交查询。”</p>
+                        <div class="delivery-choice" role="group" aria-label="选择档案投递方式">
+                            <button id="single-request" type="button">
+                                <strong>单人购买</strong><small>先投递一次只读资料校验</small>
+                            </button>
+                            <button id="crowd-test" type="button">
+                                <strong>多人压测</strong><small>召集访客，准备批量投递</small>
+                            </button>
+                        </div>
+                        <small class="purchase-boundary">此处不会直接扣减库存；购买时会重新校验价格与库存。</small>
+                    </div>
+
+                    <div id="crowd-panel" class="crowd-panel">
+                        <header>
+                            <div><small>MULTI-VISITOR LOAD</small><strong>多人压测准备</strong></div>
+                            <button id="leave-crowd-mode" type="button">返回方式选择</button>
+                        </header>
+                        <code id="market-load-command">正在生成压测命令…</code>
+                        <button id="copy-market-command" class="event-primary" type="button">复制压测命令</button>
+                        <div class="crowd-status" role="status" aria-live="polite">
+                            <i></i>
+                            <span><strong id="crowd-status-title">等待外部请求到达</strong><small id="crowd-status-copy">人群已在门口排队，但尚未开始投递。</small></span>
+                        </div>
+                    </div>
+
                     <div class="record-actions">
-                        <button id="insert-record" class="event-primary" type="button">插入档案片</button>
                         <button id="choose-again" class="event-secondary" type="button">重新选择材料</button>
                     </div>
                 </div>
@@ -142,8 +179,9 @@
         </section>
     </main>
 
+    <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
-    <script src="/js/market.js?v=20260719-market-event"></script>
+    <script src="/js/market.js?v=20260719-crowd-flow"></script>
 </body>
 
 </html>

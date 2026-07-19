@@ -149,6 +149,14 @@
         }
     }
 
+    function incomingMode() {
+        return new URLSearchParams(window.location.search).get("mode") === "cached" ? "cached" : "direct";
+    }
+
+    function incomingEntry() {
+        return new URLSearchParams(window.location.search).get("entry") === "crowd" ? "crowd" : "single";
+    }
+
     function rememberMaterial(profile) {
         try {
             window.sessionStorage.setItem(STORAGE_KEY, profile.code);
@@ -629,9 +637,15 @@
             return;
         }
         bindEvents();
-        setMode("direct");
+        var entry = incomingEntry();
+        document.body.dataset.entryMode = entry;
+        setMode(incomingMode());
         resetRouteVisual();
         updateControlState();
+        if (entry === "crowd") {
+            byId("request-status").textContent = "已从室外跟随压测请求进入";
+            byId("replay-status").textContent = "等待 SSE 捕获后续请求";
+        }
         fetchSnapshot();
         connectMetrics();
     });
