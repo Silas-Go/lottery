@@ -4,87 +4,146 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#08111d" />
-    <meta name="description" content="在 Silas 炼金市选择材料索引，再进入 Cache-Aside 数据检索实验室。" />
-    <title>魔法潮汐将至 · Silas 炼金市</title>
-    <link rel="icon" type="image/png" href="/favicon.ico?v=3" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-two-page-2" />
+    <meta name="theme-color" content="#f2c77d" />
+    <meta name="description" content="在阳光下的 Silas 炼金市选择材料档案片，再进入 Cache-Aside 技术实验室。" />
+    <title>Silas 炼金市 · 材料情报店</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260719-market-event" />
 </head>
 
-<body class="cache-lab-page market-entry-page">
-    <div class="lab-background" aria-hidden="true">
-        <div class="lab-grid"></div>
-        <div class="lab-haze haze-one"></div>
-        <div class="lab-haze haze-two"></div>
-    </div>
-
-    <header class="market-entry-header">
-        <a class="lab-brand" href="/" aria-label="Silas 炼金市首页">
-            <span class="lab-brand-mark">S</span>
+<body class="market-page" data-event-state="arrival">
+    <header class="market-topbar">
+        <a class="market-brand" href="/" aria-label="Silas 炼金市首页">
+            <span class="market-brand-mark">S</span>
             <span><strong>SILAS</strong><small>ALCHEMY MARKET</small></span>
         </a>
-        <span class="market-entry-location"><i></i>炼金市材料情报处 · OPEN</span>
+        <div class="market-location"><i></i>材料情报店 · 暖潮街 17 号</div>
     </header>
 
-    <main class="market-entry-main">
-        <section class="market-entry-hero" aria-labelledby="market-title">
-            <div class="market-entry-copy">
-                <p>MARKET EXTERIOR · MATERIAL INTELLIGENCE</p>
-                <h1 id="market-title">魔法潮汐将至</h1>
-                <h2>Silas 炼金市材料情报查询</h2>
-                <p class="market-entry-summary">
-                    大量访客会在短时间内查询同一份材料档案。本实验将展示：如果每次都直读 MySQL，会发生什么；如果先查 Redis Cache-Aside，又会发生什么。
-                </p>
-                <div class="market-entry-comparison" aria-label="实验对比说明">
-                    <span><i>MYSQL DIRECT</i><b>每次查询进入数据库</b></span>
-                    <span><i>REDIS CACHE-ASIDE</i><b>重复读取优先停在缓存</b></span>
-                </div>
+    <main class="market-event" aria-labelledby="event-title">
+        <h1 id="event-title" class="sr-only">魔法潮汐前的材料查询</h1>
+
+        <section class="market-scene" aria-label="阳光下的炼金市场材料店铺">
+            <div class="market-sky" aria-hidden="true">
+                <i class="market-sun"></i>
+                <i class="cloud cloud-one"></i>
+                <i class="cloud cloud-two"></i>
             </div>
 
-            <div class="market-entry-visual" aria-hidden="true">
-                <div class="entry-shop-sign"><span>SILAS</span><small>MATERIAL ARCHIVES</small></div>
-                <div class="entry-shop-window"><i></i><i></i><i></i></div>
-                <div class="entry-counter-slot"></div>
-                <div class="entry-visitor entry-visitor-main"><i></i></div>
-                <div class="entry-visitor entry-visitor-back entry-visitor-one"><i></i></div>
-                <div class="entry-visitor entry-visitor-back entry-visitor-two"><i></i></div>
-                <div class="entry-query-ticket">ARC-???</div>
+            <div class="town-depth" aria-hidden="true">
+                <span class="distant-tower"><i></i></span>
+                <span class="distant-house house-one"></span>
+                <span class="distant-house house-two"></span>
+                <span class="distant-house house-three"></span>
+                <span class="town-flag flag-one"></span>
+                <span class="town-flag flag-two"></span>
             </div>
+
+            <div class="alchemy-shop" aria-hidden="true">
+                <div class="shop-roof"></div>
+                <div class="shop-beam beam-left"></div>
+                <div class="shop-beam beam-right"></div>
+                <div class="shop-sign"><strong>SILAS</strong><span>MATERIAL ARCHIVES</span></div>
+                <div class="shop-awning"><i></i><i></i><i></i><i></i><i></i></div>
+                <div class="shop-window">
+                    <span class="bottle bottle-one"></span>
+                    <span class="bottle bottle-two"></span>
+                    <span class="bottle bottle-three"></span>
+                </div>
+                <div class="archive-machine">
+                    <span>ARCHIVE READER</span>
+                    <div id="archive-slot" class="archive-slot"><i></i></div>
+                    <small>INSERT RECORD</small>
+                </div>
+                <div class="shop-counter"></div>
+            </div>
+
+            <div class="character shopkeeper" aria-label="材料情报店主">
+                <i class="character-head"></i>
+                <i class="character-hair"></i>
+                <i class="character-body"></i>
+                <i class="character-arm"></i>
+            </div>
+            <div class="character visitor" aria-label="来到柜台前的访客">
+                <i class="character-head"></i>
+                <i class="character-hair"></i>
+                <i class="character-body"></i>
+                <i class="visitor-satchel"></i>
+            </div>
+
+            <div class="stone-street" aria-hidden="true"></div>
+            <div class="sun-shade" aria-hidden="true"></div>
+            <div class="dust-field" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+
+            <div id="accepted-stamp" class="accepted-stamp" role="status" aria-live="polite" aria-hidden="true">
+                <span>ARCHIVE ACCEPTED</span>
+                <strong id="accepted-material">ARC-002 · 雾银</strong>
+            </div>
+            <div class="slot-focus" aria-hidden="true"></div>
         </section>
 
-        <section class="market-directory" aria-labelledby="directory-title">
-            <div class="market-directory-heading">
-                <div>
-                    <p>01 / MATERIAL INDEX</p>
-                    <h2 id="directory-title">选择一份材料索引</h2>
-                    <span>目录只提供档案编号、模糊轮廓和线索；完整资料需要进入实验室查询。</span>
-                </div>
-                <span id="entry-directory-status" class="entry-directory-status" role="status">正在读取材料目录</span>
+        <section class="event-card" aria-live="polite">
+            <div class="event-heading">
+                <span id="event-kicker">A SHORT EVENT · MATERIAL INTELLIGENCE</span>
+                <small id="event-step">抵达</small>
             </div>
 
-            <div id="entry-material-grid" class="entry-material-grid" role="listbox" aria-label="材料情报目录">
-                <span class="entry-material-skeleton"></span>
-                <span class="entry-material-skeleton"></span>
-                <span class="entry-material-skeleton"></span>
-                <span class="entry-material-skeleton"></span>
+            <div id="arrival-copy" class="arrival-copy">
+                <strong>魔法潮汐前夕</strong>
+                <p>暖阳落在石板路上。你推开材料情报店的木门，柜台后的店主抬起头。</p>
             </div>
 
-            <div class="market-entry-footer">
-                <div class="entry-selection-summary">
-                    <span>CURRENT MATERIAL</span>
-                    <strong id="entry-selected-title">尚未选择材料</strong>
-                    <p id="entry-selected-copy">请选择一份想要查询的材料索引。</p>
+            <div id="dialogue-copy" class="dialogue-copy">
+                <strong>店主</strong>
+                <p>“魔法潮汐快到了。最近来打听材料的人越来越多。”</p>
+                <p>“你想查询哪一种材料？”</p>
+                <button id="show-materials" class="event-primary" type="button">选择材料档案</button>
+            </div>
+
+            <div id="material-choices" class="material-choices" role="list" aria-label="选择要查询的材料">
+                <button type="button" data-material="ARC-001">
+                    <span>我想查阅月盐。</span><small>潮退后留下的苍白结晶。</small>
+                </button>
+                <button type="button" data-material="ARC-002">
+                    <span>给我看看雾银的记录。</span><small>只在晨雾浓时显露轮廓。</small>
+                </button>
+                <button type="button" data-material="ARC-003">
+                    <span>我需要龙息琥珀的资料。</span><small>内部有微弱灼热反应。</small>
+                </button>
+                <button type="button" data-material="ARC-004">
+                    <span>我在寻找星髓的线索。</span><small>从坠星残核中分离出的结晶。</small>
+                </button>
+            </div>
+
+            <div id="record-selection" class="record-selection">
+                <div id="record-card" class="record-card" data-kind="silver">
+                    <span id="record-code">ARC-002</span>
+                    <i id="record-sigil" aria-hidden="true">Ⅱ</i>
+                    <strong id="record-name">雾银</strong>
+                    <small>MATERIAL ARCHIVE</small>
+                    <em>UNREAD RECORD</em>
                 </div>
-                <div class="entry-action-group">
-                    <button id="enter-lab" type="button" disabled>进入检索实验室</button>
-                    <small>将当前选中的材料带入实验室，进入后可切换 MySQL Direct / Redis Cache-Aside。</small>
+                <div class="record-copy">
+                    <strong>店主</strong>
+                    <p>“完整资料不在这里。把档案片插入检索槽，机器会调取它的记录。”</p>
+                    <div class="record-actions">
+                        <button id="insert-record" class="event-primary" type="button">插入档案片</button>
+                        <button id="choose-again" class="event-secondary" type="button">重新选择材料</button>
+                    </div>
                 </div>
+            </div>
+
+            <div id="inserting-copy" class="inserting-copy">
+                <strong id="inserting-title">档案片正在送入检索槽</strong>
+                <p>机器只识别选定的档案编号；完整资料将在内部实验室中查询。</p>
             </div>
         </section>
     </main>
 
-    <div id="story-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260719-two-page-2"></script>
+    <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
+    <script src="/js/market.js?v=20260719-market-event"></script>
 </body>
 
 </html>

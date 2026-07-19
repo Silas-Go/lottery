@@ -4,557 +4,242 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#08111d" />
-    <meta name="description" content="在 Silas 数据检索实验室中观察 MySQL Direct 与 Redis Cache-Aside 的真实读取路径。" />
-    <title>材料数据检索实验室 · Silas Architecture Lab</title>
-    <link rel="icon" type="image/png" href="/favicon.ico?v=3" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-two-page-2" />
+    <meta name="theme-color" content="#07111d" />
+    <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
+    <title>Cache-Aside 材料检索实验室 · Silas</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260719-technical-lab" />
 </head>
 
-<body class="cache-lab-page" data-lab-mode="direct" data-route-state="idle" data-selection-state="empty">
-    <div class="lab-background" aria-hidden="true">
-        <div class="lab-grid"></div>
-        <div class="lab-haze haze-one"></div>
-        <div class="lab-haze haze-two"></div>
-    </div>
+<body class="lab-page" data-lab-mode="direct" data-route-state="idle">
+    <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
-    <header class="cache-lab-header">
-        <a class="lab-brand" href="/" aria-label="Silas Architecture Lab">
-            <span class="lab-brand-mark">S</span>
-            <span><strong>SILAS</strong><small>ARCHITECTURE LAB</small></span>
+    <header class="lab-header">
+        <a class="lab-brand" href="/" aria-label="返回 Silas 炼金市">
+            <span>S</span>
+            <div><strong>SILAS</strong><small>CACHE-ASIDE LAB</small></div>
         </a>
 
-        <div class="lab-title">
-            <p>INSIDE THE MARKET · DATA ROUTING LAB</p>
-            <h1>材料数据检索实验室</h1>
-            <span>观察同一份材料档案如何经 MySQL Direct 或 Redis Cache-Aside 返回。</span>
+        <div class="current-material" aria-label="当前实验材料">
+            <small>CURRENT MATERIAL</small>
+            <strong><span id="lab-current-code">—</span> · <span id="lab-current-name">尚未选择材料</span></strong>
+            <a href="/">更换材料</a>
         </div>
 
-        <div class="lab-header-status">
-            <a class="lab-return-link" href="/">返回店铺门口</a>
-            <span id="connection-state" class="connection-badge"><i></i>正在连接实验服务</span>
-            <button id="reset-story-top" class="header-reset" type="button">重置实验</button>
+        <div class="lab-status-actions">
+            <span id="connection-state" class="connection-state"><i></i>正在连接 SSE</span>
+            <button id="reset-lab" type="button">重置缓存与指标</button>
         </div>
     </header>
 
-    <main class="cache-lab-main">
-        <section class="lab-workbench" aria-label="Cache-Aside 实验工作台">
-            <aside id="material-panel" class="lab-surface material-panel" aria-label="材料情报目录">
-                <div class="surface-heading">
+    <main class="lab-main">
+        <section id="empty-state" class="lab-empty" hidden>
+            <span>MATERIAL CONTEXT REQUIRED</span>
+            <h1>尚未选择材料</h1>
+            <p>实验室只接收从炼金市插入的材料档案片。</p>
+            <a href="/">返回炼金市</a>
+        </section>
+
+        <div id="lab-content" class="lab-content" hidden>
+            <section class="query-console lab-panel" aria-labelledby="query-title">
+                <div class="panel-heading">
                     <div>
-                        <span class="surface-index">01 / MATERIAL</span>
-                        <h2>材料情报目录</h2>
+                        <span>01 / REAL HTTP REQUEST</span>
+                        <h1 id="query-title">选择读取策略，检索当前材料档案</h1>
                     </div>
-                    <button class="drawer-close material-drawer-close" type="button" aria-label="关闭材料面板">关闭</button>
+                    <span class="endpoint-label">GET /api/archives/:id/{direct|cached}</span>
                 </div>
 
-                <p class="material-catalog-intro">访客只能查看索引与模糊线索。选择档案不会立即发起查询。</p>
-
-                <div id="material-tabs" class="material-selector" role="tablist" aria-label="选择魔法材料">
-                    <span class="material-skeleton"></span>
-                    <span class="material-skeleton"></span>
-                    <span class="material-skeleton"></span>
-                    <span class="material-skeleton"></span>
+                <div class="query-controls">
+                    <div class="mode-switch" role="group" aria-label="读取策略">
+                        <button id="mode-direct" class="is-active" type="button" aria-pressed="true">
+                            <small>CONTROL PATH</small><strong>MySQL Direct</strong><span>每次请求都读取数据库</span>
+                        </button>
+                        <button id="mode-cached" type="button" aria-pressed="false">
+                            <small>OPTIMIZED PATH</small><strong>Redis Cache-Aside</strong><span>先查缓存，MISS 再回源</span>
+                        </button>
+                    </div>
+                    <button id="query-archive" class="query-button" type="button">
+                        <span>检索材料档案</span><small id="query-endpoint">via /direct</small>
+                    </button>
                 </div>
-            </aside>
 
-            <section class="lab-surface route-panel">
-                <div class="surface-heading stage-heading">
+                <div class="request-readout" role="status" aria-live="polite">
+                    <div><small>REQUEST</small><strong id="request-status">等待发起真实请求</strong></div>
+                    <div><small>ACTUAL RESPONSE</small><strong id="actual-latency">—</strong></div>
+                    <div><small>X-ARCHIVE-SOURCE</small><strong id="actual-source">—</strong></div>
+                    <div><small>TEACHING REPLAY</small><strong id="replay-status">尚未开始</strong></div>
+                </div>
+                <p class="replay-disclaimer">真实 HTTP 响应一到即记录耗时；下方动画只是本次数据路径的教学回放，不代表请求耗时。</p>
+            </section>
+
+            <section class="route-panel lab-panel" aria-labelledby="route-heading">
+                <div class="panel-heading route-heading-row">
                     <div>
-                        <span class="surface-index">02 / DATA ROUTING ENGINE</span>
-                        <h2>实时请求链路</h2>
+                        <span>02 / REQUEST PATH</span>
+                        <h2 id="route-heading">系统拓扑与本次真实来源</h2>
                     </div>
-                    <div class="stage-actions" aria-label="舞台显示控制">
-                        <button id="open-material-panel" class="stage-button material-panel-toggle" type="button"
-                            aria-controls="material-panel" aria-expanded="false">材料</button>
-                        <div class="camera-switch" role="group" aria-label="切换实验室摄像头视角">
-                            <button id="camera-exterior" class="camera-button" type="button" aria-pressed="false">外景视角</button>
-                            <button id="camera-internal" class="camera-button is-active" type="button" aria-pressed="true">内部视角</button>
-                        </div>
-                        <button id="fit-stage" class="stage-button" type="button">适应窗口</button>
-                        <button id="focus-stage" class="stage-button stage-focus-button" type="button"
-                            aria-pressed="false">全屏聚焦</button>
-                        <button id="open-control-panel" class="stage-button control-panel-toggle" type="button"
-                            aria-controls="control-panel" aria-expanded="false">控制</button>
-                        <span id="route-mode-badge" class="surface-badge mode-direct">MYSQL DIRECT</span>
+                    <div class="route-result">
+                        <small id="route-label">WAITING</small>
+                        <strong id="route-title">选择策略后发起请求</strong>
                     </div>
                 </div>
 
-                <div id="architecture-canvas" class="architecture-canvas lab-stage" data-scene-state="idle" data-camera-view="internal"
-                    aria-label="从炼金市查询柜台进入透明机械剖面的双路数据检索机">
-                    <div id="market-exterior-layer" class="market-exterior-layer" aria-hidden="true">
-                        <div class="market-canopy"><span>SILAS ARCHIVE COUNTER</span><i></i></div>
-
-                        <div class="crowd-silhouettes">
-                            <i class="crowd-visitor crowd-visitor-1"></i>
-                            <i class="crowd-visitor crowd-visitor-2"></i>
-                            <i class="crowd-visitor crowd-visitor-3"></i>
-                            <i class="crowd-visitor crowd-visitor-4"></i>
-                            <i class="crowd-visitor crowd-visitor-5"></i>
-                            <i class="crowd-visitor crowd-visitor-6"></i>
-                            <i class="crowd-visitor crowd-visitor-7"></i>
-                        </div>
-
-                        <div class="single-visitor">
-                            <i class="visitor-head"></i>
-                            <i class="visitor-body"></i>
-                            <span class="visitor-ticket" data-scene-ticket-code>ARC-???</span>
-                        </div>
-
-                        <div class="ticket-stream">
-                            <i data-scene-ticket-code>ARC-???</i>
-                            <i data-scene-ticket-code>ARC-???</i>
-                            <i data-scene-ticket-code>ARC-???</i>
-                            <i data-scene-ticket-code>ARC-???</i>
-                            <i data-scene-ticket-code>ARC-???</i>
-                        </div>
-
-                        <div class="service-counter">
-                            <span class="counter-slot"><i></i></span>
-                            <strong>材料档案查询柜台</strong>
-                            <small>QUERY INTAKE · TOKEN GATE</small>
-                            <i class="counter-request-output"></i>
-                        </div>
-                    </div>
-
-                    <div id="machine-interior-layer" class="machine-interior-layer">
-                    <svg class="route-svg" viewBox="0 0 1000 540" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="routing-engine-title routing-engine-desc">
-                        <title id="routing-engine-title">DATA ROUTING ENGINE 双路数据检索机</title>
-                        <desc id="routing-engine-desc">Client 请求进入 Go API 分流阀后，经 Redis Cache-Aside 或 MySQL Direct 路径检索，并通过独立响应与缓存回填管线返回。</desc>
-                        <defs>
-                            <linearGradient id="machine-shell" x1="0" y1="0" x2="1" y2="1">
-                                <stop offset="0" stop-color="#13263a" stop-opacity=".94"></stop>
-                                <stop offset=".48" stop-color="#081522" stop-opacity=".84"></stop>
-                                <stop offset="1" stop-color="#172638" stop-opacity=".9"></stop>
-                            </linearGradient>
-                            <linearGradient id="glass-panel" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0" stop-color="#7ebbc7" stop-opacity=".12"></stop>
-                                <stop offset=".55" stop-color="#24465b" stop-opacity=".04"></stop>
-                                <stop offset="1" stop-color="#0c1a29" stop-opacity=".18"></stop>
-                            </linearGradient>
-                            <linearGradient id="capsule-metal" x1="0" y1="0" x2="1" y2="0">
-                                <stop offset="0" stop-color="#6d8799"></stop>
-                                <stop offset=".35" stop-color="#d7e6e8"></stop>
-                                <stop offset=".65" stop-color="#7697a4"></stop>
-                                <stop offset="1" stop-color="#314c5f"></stop>
-                            </linearGradient>
-                            <filter id="machine-glow" x="-100%" y="-100%" width="300%" height="300%">
-                                <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
-                                <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
-                            </filter>
-                            <filter id="machine-shadow" x="-30%" y="-30%" width="160%" height="180%">
-                                <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000711" flood-opacity=".55"></feDropShadow>
-                            </filter>
-                        </defs>
-
-                        <rect class="machine-base-shadow" x="28" y="33" width="944" height="475" rx="26"></rect>
-                        <rect class="machine-chassis" x="20" y="22" width="960" height="478" rx="24"></rect>
-                        <path class="machine-rib" d="M44 83 H956 M44 454 H956"></path>
-                        <g class="machine-bolts" aria-hidden="true">
-                            <circle cx="42" cy="44" r="5"></circle><circle cx="958" cy="44" r="5"></circle>
-                            <circle cx="42" cy="478" r="5"></circle><circle cx="958" cy="478" r="5"></circle>
-                        </g>
-
-                        <g class="machine-nameplate">
-                            <text x="52" y="57">DATA ROUTING ENGINE</text>
-                            <text class="machine-nameplate-cn" x="52" y="76">双路数据检索机 · 透明机械剖面</text>
-                        </g>
-                        <g class="flow-key" aria-hidden="true">
-                            <circle class="flow-key-request" cx="756" cy="56" r="4"></circle><text x="768" y="60">请求脉冲</text>
-                            <rect class="flow-key-data" x="841" y="52" width="11" height="7" rx="3"></rect><text x="860" y="60">数据胶囊</text>
-                        </g>
-
-                        <g class="pipe-bed" aria-hidden="true">
-                            <path d="M150 268 H286"></path>
-                            <path d="M384 238 C425 216 428 148 487 148"></path>
-                            <path d="M384 299 C432 315 438 389 490 389"></path>
-                            <path d="M710 198 C710 249 450 278 490 350"></path>
-                            <path d="M700 424 C790 470 830 415 830 177 H710"></path>
-                            <path d="M710 132 H854 V268 H924"></path>
-                            <path d="M728 389 H854 V268 H924"></path>
-                        </g>
-
-                        <g class="route-pipelines" aria-hidden="true">
-                            <path id="path-client-api" class="route-edge edge-client-api" d="M150 268 H286"></path>
-                            <path id="path-api-redis" class="route-edge edge-api-redis" d="M384 238 C425 216 428 148 487 148"></path>
-                            <path id="path-api-mysql" class="route-edge edge-api-mysql" d="M384 299 C432 315 438 389 490 389"></path>
-                            <path id="path-redis-mysql" class="route-edge edge-redis-mysql" d="M710 198 C710 249 450 278 490 350"></path>
-                            <path id="path-mysql-redis" class="route-edge edge-mysql-redis refill-edge" d="M700 424 C790 470 830 415 830 177 H710"></path>
-                            <path id="path-redis-response" class="route-edge edge-redis-response response-edge" d="M710 132 H854 V268 H924"></path>
-                            <path id="path-mysql-response" class="route-edge edge-mysql-response response-edge" d="M728 389 H854 V268 H924"></path>
-                        </g>
-
-                        <g id="node-client" class="architecture-node client-node" data-node="client">
-                            <rect class="device-shell" x="44" y="208" width="108" height="120" rx="18"></rect>
-                            <rect class="device-glass" x="57" y="224" width="80" height="50" rx="8"></rect>
-                            <path class="injector-rail" d="M68 249 H128 M116 240 L128 249 L116 258"></path>
-                            <rect class="injector-grip" x="65" y="286" width="64" height="9" rx="4"></rect>
-                            <circle class="device-port" cx="150" cy="268" r="9"></circle>
-                            <text class="device-title" x="44" y="352">Client</text>
-                            <text class="device-subtitle" x="44" y="371">请求注入器 · Request Injector</text>
-                            <text class="device-detail" x="44" y="389">Browser / wrk2</text>
-                        </g>
-
-                        <g id="node-api" class="architecture-node api-node" data-node="api">
-                            <path class="valve-mount" d="M292 218 L334 193 L378 218 L397 268 L378 318 L334 343 L292 318 L273 268 Z"></path>
-                            <circle class="valve-ring" cx="334" cy="268" r="50"></circle>
-                            <circle class="valve-face" cx="334" cy="268" r="35"></circle>
-                            <g id="routing-valve-pointer" class="valve-pointer">
-                                <path d="M334 268 L334 235"></path>
-                                <path d="M326 242 L334 230 L342 242 Z"></path>
-                            </g>
-                            <circle class="valve-hub" cx="334" cy="268" r="9"></circle>
-                            <circle class="device-port" cx="282" cy="268" r="8"></circle>
-                            <circle class="device-port port-cache" cx="382" cy="238" r="8"></circle>
-                            <circle class="device-port port-direct" cx="382" cy="299" r="8"></circle>
-                            <text class="device-title centered" x="334" y="373">Go API</text>
-                            <text class="device-subtitle centered" x="334" y="392">中央分流阀 · Routing Core</text>
-                            <text id="valve-route-label" class="device-state centered" x="334" y="413">DIRECT BYPASS</text>
-                        </g>
-
-                        <g id="node-redis" class="architecture-node redis-node is-disabled" data-node="redis">
-                            <rect class="device-shell redis-shell" x="487" y="88" width="225" height="122" rx="18"></rect>
-                            <rect class="device-glass redis-glass" x="500" y="100" width="199" height="96" rx="13"></rect>
-                            <circle class="device-port port-cache" cx="487" cy="148" r="8"></circle>
-                            <circle class="device-port" cx="710" cy="132" r="8"></circle>
-                            <circle class="device-port refill-port" cx="710" cy="177" r="8"></circle>
-                            <circle class="ttl-track" cx="572" cy="148" r="43" pathLength="100"></circle>
-                            <circle id="redis-ttl-ring" class="ttl-ring" cx="572" cy="148" r="43" pathLength="100"></circle>
-                            <g id="redis-rotor" class="redis-rotor">
-                                <circle class="rotor-core" cx="572" cy="148" r="32"></circle>
-                                <g class="cache-slots">
-                                    <rect id="redis-slot-active" class="cache-slot current-slot" x="566" y="111" width="12" height="18" rx="3"></rect>
-                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(45 572 148)"></rect>
-                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(90 572 148)"></rect>
-                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(135 572 148)"></rect>
-                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(180 572 148)"></rect>
-                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(225 572 148)"></rect>
-                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(270 572 148)"></rect>
-                                    <rect class="cache-slot" x="566" y="111" width="12" height="18" rx="3" transform="rotate(315 572 148)"></rect>
-                                </g>
-                                <circle class="rotor-hub" cx="572" cy="148" r="8"></circle>
-                            </g>
-                            <circle id="redis-hit-light" class="status-light hit-light" cx="641" cy="124" r="5"></circle>
-                            <text class="device-detail" x="651" y="128">HIT</text>
-                            <circle id="redis-miss-light" class="status-light miss-light" cx="641" cy="145" r="5"></circle>
-                            <text class="device-detail" x="651" y="149">MISS</text>
-                            <text id="redis-node-state" class="device-state" x="620" y="174">STANDBY</text>
-                            <text id="redis-key-label" class="device-micro" x="620" y="190">archive:profession:{id}</text>
-                            <text class="device-title" x="487" y="235">Redis</text>
-                            <text class="device-subtitle" x="487" y="254">高速缓存转鼓 · Cache Rotor</text>
-                            <text id="redis-ttl-value" class="device-detail" x="645" y="235">TTL 300s</text>
-                        </g>
-
-                        <g id="node-mysql" class="architecture-node mysql-node" data-node="mysql">
-                            <rect class="device-shell mysql-shell" x="490" y="330" width="240" height="125" rx="19"></rect>
-                            <rect class="device-glass mysql-glass" x="505" y="343" width="208" height="98" rx="13"></rect>
-                            <circle class="device-port port-direct" cx="490" cy="389" r="8"></circle>
-                            <circle class="device-port" cx="728" cy="389" r="8"></circle>
-                            <circle id="mysql-pressure-ring" class="pressure-ring" cx="576" cy="390" r="52" pathLength="100"></circle>
-                            <circle class="pressure-ticks" cx="576" cy="390" r="46" pathLength="100"></circle>
-                            <g id="mysql-spindle" class="mysql-spindle">
-                                <ellipse class="data-platter platter-back" cx="576" cy="374" rx="42" ry="11"></ellipse>
-                                <rect class="platter-body" x="534" y="374" width="84" height="28"></rect>
-                                <ellipse class="data-platter" cx="576" cy="388" rx="42" ry="11"></ellipse>
-                                <ellipse class="data-platter platter-front" cx="576" cy="402" rx="42" ry="11"></ellipse>
-                                <circle class="spindle-hub" cx="576" cy="388" r="7"></circle>
-                            </g>
-                            <g id="mysql-read-arm" class="mysql-read-arm">
-                                <circle cx="650" cy="365" r="8"></circle>
-                                <path d="M650 365 L615 389"></path>
-                                <rect x="607" y="385" width="14" height="8" rx="3"></rect>
-                            </g>
-                            <text id="mysql-pool-state" class="device-state" x="634" y="420">POOL 0 / 0</text>
-                            <text class="device-title" x="490" y="479">MySQL</text>
-                            <text class="device-subtitle" x="490" y="497">主数据机芯 · Primary Store</text>
-                        </g>
-
-                        <g class="response-manifold">
-                            <rect class="manifold-shell" x="846" y="207" width="112" height="123" rx="16"></rect>
-                            <path d="M870 228 H936 M870 244 H936 M870 260 H936"></path>
-                            <circle class="device-port" cx="854" cy="268" r="9"></circle>
-                            <circle class="device-port" cx="924" cy="268" r="9"></circle>
-                            <text class="device-title centered" x="902" y="357">Response</text>
-                            <text class="device-subtitle centered" x="902" y="376">响应回流 · Return</text>
-                            <text class="device-micro centered" x="902" y="394">Go API RESPONSE</text>
-                        </g>
-
-                        <text class="pipe-label cache-label" x="406" y="121">CACHE PATH</text>
-                        <text class="pipe-label direct-label" x="404" y="354">DIRECT BYPASS</text>
-                        <text class="pipe-label refill-label" x="747" y="465">REFILL LOOP</text>
-                        <text class="pipe-label response-label" x="842" y="185">RESPONSE RETURN</text>
-
-                        <g class="reusable-carriers" aria-hidden="true">
-                            <circle id="request-pulse-1" class="request-pulse" r="6"></circle>
-                            <circle id="request-pulse-2" class="request-pulse" r="5"></circle>
-                            <circle id="request-pulse-3" class="request-pulse" r="4"></circle>
-                            <g id="redis-data-capsule" class="data-capsule redis-data-capsule">
-                                <rect x="-15" y="-7" width="30" height="14" rx="7"></rect><path d="M-3 -5 V5 M4 -5 V5"></path>
-                            </g>
-                            <g id="mysql-data-capsule" class="data-capsule mysql-data-capsule">
-                                <rect x="-17" y="-8" width="34" height="16" rx="8"></rect><path d="M-4 -6 V6 M4 -6 V6"></path>
-                            </g>
-                            <g id="refill-capsule" class="data-capsule refill-capsule">
-                                <rect x="-16" y="-8" width="32" height="16" rx="8"></rect><path d="M-4 -6 V6 M4 -6 V6"></path>
-                            </g>
-                        </g>
-
-                        <g id="machine-alert" class="machine-alert" aria-hidden="true">
-                            <rect x="527" y="263" width="173" height="37" rx="8"></rect>
-                            <circle cx="545" cy="281" r="5"></circle>
-                            <text id="machine-alert-text" x="558" y="286">CACHE MISS</text>
-                        </g>
-
-                        <g class="machine-legend" aria-hidden="true">
-                            <path class="legend-line legend-request" d="M52 470 H79"></path><text x="87" y="474">Request</text>
-                            <path class="legend-line legend-return" d="M151 470 H178"></path><text x="186" y="474">Return</text>
-                            <path class="legend-line legend-refill" d="M239 470 H266"></path><text x="274" y="474">Refill</text>
-                        </g>
+                <div id="route-map" class="route-map" aria-label="Client、Go API、Redis、MySQL 与 Response 请求路径">
+                    <svg class="route-lines" viewBox="0 0 1000 420" preserveAspectRatio="none" aria-hidden="true">
+                        <path id="edge-client-api" class="route-edge" d="M150 210 L300 210" />
+                        <path id="edge-api-redis" class="route-edge" d="M410 190 C465 145 500 112 555 100" />
+                        <path id="edge-api-mysql" class="route-edge" d="M410 230 C465 275 500 308 555 320" />
+                        <path id="edge-redis-response" class="route-edge" d="M665 100 C730 112 765 155 825 195" />
+                        <path id="edge-mysql-response" class="route-edge" d="M665 320 C730 308 765 265 825 225" />
+                        <path id="edge-redis-mysql" class="route-edge route-edge-vertical" d="M600 145 L600 275" />
+                        <path id="edge-mysql-redis" class="route-edge route-edge-refill" d="M625 275 L625 145" />
                     </svg>
 
-                        <div id="terminal-request-pulse" class="terminal-request-pulse" aria-hidden="true"><i></i></div>
-                        <div id="terminal-response-capsule" class="terminal-response-capsule" aria-hidden="true">JSON</div>
+                    <div id="node-client" class="route-node node-client">
+                        <small>01</small><strong>Client</strong><span>发起材料读取</span>
+                    </div>
+                    <div id="node-api" class="route-node node-api">
+                        <small>02</small><strong>Go API</strong><span>选择读取策略</span>
+                    </div>
+                    <div id="node-redis" class="route-node node-redis">
+                        <small>OPTIONAL CACHE</small><strong>Redis</strong><span id="redis-state">STANDBY</span>
+                        <em id="redis-ttl">TTL 300s</em>
+                    </div>
+                    <div id="node-mysql" class="route-node node-mysql">
+                        <small>PRIMARY STORE</small><strong>MySQL</strong><span id="mysql-state">STANDBY</span>
+                        <em id="mysql-pool-live">POOL 0 / 0</em>
+                    </div>
+                    <div id="node-response" class="route-node node-response">
+                        <small>05</small><strong>Response</strong><span>只读 JSON 档案</span>
                     </div>
 
-                    <div id="event-overlay-layer" class="event-overlay-layer">
-                        <div class="scene-status-panel" role="status" aria-live="polite">
-                            <span id="scene-state-label">SCENE READY</span>
-                            <strong id="scene-state-title">魔法潮汐将至</strong>
-                            <p id="scene-state-copy">当前只有一名访客正在查询材料档案。</p>
-                            <div class="scene-telemetry">
-                                <span><i id="scene-actual-label">Actual latency</i><b id="scene-actual-value">—</b></span>
-                                <span><i>Animation state</i><b id="scene-visual-status">IDLE</b></span>
-                            </div>
-                        </div>
-                        <button id="scene-intro-control" class="scene-intro-control" type="button" hidden>跳过导入</button>
+                    <div class="route-legend">
+                        <span><i class="legend-active"></i>本次经过</span>
+                        <span><i class="legend-refill"></i>Cache Refill</span>
+                        <span><i class="legend-idle"></i>未参与 / 待机</span>
                     </div>
                 </div>
 
-                <section id="material-terminal" class="material-terminal" data-terminal-state="idle"
-                    aria-labelledby="terminal-title" aria-live="polite">
-                    <header class="material-terminal-header">
-                        <div>
-                            <span id="terminal-eyebrow">MATERIAL QUERY TERMINAL</span>
-                            <strong id="terminal-title">魔法潮汐将至</strong>
-                        </div>
-                        <i id="terminal-output-port" class="terminal-output-port" aria-hidden="true"></i>
-                    </header>
+                <ol id="route-events" class="route-events" aria-label="本次执行路径步骤">
+                    <li><span>READY</span><strong>等待真实响应头</strong><small>不会根据所选模式猜测结果</small></li>
+                </ol>
 
-                    <div class="material-terminal-content">
-                        <div class="terminal-status-copy">
-                            <strong id="terminal-primary-line">你想了解哪一种材料？</strong>
-                            <p id="terminal-secondary-line">从目录选择一份材料索引。</p>
-                        </div>
-
-                        <div id="terminal-record" class="terminal-record" aria-hidden="true">
-                            <dl>
-                                <div><dt>材料名称</dt><dd id="terminal-record-name">—</dd></div>
-                                <div><dt>稀有度</dt><dd id="terminal-record-rarity">—</dd></div>
-                                <div><dt>产地</dt><dd id="terminal-record-origin">—</dd></div>
-                                <div><dt>特性</dt><dd id="terminal-record-attribute">—</dd></div>
-                                <div><dt>用途</dt><dd id="terminal-record-usage">—</dd></div>
-                                <div><dt>风险说明</dt><dd id="terminal-record-risk">—</dd></div>
-                            </dl>
-                            <div class="terminal-record-meta">
-                                <span>响应来源 <strong id="terminal-record-source">—</strong></span>
-                                <span>实际延迟 <strong id="terminal-record-latency">—</strong></span>
-                            </div>
-                        </div>
-
-                        <div class="material-terminal-actions">
-                            <button id="terminal-open-directory" class="terminal-action terminal-primary" type="button">打开材料目录</button>
-                            <button id="read-again" class="terminal-action terminal-primary" type="button" disabled>检索材料档案</button>
-                            <button id="terminal-read-again" class="terminal-action terminal-primary" type="button">再次查询</button>
-                            <button id="terminal-change-material" class="terminal-action" type="button">更换材料</button>
-                            <button id="enter-purchase-experiment" class="terminal-action" type="button">进入购买实验</button>
-                        </div>
-                    </div>
-                </section>
-
-                <div class="route-status-bar">
-                    <div>
-                        <span>当前路径</span>
-                        <strong id="route-status">等待真实请求</strong>
-                    </div>
-                    <div>
-                        <span>当前响应来源</span>
-                        <strong id="route-source">—</strong>
-                    </div>
-                    <div>
-                        <span>当前 QPS</span>
-                        <strong><b id="route-qps">0</b> req/s</strong>
-                    </div>
-                    <div>
-                        <span>DB Reads</span>
-                        <strong id="route-db-reads">0</strong>
-                    </div>
-                    <div>
-                        <span>Cache Hit Rate</span>
-                        <strong><b id="route-hit-rate">0</b>%</strong>
-                    </div>
-                </div>
-
-                <div class="technical-note">
-                    <span>实验边界</span>
-                    <p>大量访客会集中读取同一份材料档案。Redis 缓解重复查询，未命中时由 MySQL 返回权威资料；两条路径返回相同响应体。</p>
+                <div class="active-metrics" aria-label="当前策略 SSE 实时指标">
+                    <div><small>QPS</small><strong id="active-qps">0</strong></div>
+                    <div><small>DB Reads</small><strong id="active-db-reads">0</strong></div>
+                    <div><small>P99 Latency</small><strong id="active-p99">0 ms</strong></div>
+                    <div><small>Pool Peak / Capacity</small><strong id="active-pool">0 / 0</strong></div>
+                    <div><small>Hit Rate</small><strong id="active-hit-rate">—</strong></div>
+                    <div><small>Errors</small><strong id="active-errors">0</strong></div>
                 </div>
             </section>
 
-            <aside id="control-panel" class="lab-surface control-panel" aria-label="实验参数、命令与运行状态">
-                <div class="surface-heading">
+            <div class="lab-columns">
+                <section class="record-panel lab-panel" aria-labelledby="record-heading">
+                    <div class="panel-heading">
+                        <div>
+                            <span>03 / RESPONSE BODY</span>
+                            <h2 id="record-heading">READ-ONLY MATERIAL RECORD</h2>
+                        </div>
+                        <span class="readonly-badge">只读</span>
+                    </div>
+
+                    <div id="record-placeholder" class="record-placeholder">
+                        <i></i>
+                        <strong>尚未读取档案</strong>
+                        <p>执行一次真实查询后，此处展示保存下来的响应对应材料档案。</p>
+                    </div>
+
+                    <article id="record-result" class="record-result" hidden>
+                        <header>
+                            <span id="record-result-code">ARC-002</span>
+                            <div><small>MATERIAL ARCHIVE</small><h3 id="record-result-name">雾银</h3></div>
+                            <i id="record-result-sigil">Ⅱ</i>
+                        </header>
+                        <dl>
+                            <div><dt>稀有度</dt><dd id="record-rarity">—</dd></div>
+                            <div><dt>产地</dt><dd id="record-origin">—</dd></div>
+                            <div><dt>特性</dt><dd id="record-attribute">—</dd></div>
+                            <div><dt>炼金用途</dt><dd id="record-usage">—</dd></div>
+                            <div class="record-risk"><dt>风险说明</dt><dd id="record-risk">—</dd></div>
+                        </dl>
+                        <div class="record-proof">
+                            <span>数据来源<strong id="record-source">—</strong></span>
+                            <span>实际响应延迟<strong id="record-latency">—</strong></span>
+                        </div>
+                        <p>当前只读取材料资料，不会占用或扣减真实库存。</p>
+                        <button id="purchase-entry" type="button">进入购买实验</button>
+                        <small>价格与真实库存将在购买请求中重新校验。本阶段未新增购买后端逻辑。</small>
+                    </article>
+                </section>
+
+                <section class="metrics-panel lab-panel" aria-labelledby="metrics-heading">
+                    <div class="panel-heading">
+                        <div>
+                            <span>04 / LIVE SSE METRICS</span>
+                            <h2 id="metrics-heading">两条路径的真实指标</h2>
+                        </div>
+                        <span id="metrics-timestamp" class="metrics-timestamp">等待快照</span>
+                    </div>
+
+                    <div class="metrics-table" role="table" aria-label="MySQL Direct 与 Redis Cache-Aside 指标对比">
+                        <div class="metrics-row metrics-head" role="row">
+                            <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong>
+                        </div>
+                        <div class="metrics-row" role="row"><span>Requests</span><strong id="direct-total">0</strong><strong id="cached-total">0</strong></div>
+                        <div class="metrics-row emphasis" role="row"><span>DB Reads</span><strong id="direct-db-reads">0</strong><strong id="cached-db-reads">0</strong></div>
+                        <div class="metrics-row" role="row"><span>P99 Latency</span><strong id="direct-p99">0 ms</strong><strong id="cached-p99">0 ms</strong></div>
+                        <div class="metrics-row" role="row"><span>Pool Peak / Capacity</span><strong id="direct-pool">0 / 0</strong><strong id="cached-pool">0 / 0</strong></div>
+                        <div class="metrics-row" role="row"><span>Cache Hit Rate</span><strong>—</strong><strong id="cached-hit-rate">0%</strong></div>
+                        <div class="metrics-row" role="row"><span>Errors</span><strong id="direct-errors">0</strong><strong id="cached-errors">0</strong></div>
+                    </div>
+                    <div id="comparison-summary" class="comparison-summary">等待两条路径产生真实请求</div>
+
+                    <div class="engineering-notes">
+                        <div><strong>MySQL 是权威数据源</strong><span>Redis 只保存可丢弃、带 TTL 的只读副本。</span></div>
+                        <div><strong>Cache Miss 会回源并回填</strong><span>首次读取仍产生 DB Read，后续命中才避开 MySQL。</span></div>
+                        <div><strong>Redis 故障不牺牲正确性</strong><span>Fallback 绕过缓存，由 MySQL 安全返回档案。</span></div>
+                    </div>
+                </section>
+            </div>
+
+            <section class="load-panel lab-panel" aria-labelledby="load-heading">
+                <div class="panel-heading">
                     <div>
-                        <span class="surface-index">03 / CONTROL</span>
-                        <h2>实验控制</h2>
+                        <span>05 / WRK2 LOAD TEST</span>
+                        <h2 id="load-heading">把真实外部流量送入当前读取路径</h2>
                     </div>
-                    <div class="control-heading-actions">
-                        <span id="control-mode" class="surface-badge mode-direct">DIRECT</span>
-                        <button class="drawer-close control-drawer-close" type="button" aria-label="关闭实验控制面板">关闭</button>
-                    </div>
+                    <span id="load-mode" class="load-mode">MYSQL DIRECT</span>
                 </div>
 
-                <details class="control-section" open>
-                    <summary><span>实验参数</span><small>速率与并发</small></summary>
-                    <div class="control-section-body">
-                        <div class="control-field">
-                            <div class="control-label">
-                                <label for="rate-range">请求速率</label>
-                                <output id="rate-value" for="rate-range">300 req/s</output>
-                            </div>
-                            <input id="rate-range" type="range" min="50" max="800" step="50" value="300" />
-                            <div class="range-scale"><span>50</span><span>800</span></div>
-                        </div>
-
-                        <div class="control-field">
-                            <div class="control-label">
-                                <label for="connections-range">并发连接数</label>
-                                <output id="connections-value" for="connections-range">96</output>
-                            </div>
-                            <input id="connections-range" type="range" min="16" max="192" step="16" value="96" />
-                            <div class="range-scale"><span>16</span><span>192</span></div>
-                        </div>
-
-                        <div class="control-readonly-grid">
-                            <div><span>服务端缓存 TTL</span><strong><b id="ttl-seconds">300</b>s</strong></div>
-                            <div><span>压测时长</span><strong id="duration-value">20s</strong></div>
-                        </div>
-
-                        <p id="parameter-feedback" class="parameter-feedback" aria-live="polite">命令已同步：300 req/s · 96 connections</p>
+                <div class="load-layout">
+                    <div class="load-controls">
+                        <label>Rate <strong id="rate-value">300 req/s</strong><input id="rate-range" type="range" min="20" max="1000" step="20" value="300" /></label>
+                        <label>Connections <strong id="connections-value">96</strong><input id="connections-range" type="range" min="4" max="256" step="4" value="96" /></label>
+                        <label>Duration
+                            <select id="duration-select"><option value="10s">10s</option><option value="20s" selected>20s</option><option value="30s">30s</option></select>
+                        </label>
                     </div>
-                </details>
 
-                <details class="control-section" open>
-                    <summary><span>运行路径</span><small>选择真实读取链路</small></summary>
-                    <div class="control-section-body">
-                        <div class="mode-actions" role="group" aria-label="选择实验路径">
-                            <button id="start-direct" class="mode-action direct-action" type="button">
-                                <span>MYSQL DIRECT</span>
-                                <strong>选择 MySQL 直读</strong>
-                                <small>每次请求直接查询 MySQL</small>
-                            </button>
-                            <button id="start-cached" class="mode-action cache-action" type="button">
-                                <span>REDIS CACHE-ASIDE</span>
-                                <strong>选择 Cache-Aside</strong>
-                                <small>先查 Redis，MISS 后回源并回填</small>
-                            </button>
-                        </div>
+                    <div class="command-console">
+                        <code id="load-command">正在生成 wrk2 命令…</code>
+                        <button id="copy-command" type="button">复制当前命令</button>
+                        <small>命令在真实 wrk2 容器中执行；页面只观察 SSE 返回的请求、延迟与数据库压力，不伪造压测结果。</small>
                     </div>
-                </details>
 
-                <details class="control-section command-section">
-                    <summary><span>压测命令</span><small>默认收起</small></summary>
-                    <div class="control-section-body">
-                        <div class="command-console">
-                            <div class="console-header">
-                                <span id="command-mode-label">MYSQL DIRECT COMMAND</span>
-                                <button id="copy-command" type="button">复制命令</button>
-                            </div>
-                            <code id="active-command"></code>
-                        </div>
-                    </div>
-                </details>
-
-                <details class="control-section" open>
-                    <summary><span>运行状态</span><small>真实流量与重置</small></summary>
-                    <div class="control-section-body">
-                        <div id="loadtest-state" class="loadtest-state">
-                            <i></i>
-                            <div>
-                                <span>LOAD TEST STATUS</span>
-                                <strong>等待终端流量</strong>
-                                <p>运行命令后，SSE 检测到请求增长才会驱动链路动画。</p>
-                            </div>
-                        </div>
-                        <button id="reset-chapter" class="reset-experiment-button" type="button">清空缓存与指标</button>
-                    </div>
-                </details>
-            </aside>
-        </section>
-
-        <section class="lab-surface metrics-panel" aria-label="真实实验指标">
-            <div class="surface-heading metrics-heading">
-                <div>
-                    <span class="surface-index">04 / LIVE METRICS</span>
-                    <h2>真实指标对比</h2>
+                    <aside id="traffic-window" class="traffic-window" aria-label="外部流量观察窗">
+                        <header><span>EXTERNAL TRAFFIC</span><strong id="traffic-status">IDLE</strong></header>
+                        <div class="traffic-figures" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                        <p><strong id="traffic-qps">0 req/s</strong><span>人群只是 QPS 的辅助视图</span></p>
+                    </aside>
                 </div>
-                <span class="metrics-live"><i></i>SERVER-SENT EVENTS</span>
-            </div>
-
-            <div class="metrics-table" role="table" aria-label="MySQL Direct 与 Cache-Aside 指标对比">
-                <div class="metrics-row metrics-header" role="row">
-                    <span role="columnheader">读取路径</span>
-                    <span role="columnheader">QPS</span>
-                    <span role="columnheader">P99</span>
-                    <span role="columnheader">DB Reads</span>
-                    <span role="columnheader">Cache Hits</span>
-                    <span role="columnheader">Cache Misses</span>
-                    <span role="columnheader">Hit Rate</span>
-                    <span role="columnheader">Pool Peak</span>
-                    <span role="columnheader">Errors</span>
-                </div>
-
-                <div id="direct-metrics-row" class="metrics-row path-direct-row is-active" role="row">
-                    <div class="metrics-path" role="cell">
-                        <i></i>
-                        <span><strong>MySQL Direct</strong><small><b id="direct-total">0</b> requests</small></span>
-                    </div>
-                    <strong id="direct-qps" class="metric-number" role="cell">0</strong>
-                    <strong id="direct-p99" class="metric-number" role="cell">0 ms</strong>
-                    <strong id="direct-db-reads" class="metric-number" role="cell">0</strong>
-                    <strong class="metric-empty" role="cell">—</strong>
-                    <strong class="metric-empty" role="cell">—</strong>
-                    <strong class="metric-empty" role="cell">—</strong>
-                    <strong id="direct-pool" role="cell">0 / 0</strong>
-                    <strong id="direct-errors" class="metric-number" role="cell">0</strong>
-                </div>
-
-                <div id="cached-metrics-row" class="metrics-row path-cached-row" role="row">
-                    <div class="metrics-path" role="cell">
-                        <i></i>
-                        <span><strong>Redis Cache-Aside</strong><small><b id="cached-total">0</b> requests</small></span>
-                    </div>
-                    <strong id="cached-qps" class="metric-number" role="cell">0</strong>
-                    <strong id="cached-p99" class="metric-number" role="cell">0 ms</strong>
-                    <strong id="cached-db-reads" class="metric-number" role="cell">0</strong>
-                    <strong id="cached-hits" class="metric-number" role="cell">0</strong>
-                    <strong id="cached-misses" class="metric-number" role="cell">0</strong>
-                    <strong id="cached-hit-rate" class="metric-number" role="cell">0%</strong>
-                    <strong id="cached-pool" role="cell">0 / 0</strong>
-                    <strong id="cached-errors" class="metric-number" role="cell">0</strong>
-                </div>
-            </div>
-
-            <div class="metrics-footer">
-                <span>同一材料 ID · 同一响应体 · 同一压测参数</span>
-                <strong id="comparison-summary">等待两条路径产生真实请求</strong>
-            </div>
-        </section>
+            </section>
+        </div>
     </main>
 
-    <button id="drawer-backdrop" class="drawer-backdrop" type="button" aria-label="关闭侧边面板"></button>
-
-    <div id="story-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/gsap.min.js?v=3.13.0-local2"></script>
-    <script src="/js/seckill-lab.js?v=20260719-two-page-2"></script>
+    <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
+    <script src="/js/seckill-lab.js?v=20260719-technical-lab"></script>
 </body>
 
 </html>
