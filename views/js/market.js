@@ -2,6 +2,8 @@
     "use strict";
 
     var STORAGE_KEY = "silas.cache-aside.material-id";
+    var experimentState = window.SilasExperimentState;
+    var experimentResults = window.SilasExperimentResults;
     var materials = {
         "ARC-001": { name: "月盐", sigil: "Ⅰ", kind: "salt" },
         "ARC-002": { name: "雾银", sigil: "Ⅱ", kind: "silver" },
@@ -13,6 +15,7 @@
     var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var crowdStream = null;
     var crowdBaseline = null;
+    var crowdBaselinePath = null;
     var crowdArmed = false;
     var crowdTransitionStarted = false;
     var crowdSize = 60;
@@ -61,10 +64,40 @@
     }
 
     function crowdCommand() {
-        return "docker compose --profile loadtest run --rm --no-deps " +
+        var experiment = experimentState.get();
+        var path = experiment.mode === "cached" ? "cached" : "direct";
+        var loadCommand = "docker compose --profile loadtest run --rm --no-deps " +
             "-e RATE=" + crowdSize + " -e DURATION=20s -e CONNECTIONS=96 " +
-            "-e TARGET_URL=http://app:5678/api/archives/" + materialNumericId() + "/cached " +
+            "-e TARGET_URL=http://app:5678/api/archives/" + materialNumericId() + "/" + path + " " +
             "-e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
+        if (experiment.mode === "cached" && experiment.cacheTemperature === "cold") {
+            return "curl -fsS -X POST http://localhost:5678/api/chapters/cache-aside/reset >/dev/null && " + loadCommand;
+        }
+        return loadCommand;
+    }
+
+    function renderExperimentState(next) {
+        var cached = next.mode === "cached";
+        var directButton = byId("roof-mode-direct");
+        var cachedButton = byId("roof-mode-cached");
+        directButton.classList.toggle("is-active", !cached);
+        cachedButton.classList.toggle("is-active", cached);
+        directButton.setAttribute("aria-pressed", cached ? "false" : "true");
+        cachedButton.setAttribute("aria-pressed", cached ? "true" : "false");
+        byId("roof-cache-settings").hidden = !cached;
+        Array.prototype.forEach.call(document.querySelectorAll("[name='cache-temperature']"), function (radio) {
+            radio.checked = radio.value === next.cacheTemperature;
+        });
+        byId("roof-strategy-summary").textContent = cached ?
+            "当前：Redis Cache-Aside · " + (next.cacheTemperature === "cold" ? "冷缓存" : "热缓存") :
+            "当前：MySQL Direct";
+
+        if (selectedCode && (state === "crowd_preparing" || state === "crowd_armed")) {
+            crowdBaseline = null;
+            crowdBaselinePath = null;
+            renderCrowdSize(true);
+            primeCrowdBaseline();
+        }
     }
 
     function renderCrowdSize(invalidateCopiedCommand) {
@@ -82,6 +115,7 @@
 
         if (invalidateCopiedCommand && state === "crowd_armed") {
             crowdArmed = false;
+            experimentResults.clearPending();
             setState("crowd_preparing");
             byId("crowd-status-title").textContent = "人数已调整，请重新复制命令";
             byId("crowd-status-copy").textContent = crowdSize + " 位访客正在门口等待投递。";
@@ -157,24 +191,45 @@
     }
 
     function readCrowdTotal(snapshot) {
-        return Number(snapshot && snapshot.archiveRead && snapshot.archiveRead.cached &&
-            snapshot.archiveRead.cached.totalRequests || 0);
+        var path = readCrowdPath(snapshot);
+        return Number(path && path.totalRequests || 0);
+    }
+
+    function readCrowdPath(snapshot) {
+        var mode = experimentState.get().mode === "cached" ? "cached" : "direct";
+        var path = snapshot && snapshot.archiveRead && snapshot.archiveRead[mode];
+        if (!path) {
+            return null;
+        }
+        return {
+            totalRequests: Number(path.totalRequests || 0),
+            dbReads: Number(path.dbReads || 0),
+            cacheHits: Number(path.cacheHits || 0),
+            cacheMisses: Number(path.cacheMisses || 0),
+            cacheErrors: Number(path.cacheErrors || 0),
+            errors: Number(path.errors || 0)
+        };
     }
 
     async function primeCrowdBaseline() {
         try {
             var response = await fetch("/api/metrics/snapshot");
             if (!response.ok) {
-                return;
+                return null;
             }
-            var total = readCrowdTotal(await response.json());
+            var snapshot = await response.json();
+            var path = readCrowdPath(snapshot);
+            var total = readCrowdTotal(snapshot);
             if (crowdBaseline === null || !crowdArmed) {
                 crowdBaseline = total;
+                crowdBaselinePath = path;
             } else if (total > crowdBaseline) {
                 startCrowdSubmission();
             }
+            return path;
         } catch (_) {
             // SSE 连接成功后仍可建立基线。
+            return null;
         }
     }
 
@@ -196,18 +251,26 @@
             byId("accepted-stamp").setAttribute("aria-hidden", "false");
             byId("market-announcer").textContent = "正在跟随请求档案进入系统内部";
             window.setTimeout(function () {
-                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) + "&mode=cached&entry=crowd");
+                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) + "&entry=crowd");
             }, reducedMotion ? 80 : 760);
         }, reducedMotion ? 60 : 950);
     }
 
     function handleCrowdMetrics(snapshot) {
+        var path = readCrowdPath(snapshot);
         var total = readCrowdTotal(snapshot);
         if (crowdBaseline === null) {
             crowdBaseline = total;
+            crowdBaselinePath = path;
             return;
         }
         if (!crowdArmed) {
+            crowdBaseline = total;
+            crowdBaselinePath = path;
+            return;
+        }
+        if (total < crowdBaseline) {
+            // 冷缓存命令先重置本章指标，以重置后的首帧重新建立流量基线。
             crowdBaseline = total;
             return;
         }
@@ -237,6 +300,7 @@
         crowdArmed = false;
         crowdTransitionStarted = false;
         crowdBaseline = null;
+        crowdBaselinePath = null;
         byId("crowd-status-title").textContent = "等待外部请求到达";
         setState("crowd_preparing");
         renderCrowdSize(false);
@@ -250,6 +314,9 @@
             return;
         }
         var command = byId("market-load-command").textContent;
+        if (!crowdBaselinePath) {
+            await primeCrowdBaseline();
+        }
         try {
             await navigator.clipboard.writeText(command);
         } catch (_) {
@@ -263,6 +330,17 @@
             textarea.remove();
         }
         crowdArmed = true;
+        var experiment = experimentState.get();
+        experimentResults.arm({
+            entry: "crowd",
+            materialCode: selectedCode,
+            materialName: materials[selectedCode].name,
+            mode: experiment.mode,
+            cacheTemperature: experiment.cacheTemperature,
+            expectedRate: crowdSize,
+            baseline: crowdBaselinePath,
+            armedAt: new Date().toISOString()
+        });
         setState("crowd_armed");
         byId("crowd-status-title").textContent = "已准备，等待你在终端执行";
         byId("crowd-status-copy").textContent = crowdSize + " 位访客已准备；检测到真实请求后才会投递。";
@@ -280,6 +358,8 @@
         }
         crowdArmed = false;
         crowdBaseline = null;
+        crowdBaselinePath = null;
+        experimentResults.clearPending();
         stopCrowdMetrics();
         setState("record_selected");
         byId("crowd-test").focus({ preventScroll: true });
@@ -298,7 +378,7 @@
             byId("accepted-stamp").setAttribute("aria-hidden", "false");
             byId("market-announcer").textContent = "档案片已接受，正在进入机器内部";
             window.setTimeout(function () {
-                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) + "&mode=direct&entry=single");
+                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) + "&entry=single");
             }, reducedMotion ? 80 : 820);
         }, reducedMotion ? 40 : 700);
     }
@@ -327,6 +407,8 @@
             }
             crowdArmed = false;
             crowdBaseline = null;
+            crowdBaselinePath = null;
+            experimentResults.clearPending();
             stopCrowdMetrics();
             selectedCode = null;
             setState("choosing");
@@ -337,10 +419,25 @@
         byId("crowd-size-range").addEventListener("input", function () { renderCrowdSize(true); });
         byId("copy-market-command").addEventListener("click", copyCrowdCommand);
         byId("leave-crowd-mode").addEventListener("click", leaveCrowdMode);
+        byId("roof-mode-direct").addEventListener("click", function () {
+            experimentState.set({ mode: "direct" });
+        });
+        byId("roof-mode-cached").addEventListener("click", function () {
+            experimentState.set({ mode: "cached" });
+        });
+        Array.prototype.forEach.call(document.querySelectorAll("[name='cache-temperature']"), function (radio) {
+            radio.addEventListener("change", function () {
+                if (radio.checked) {
+                    experimentState.set({ cacheTemperature: radio.value });
+                }
+            });
+        });
     }
 
     document.addEventListener("DOMContentLoaded", function () {
         bindEvents();
+        renderExperimentState(experimentState.get());
+        experimentState.subscribe(renderExperimentState);
         window.setTimeout(function () {
             if (state === "arrival") {
                 setState("dialogue");

@@ -8,7 +8,7 @@
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-metrics-replay" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260719-shared-strategy" />
 </head>
 
 <body class="lab-page" data-lab-mode="direct" data-route-state="idle">
@@ -45,23 +45,29 @@
                 <div class="panel-heading">
                     <div>
                         <span>01 / REAL HTTP REQUEST</span>
-                        <h1 id="query-title">选择读取策略，检索当前材料档案</h1>
+                        <h1 id="query-title">按室外统一配置，检索当前材料档案</h1>
                     </div>
                     <span class="endpoint-label">GET /api/archives/:id/{direct|cached}</span>
                 </div>
 
                 <div class="query-controls">
-                    <div class="mode-switch" role="group" aria-label="读取策略">
-                        <button id="mode-direct" class="is-active" type="button" aria-pressed="true">
+                    <div class="mode-switch" aria-label="室外设定的读取策略">
+                        <article id="mode-direct" class="is-active">
                             <small>CONTROL PATH</small><strong>MySQL Direct</strong><span>每次请求都读取数据库</span>
-                        </button>
-                        <button id="mode-cached" type="button" aria-pressed="false">
+                        </article>
+                        <article id="mode-cached">
                             <small>OPTIMIZED PATH</small><strong>Redis Cache-Aside</strong><span>先查缓存，MISS 再回源</span>
-                        </button>
+                        </article>
                     </div>
                     <button id="query-archive" class="query-button" type="button">
                         <span>检索材料档案</span><small id="query-endpoint">via /direct</small>
                     </button>
+                </div>
+
+                <div class="shared-strategy-readout">
+                    <div><small>SHARED EXPERIMENT STATE</small><strong id="lab-shared-strategy">MySQL Direct</strong></div>
+                    <p id="lab-strategy-explanation">Redis 不参与；每次请求都会产生 MySQL DB Read。</p>
+                    <a href="/">返回室外调整</a>
                 </div>
 
                 <div class="request-readout" role="status" aria-live="polite">
@@ -81,7 +87,7 @@
                     </div>
                     <div class="route-result">
                         <small id="route-label">WAITING</small>
-                        <strong id="route-title">选择策略后发起请求</strong>
+                        <strong id="route-title">按室外配置发起请求</strong>
                     </div>
                 </div>
 
@@ -211,11 +217,71 @@
                 </section>
             </div>
 
+            <section class="results-panel lab-panel" aria-labelledby="results-heading">
+                <div class="panel-heading">
+                    <div>
+                        <span>05 / IMMUTABLE RUN RESULTS</span>
+                        <h2 id="results-heading">已完成实验与胜负对比</h2>
+                    </div>
+                    <span id="freeze-status" class="freeze-status" role="status" aria-live="polite">等待一轮测试结束</span>
+                </div>
+
+                <div class="frozen-result-cards">
+                    <article id="frozen-direct" class="frozen-result-card is-empty">
+                        <header><div><small>CONTROL RESULT</small><strong>MySQL Direct</strong></div><span>待测试</span></header>
+                        <p class="frozen-result-context" data-result-context>完成直查测试后自动冻结</p>
+                        <dl>
+                            <div><dt>Requests</dt><dd data-result="requests">—</dd></div>
+                            <div><dt>Peak QPS</dt><dd data-result="qps">—</dd></div>
+                            <div><dt>DB Reads</dt><dd data-result="dbReads">—</dd></div>
+                            <div><dt>P99</dt><dd data-result="p99">—</dd></div>
+                            <div><dt>Pool Peak</dt><dd data-result="pool">—</dd></div>
+                            <div><dt>Errors</dt><dd data-result="errors">—</dd></div>
+                        </dl>
+                        <footer data-result-time>结果不会随实时指标变化</footer>
+                    </article>
+
+                    <article id="frozen-cached" class="frozen-result-card is-empty">
+                        <header><div><small>OPTIMIZED RESULT</small><strong>Redis Cache-Aside</strong></div><span>待测试</span></header>
+                        <p class="frozen-result-context" data-result-context>完成旁路缓存测试后自动冻结</p>
+                        <dl>
+                            <div><dt>Requests</dt><dd data-result="requests">—</dd></div>
+                            <div><dt>Peak QPS</dt><dd data-result="qps">—</dd></div>
+                            <div><dt>DB Reads</dt><dd data-result="dbReads">—</dd></div>
+                            <div><dt>P99</dt><dd data-result="p99">—</dd></div>
+                            <div><dt>Hit Rate</dt><dd data-result="hitRate">—</dd></div>
+                            <div><dt>Errors</dt><dd data-result="errors">—</dd></div>
+                        </dl>
+                        <footer data-result-time>结果不会随实时指标变化</footer>
+                    </article>
+                </div>
+
+                <div id="frozen-comparison" class="frozen-comparison is-waiting">
+                    <header>
+                        <div><small>FAIR COMPARISON</small><strong id="frozen-comparison-title">还需要两种路径各完成一轮测试</strong></div>
+                        <span id="frozen-overall-winner">WAITING</span>
+                    </header>
+                    <div class="frozen-comparison-table" role="table" aria-label="已冻结的 MySQL Direct 与 Redis Cache-Aside 结果比较">
+                        <div class="frozen-comparison-row is-head" role="row">
+                            <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong><em role="columnheader">判断</em>
+                        </div>
+                        <div id="compare-db-row" class="frozen-comparison-row" role="row"><span>DB Reads / 1k</span><strong id="compare-db-direct">—</strong><strong id="compare-db-cached">—</strong><em id="compare-db-winner">等待</em></div>
+                        <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>Peak QPS</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
+                        <div id="compare-p99-row" class="frozen-comparison-row" role="row"><span>P99 Latency</span><strong id="compare-p99-direct">—</strong><strong id="compare-p99-cached">—</strong><em id="compare-p99-winner">等待</em></div>
+                        <div id="compare-pool-row" class="frozen-comparison-row" role="row"><span>Pool Usage</span><strong id="compare-pool-direct">—</strong><strong id="compare-pool-cached">—</strong><em id="compare-pool-winner">等待</em></div>
+                        <div id="compare-error-row" class="frozen-comparison-row" role="row"><span>Errors / 1k</span><strong id="compare-error-direct">—</strong><strong id="compare-error-cached">—</strong><em id="compare-error-winner">等待</em></div>
+                        <div id="compare-hit-row" class="frozen-comparison-row is-context" role="row"><span>Cache Hit Rate</span><strong>不适用</strong><strong id="compare-hit-cached">—</strong><em id="compare-hit-assessment">Redis 专属指标</em></div>
+                    </div>
+                    <p>请求量与错误按每千请求归一化；P99 越低越好，QPS 越高越好，Pool Usage 越低越好。单次检索只校验路径，胜负只取同材料、同人数压测。</p>
+                </div>
+            </section>
+
         </div>
     </main>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260719-metrics-replay"></script>
+    <script src="/js/experiment-state.js?v=20260719-shared-strategy"></script>
+    <script src="/js/seckill-lab.js?v=20260719-shared-strategy"></script>
 </body>
 
 </html>

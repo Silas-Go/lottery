@@ -2,6 +2,8 @@
     "use strict";
 
     var STORAGE_KEY = "silas.cache-aside.material-id";
+    var experimentState = window.SilasExperimentState;
+    var experimentResults = window.SilasExperimentResults;
     var profiles = {
         1: {
             code: "ARC-001", name: "月盐", sigil: "Ⅰ", kind: "salt",
@@ -28,7 +30,9 @@
     var state = {
         id: null,
         profile: null,
-        mode: "direct",
+        entry: "single",
+        pendingRun: null,
+        crowdRun: null,
         snapshot: null,
         previousRead: null,
         lastResponse: null,
@@ -41,6 +45,8 @@
         metricsHistory: [],
         metricsLatest: null,
         metricsLoadActive: false,
+        metricsTrafficSeen: false,
+        metricsIdleFrames: 0,
         metricsReplaying: false,
         metricsReplayPaused: false,
         metricsReplayFrames: [],
@@ -157,10 +163,6 @@
         }
     }
 
-    function incomingMode() {
-        return new URLSearchParams(window.location.search).get("mode") === "cached" ? "cached" : "direct";
-    }
-
     function incomingEntry() {
         return new URLSearchParams(window.location.search).get("entry") === "crowd" ? "crowd" : "single";
     }
@@ -226,23 +228,30 @@
         return true;
     }
 
-    function setMode(mode) {
-        state.mode = mode === "cached" ? "cached" : "direct";
-        document.body.dataset.labMode = state.mode;
-        var cached = state.mode === "cached";
+    function currentExperiment() {
+        return experimentState.get();
+    }
+
+    function renderExperimentState(next) {
+        var cached = next.mode === "cached";
+        document.body.dataset.labMode = next.mode;
         byId("mode-direct").classList.toggle("is-active", !cached);
         byId("mode-cached").classList.toggle("is-active", cached);
-        byId("mode-direct").setAttribute("aria-pressed", cached ? "false" : "true");
-        byId("mode-cached").setAttribute("aria-pressed", cached ? "true" : "false");
         byId("query-endpoint").textContent = cached ? "via /cached" : "via /direct";
+        byId("lab-shared-strategy").textContent = cached ?
+            "Redis Cache-Aside · " + (next.cacheTemperature === "cold" ? "冷缓存" : "热缓存") :
+            "MySQL Direct";
+        byId("lab-strategy-explanation").textContent = cached ?
+            (next.cacheTemperature === "cold" ?
+                "查询前先清空档案缓存与本章指标，首个真实响应应映射为 Cache Miss。" :
+                "保留已有 Redis 副本；实际结果仍以 X-Archive-Source 的 Hit 或 Miss 为准。") :
+            "Redis 不参与；每次请求都会产生 MySQL DB Read。";
         renderActiveMetrics();
     }
 
     function updateControlState() {
         var locked = state.isRequesting || state.isReplaying;
         byId("query-archive").disabled = locked;
-        byId("mode-direct").disabled = locked;
-        byId("mode-cached").disabled = locked;
         byId("query-archive").querySelector("span").textContent = state.isRequesting ?
             "正在等待真实响应" : (state.lastResponse ? "再次检索材料档案" : "检索材料档案");
     }
@@ -363,6 +372,243 @@
         return definition ? definition.label : (source || "UNKNOWN");
     }
 
+    function resultMetric(result, key) {
+        return Number(result && result.metrics && result.metrics[key] || 0);
+    }
+
+    function renderFrozenCard(mode, result) {
+        var card = byId(mode === "cached" ? "frozen-cached" : "frozen-direct");
+        if (!result) {
+            card.classList.add("is-empty");
+            return;
+        }
+        card.classList.remove("is-empty");
+        card.querySelector("header > span").textContent = "FROZEN";
+        var temperature = mode === "cached" ?
+            " · " + (result.cacheTemperature === "hot" ? "热缓存" : "冷缓存") : "";
+        var runKind = result.entry === "crowd" ?
+            "多人压测" + (result.expectedRate ? " · " + result.expectedRate + " req/s" : "") : "单次检索";
+        card.querySelector("[data-result-context]").textContent =
+            (result.materialCode || "材料未标记") + " · " + (result.materialName || "") + temperature + " · " + runKind;
+        Array.prototype.forEach.call(card.querySelectorAll("[data-result]"), function (node) {
+            var key = node.dataset.result;
+            var value = resultMetric(result, key);
+            if (key === "p99") {
+                node.textContent = value + " ms";
+            } else if (key === "pool") {
+                node.textContent = resultMetric(result, "poolPeak") + " / " + resultMetric(result, "poolCapacity");
+            } else if (key === "hitRate") {
+                node.textContent = result.metrics.hitRate === null ? "—" : value + "%";
+            } else {
+                node.textContent = formatNumber(value);
+            }
+        });
+        card.querySelector("[data-result-time]").textContent = "冻结于 " +
+            new Date(result.frozenAt).toLocaleTimeString("zh-CN", { hour12: false });
+    }
+
+    function setComparisonRow(name, directText, cachedText, directValue, cachedValue, preference, comparable) {
+        var row = byId("compare-" + name + "-row");
+        byId("compare-" + name + "-direct").textContent = directText;
+        byId("compare-" + name + "-cached").textContent = cachedText;
+        row.classList.remove("winner-direct", "winner-cached", "is-tie");
+        if (!comparable) {
+            byId("compare-" + name + "-winner").textContent = "条件不同";
+            return null;
+        }
+        if (directValue === cachedValue) {
+            row.classList.add("is-tie");
+            byId("compare-" + name + "-winner").textContent = "持平";
+            return "tie";
+        }
+        var cachedWins = preference === "higher" ? cachedValue > directValue : cachedValue < directValue;
+        row.classList.add(cachedWins ? "winner-cached" : "winner-direct");
+        byId("compare-" + name + "-winner").textContent = cachedWins ? "Cache-Aside 胜出" : "Direct 胜出";
+        return cachedWins ? "cached" : "direct";
+    }
+
+    function comparisonIsFair(direct, cached) {
+        if (direct.entry !== "crowd" || cached.entry !== "crowd") {
+            return false;
+        }
+        if (direct.materialCode !== cached.materialCode) {
+            return false;
+        }
+        return Number(direct.expectedRate || 0) === Number(cached.expectedRate || 0);
+    }
+
+    function renderFrozenComparison(direct, cached) {
+        var panel = byId("frozen-comparison");
+        if (!direct || !cached) {
+            panel.classList.add("is-waiting");
+            byId("frozen-comparison-title").textContent = "还需要两种路径各完成一轮测试";
+            byId("frozen-overall-winner").textContent = "WAITING";
+            return;
+        }
+
+        panel.classList.remove("is-waiting");
+        var fair = comparisonIsFair(direct, cached);
+        var directRequests = Math.max(1, resultMetric(direct, "requests"));
+        var cachedRequests = Math.max(1, resultMetric(cached, "requests"));
+        var directDBRate = resultMetric(direct, "dbReads") * 1000 / directRequests;
+        var cachedDBRate = resultMetric(cached, "dbReads") * 1000 / cachedRequests;
+        var directErrorRate = resultMetric(direct, "errors") * 1000 / directRequests;
+        var cachedErrorRate = resultMetric(cached, "errors") * 1000 / cachedRequests;
+        var directPoolUsage = resultMetric(direct, "poolCapacity") ?
+            resultMetric(direct, "poolPeak") * 100 / resultMetric(direct, "poolCapacity") : 0;
+        var cachedPoolUsage = resultMetric(cached, "poolCapacity") ?
+            resultMetric(cached, "poolPeak") * 100 / resultMetric(cached, "poolCapacity") : 0;
+        var winners = [
+            setComparisonRow("db", directDBRate.toFixed(1), cachedDBRate.toFixed(1), directDBRate, cachedDBRate, "lower", fair),
+            setComparisonRow("qps", formatNumber(resultMetric(direct, "qps")), formatNumber(resultMetric(cached, "qps")), resultMetric(direct, "qps"), resultMetric(cached, "qps"), "higher", fair),
+            setComparisonRow("p99", resultMetric(direct, "p99") + " ms", resultMetric(cached, "p99") + " ms", resultMetric(direct, "p99"), resultMetric(cached, "p99"), "lower", fair),
+            setComparisonRow("pool", directPoolUsage.toFixed(1) + "%", cachedPoolUsage.toFixed(1) + "%", directPoolUsage, cachedPoolUsage, "lower", fair),
+            setComparisonRow("error", directErrorRate.toFixed(1), cachedErrorRate.toFixed(1), directErrorRate, cachedErrorRate, "lower", fair)
+        ];
+        var hitRate = cached.metrics.hitRate;
+        byId("compare-hit-cached").textContent = hitRate === null ? "—" : hitRate + "%";
+        byId("compare-hit-assessment").textContent = hitRate === null ? "无缓存命中样本" :
+            (hitRate >= 95 ? "命中率优秀" : (hitRate >= 80 ? "命中率健康" : "MISS 偏多"));
+
+        if (!fair) {
+            var onlyPathChecks = direct.entry === "single" && cached.entry === "single";
+            byId("frozen-comparison-title").textContent = onlyPathChecks ?
+                "单次检索只验证路径；请各完成一轮同人数压测后再判胜负" :
+                "两轮材料或压测人数不同，仅展示结果，不判总胜负";
+            byId("frozen-overall-winner").textContent = onlyPathChecks ? "PATH CHECK ONLY" : "NOT COMPARABLE";
+            return;
+        }
+        var directWins = winners.filter(function (winner) { return winner === "direct"; }).length;
+        var cachedWins = winners.filter(function (winner) { return winner === "cached"; }).length;
+        byId("frozen-comparison-title").textContent = direct.materialCode + " · 同条件结果已冻结";
+        if (directWins === cachedWins) {
+            byId("frozen-overall-winner").textContent = "总体持平 " + directWins + " : " + cachedWins;
+        } else if (cachedWins > directWins) {
+            byId("frozen-overall-winner").textContent = "Cache-Aside " + cachedWins + " : " + directWins + " 胜出";
+        } else {
+            byId("frozen-overall-winner").textContent = "Direct " + directWins + " : " + cachedWins + " 胜出";
+        }
+    }
+
+    function renderFrozenResults() {
+        var direct = experimentResults.latest("direct");
+        var cached = experimentResults.latest("cached");
+        renderFrozenCard("direct", direct);
+        renderFrozenCard("cached", cached);
+        renderFrozenComparison(direct, cached);
+    }
+
+    function completeResult(result) {
+        experimentResults.complete(result);
+        experimentResults.clearPending();
+        state.pendingRun = null;
+        state.crowdRun = null;
+        renderFrozenResults();
+        byId("freeze-status").textContent = (result.mode === "cached" ? "Cache-Aside" : "MySQL Direct") + " 本轮结果已冻结";
+        showToast("本轮实验结果已冻结，可用于下一轮对比。", "success");
+    }
+
+    function freezeSingleResult(source, latency) {
+        var experiment = currentExperiment();
+        var cached = experiment.mode === "cached";
+        var didDBRead = source === "mysql" || source === "redis-miss" || source === "redis-fallback";
+        var hitRate = cached ? (source === "redis-hit" ? 100 : (source === "redis-miss" ? 0 : null)) : null;
+        var currentPath = state.snapshot && (cached ? state.snapshot.cached : state.snapshot.direct);
+        completeResult({
+            entry: "single",
+            materialCode: state.profile.code,
+            materialName: state.profile.name,
+            mode: experiment.mode,
+            cacheTemperature: experiment.cacheTemperature,
+            metrics: {
+                requests: 1,
+                qps: 1,
+                dbReads: didDBRead ? 1 : 0,
+                p99: Math.max(1, Math.round(latency)),
+                poolPeak: Number(currentPath && currentPath.poolPeak || 0),
+                poolCapacity: Number(currentPath && currentPath.poolCapacity || 0),
+                hitRate: hitRate,
+                errors: 0
+            }
+        });
+    }
+
+    function runCounterDelta(current, baseline, key) {
+        return Math.max(0, Number(current[key] || 0) - Number(baseline[key] || 0));
+    }
+
+    function trackCrowdRun(direct, cached, at) {
+        if (state.entry !== "crowd" || !state.pendingRun) {
+            return;
+        }
+        var mode = state.pendingRun.mode === "cached" ? "cached" : "direct";
+        var path = mode === "cached" ? cached : direct;
+        var baseline = state.pendingRun.baseline || null;
+        if (mode === "cached" && state.pendingRun.cacheTemperature === "cold") {
+            baseline = {};
+        } else if (baseline && path.totalRequests < Number(baseline.totalRequests || 0)) {
+            baseline = {};
+        }
+        if (!state.crowdRun) {
+            if (!baseline) {
+                baseline = Object.assign({}, path);
+            }
+            var initialRequests = runCounterDelta(path, baseline, "totalRequests");
+            if (path.qps <= 0 && initialRequests <= 0) {
+                return;
+            }
+            state.crowdRun = {
+                baseline: baseline,
+                latest: path,
+                peakQPS: path.qps,
+                peakP99: path.p99,
+                peakPool: path.poolPeak,
+                poolCapacity: path.poolCapacity,
+                startedAt: at || new Date().toISOString()
+            };
+            if (state.metricsLoadActive) {
+                byId("freeze-status").textContent = "压测进行中 · 结果尚未冻结";
+                return;
+            }
+        } else {
+            state.crowdRun.latest = path;
+            state.crowdRun.peakQPS = Math.max(state.crowdRun.peakQPS, path.qps);
+            state.crowdRun.peakP99 = Math.max(state.crowdRun.peakP99, path.p99);
+            state.crowdRun.peakPool = Math.max(state.crowdRun.peakPool, path.poolPeak);
+            state.crowdRun.poolCapacity = Math.max(state.crowdRun.poolCapacity, path.poolCapacity);
+        }
+        if (state.metricsLoadActive) {
+            return;
+        }
+
+        var run = state.crowdRun;
+        var requests = runCounterDelta(run.latest, run.baseline, "totalRequests");
+        var hits = runCounterDelta(run.latest, run.baseline, "cacheHits");
+        var misses = runCounterDelta(run.latest, run.baseline, "cacheMisses");
+        if (requests <= 0) {
+            return;
+        }
+        completeResult({
+            entry: "crowd",
+            materialCode: state.pendingRun.materialCode || state.profile.code,
+            materialName: state.pendingRun.materialName || state.profile.name,
+            mode: mode,
+            cacheTemperature: state.pendingRun.cacheTemperature,
+            expectedRate: state.pendingRun.expectedRate,
+            startedAt: run.startedAt,
+            metrics: {
+                requests: requests,
+                qps: run.peakQPS,
+                dbReads: runCounterDelta(run.latest, run.baseline, "dbReads"),
+                p99: run.peakP99,
+                poolPeak: run.peakPool,
+                poolCapacity: run.poolCapacity,
+                hitRate: mode === "cached" && hits + misses > 0 ? Math.round(hits * 100 / (hits + misses)) : null,
+                errors: runCounterDelta(run.latest, run.baseline, "errors")
+            }
+        });
+    }
+
     function renderRecord(body, source, latency) {
         var responseId = Number(body && body.id);
         var profile = profiles[responseId] || state.profile;
@@ -382,6 +628,15 @@
         byId("record-latency").textContent = latency.toFixed(1) + " ms";
     }
 
+    async function prepareColdCache() {
+        var result = await requestJSON("/api/chapters/cache-aside/reset", { method: "POST" });
+        state.previousRead = null;
+        resetMetricsHistory();
+        if (result.body && result.body.snapshot) {
+            acceptMetricsSnapshot({ archiveRead: result.body.snapshot });
+        }
+    }
+
     async function readArchive() {
         if (!state.id || state.isRequesting || state.isReplaying) {
             return;
@@ -393,10 +648,19 @@
         byId("actual-latency").textContent = "等待响应";
         byId("actual-source").textContent = "等待响应头";
         byId("replay-status").textContent = "响应到达后开始";
-        var path = state.mode === "cached" ? "cached" : "direct";
-        var started = window.performance.now();
+        var experiment = currentExperiment();
+        var path = experiment.mode === "cached" ? "cached" : "direct";
+        var started = null;
 
         try {
+            if (experiment.mode === "cached" && experiment.cacheTemperature === "cold") {
+                byId("request-status").textContent = "正在准备冷缓存：清除档案缓存与本章指标";
+                byId("actual-latency").textContent = "尚未发起材料请求";
+                await prepareColdCache();
+                byId("request-status").textContent = "冷缓存已准备，真实 HTTP 请求已发送";
+                byId("actual-latency").textContent = "等待响应";
+            }
+            started = window.performance.now();
             var result = await requestJSON("/api/archives/" + state.id + "/" + path);
             var latency = window.performance.now() - started;
             var source = result.response.headers.get("X-Archive-Source") || "unknown";
@@ -405,11 +669,15 @@
             byId("actual-latency").textContent = latency.toFixed(1) + " ms";
             byId("actual-source").textContent = source;
             renderRecord(result.body, source, latency);
+            if (state.entry === "single") {
+                freezeSingleResult(source, latency);
+            }
             playRoute(source, "manual");
         } catch (error) {
             state.isRequesting = false;
-            byId("request-status").textContent = "真实请求失败";
-            byId("actual-latency").textContent = (window.performance.now() - started).toFixed(1) + " ms";
+            byId("request-status").textContent = started ? "真实请求失败" : "冷缓存准备失败，材料请求未发出";
+            byId("actual-latency").textContent = started ?
+                (window.performance.now() - started).toFixed(1) + " ms" : "—";
             byId("actual-source").textContent = "ERROR";
             byId("replay-status").textContent = "没有成功路径可回放";
             showToast(error.message, "danger");
@@ -437,12 +705,13 @@
         if (!state.snapshot) {
             return;
         }
-        var path = state.mode === "cached" ? state.snapshot.cached : state.snapshot.direct;
+        var cached = currentExperiment().mode === "cached";
+        var path = cached ? state.snapshot.cached : state.snapshot.direct;
         setMetric("active-qps", path.qps);
         setMetric("active-db-reads", path.dbReads);
         setMetric("active-p99", path.p99, " ms");
         byId("active-pool").textContent = formatNumber(path.poolPeak) + " / " + formatNumber(path.poolCapacity);
-        byId("active-hit-rate").textContent = state.mode === "cached" ? formatNumber(path.cacheHitRate) + "%" : "—";
+        byId("active-hit-rate").textContent = cached ? formatNumber(path.cacheHitRate) + "%" : "—";
         setMetric("active-errors", path.errors);
         byId("mysql-pool-live").textContent = "POOL " + formatNumber(path.poolPeak) + " / " + formatNumber(path.poolCapacity);
     }
@@ -480,16 +749,10 @@
         }
         state.lastTrafficReplayAt = now;
         if (cachedDelta > directDelta) {
-            if (state.mode !== "cached") {
-                setMode("cached");
-            }
             var errorDelta = cached.cacheErrors - previous.cached.cacheErrors;
             var missDelta = cached.cacheMisses - previous.cached.cacheMisses;
             playRoute(errorDelta > 0 ? "redis-fallback" : (missDelta > 0 ? "redis-miss" : "redis-hit"), "sse");
         } else {
-            if (state.mode !== "direct") {
-                setMode("direct");
-            }
             playRoute("mysql", "sse");
         }
     }
@@ -517,6 +780,7 @@
         renderComparison(direct, cached);
         renderActiveMetrics();
         if (!skipRouteInference) {
+            trackCrowdRun(direct, cached, chapter.at);
             inferExternalRoute(direct, cached);
         }
     }
@@ -641,6 +905,8 @@
         state.metricsHistory = [];
         state.metricsLatest = null;
         state.metricsLoadActive = false;
+        state.metricsTrafficSeen = false;
+        state.metricsIdleFrames = 0;
         state.metricsReplaying = false;
         state.metricsReplayPaused = false;
         state.metricsReplayFrames = [];
@@ -652,13 +918,27 @@
         if (!snapshot || !snapshot.archiveRead) {
             return;
         }
+        var previousLatest = state.metricsLatest;
         state.metricsLatest = snapshot;
         state.metricsHistory.push(snapshot);
         if (state.metricsHistory.length > 90) {
             state.metricsHistory.shift();
         }
 
-        var loadActive = metricsFrameIsActive(snapshot);
+        var loadActive = false;
+        if (state.entry === "crowd") {
+            var currentValues = metricsFrameValues(snapshot);
+            var previousValues = metricsFrameValues(previousLatest);
+            var currentTotal = currentValues ? currentValues.direct.totalRequests + currentValues.cached.totalRequests : 0;
+            var previousTotal = previousValues ? previousValues.direct.totalRequests + previousValues.cached.totalRequests : currentTotal;
+            if (currentTotal !== previousTotal || (!state.metricsTrafficSeen && metricsFrameIsActive(snapshot))) {
+                state.metricsTrafficSeen = true;
+                state.metricsIdleFrames = 0;
+            } else if (state.metricsTrafficSeen) {
+                state.metricsIdleFrames += 1;
+            }
+            loadActive = state.metricsTrafficSeen && state.metricsIdleFrames < 3;
+        }
         if (loadActive && state.metricsReplaying) {
             state.metricsLoadActive = true;
             finishMetricsReplay(true, true);
@@ -712,7 +992,7 @@
             resetRouteVisual();
             document.body.dataset.routeState = "idle";
             byId("route-label").textContent = "WAITING";
-            byId("route-title").textContent = "选择策略后发起请求";
+            byId("route-title").textContent = "按室外配置发起请求";
             byId("route-events").innerHTML = "<li><span>READY</span><strong>等待真实响应头</strong><small>不会根据所选模式猜测结果</small></li>";
             byId("record-placeholder").hidden = false;
             byId("record-result").hidden = true;
@@ -734,8 +1014,6 @@
     }
 
     function bindEvents() {
-        byId("mode-direct").addEventListener("click", function () { setMode("direct"); });
-        byId("mode-cached").addEventListener("click", function () { setMode("cached"); });
         byId("query-archive").addEventListener("click", readArchive);
         byId("reset-lab").addEventListener("click", resetLab);
         byId("replay-metrics").addEventListener("click", startMetricsReplay);
@@ -751,8 +1029,13 @@
         }
         bindEvents();
         var entry = incomingEntry();
+        state.entry = entry;
+        state.pendingRun = entry === "crowd" ? experimentResults.pending() : null;
         document.body.dataset.entryMode = entry;
-        setMode(incomingMode());
+        renderExperimentState(currentExperiment());
+        experimentState.subscribe(renderExperimentState);
+        experimentResults.subscribe(renderFrozenResults);
+        renderFrozenResults();
         resetRouteVisual();
         updateControlState();
         updateMetricsPlaybackControls();

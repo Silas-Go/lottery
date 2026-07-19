@@ -8,7 +8,7 @@
     <meta name="description" content="在阳光下的 Silas 炼金市选择材料档案片，再进入 Cache-Aside 技术实验室。" />
     <title>Silas 炼金市 · 材料情报店</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-crowd-scale" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260719-shared-strategy" />
 </head>
 
 <body class="market-page" data-event-state="arrival">
@@ -39,8 +39,34 @@
                 <span class="town-flag flag-two"></span>
             </div>
 
-            <div class="alchemy-shop" aria-hidden="true">
+            <div class="alchemy-shop">
                 <div class="shop-roof"></div>
+                <aside class="roof-strategy-board" aria-labelledby="roof-strategy-title">
+                    <header>
+                        <small>EXPERIMENT ROUTE</small>
+                        <strong id="roof-strategy-title">本次读取路径</strong>
+                    </header>
+                    <div class="roof-mode-switch" role="group" aria-label="选择实验读取路径">
+                        <button id="roof-mode-direct" type="button" aria-pressed="true">
+                            <strong>MySQL 直查</strong><small>每次读取权威数据</small>
+                        </button>
+                        <button id="roof-mode-cached" type="button" aria-pressed="false">
+                            <strong>Redis 旁路缓存</strong><small>先查缓存，未命中再回源</small>
+                        </button>
+                    </div>
+                    <fieldset id="roof-cache-settings" class="roof-cache-settings" hidden>
+                        <legend>旁路缓存次级设置</legend>
+                        <label>
+                            <input type="radio" name="cache-temperature" value="cold" />
+                            <span><strong>冷缓存</strong><small>实验前清除档案缓存</small></span>
+                        </label>
+                        <label>
+                            <input type="radio" name="cache-temperature" value="hot" />
+                            <span><strong>热缓存</strong><small>保留已有缓存</small></span>
+                        </label>
+                    </fieldset>
+                    <p id="roof-strategy-summary">当前：MySQL Direct</p>
+                </aside>
                 <div class="shop-beam beam-left"></div>
                 <div class="shop-beam beam-right"></div>
                 <div class="shop-sign"><strong>SILAS</strong><span>MATERIAL ARCHIVES</span></div>
@@ -189,7 +215,8 @@
 
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
-    <script src="/js/market.js?v=20260719-crowd-scale"></script>
+    <script src="/js/experiment-state.js?v=20260719-shared-strategy"></script>
+    <script src="/js/market.js?v=20260719-shared-strategy"></script>
 </body>
 
 </html>
