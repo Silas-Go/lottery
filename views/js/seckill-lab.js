@@ -38,6 +38,14 @@
         pollTimer: null,
         routeTimers: [],
         lastTrafficReplayAt: 0,
+        metricsHistory: [],
+        metricsLatest: null,
+        metricsLoadActive: false,
+        metricsReplaying: false,
+        metricsReplayPaused: false,
+        metricsReplayFrames: [],
+        metricsReplayIndex: 0,
+        metricsReplayTimer: null,
         reducedMotion: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
     };
 
@@ -486,7 +494,7 @@
         }
     }
 
-    function renderArchiveRead(chapter) {
+    function renderArchiveRead(chapter, skipRouteInference) {
         if (!chapter) {
             return;
         }
@@ -508,19 +516,167 @@
         byId("metrics-timestamp").textContent = chapter.at ? new Date(chapter.at).toLocaleTimeString("zh-CN", { hour12: false }) : "LIVE";
         renderComparison(direct, cached);
         renderActiveMetrics();
-        inferExternalRoute(direct, cached);
+        if (!skipRouteInference) {
+            inferExternalRoute(direct, cached);
+        }
     }
 
-    function renderSnapshot(snapshot) {
+    function renderSnapshot(snapshot, skipRouteInference) {
         if (snapshot && snapshot.archiveRead) {
-            renderArchiveRead(snapshot.archiveRead);
+            renderArchiveRead(snapshot.archiveRead, skipRouteInference);
         }
+    }
+
+    function metricsFrameValues(snapshot) {
+        var chapter = snapshot && snapshot.archiveRead;
+        return chapter ? { direct: pathValues(chapter.direct), cached: pathValues(chapter.cached) } : null;
+    }
+
+    function metricsFrameIsActive(snapshot) {
+        var values = metricsFrameValues(snapshot);
+        return Boolean(values && (values.direct.qps > 0 || values.cached.qps > 0));
+    }
+
+    function replayMetricsWindow() {
+        return state.metricsHistory.slice(-60);
+    }
+
+    function hasReplayableMetrics() {
+        var frames = replayMetricsWindow();
+        return frames.length > 1 && frames.some(metricsFrameIsActive);
+    }
+
+    function updateMetricsPlaybackControls() {
+        var replayButton = byId("replay-metrics");
+        var pauseButton = byId("pause-metrics-replay");
+        var status = byId("metrics-playback-state");
+
+        replayButton.disabled = !state.metricsReplaying && (state.metricsLoadActive || !hasReplayableMetrics());
+        replayButton.textContent = state.metricsReplaying ? "退出重放" : "重放指标";
+        pauseButton.disabled = !state.metricsReplaying;
+        pauseButton.textContent = state.metricsReplayPaused ? "继续重放" : "暂停重放";
+        pauseButton.setAttribute("aria-pressed", state.metricsReplayPaused ? "true" : "false");
+
+        if (state.metricsLoadActive) {
+            status.textContent = "压测进行中 · 实时指标不可暂停";
+        } else if (state.metricsReplaying) {
+            status.textContent = (state.metricsReplayPaused ? "重放已暂停 · " : "正在重放 · ") +
+                state.metricsReplayIndex + " / " + state.metricsReplayFrames.length;
+        } else if (hasReplayableMetrics()) {
+            status.textContent = "压测已结束 · 可重放最近 " + replayMetricsWindow().length + " 帧";
+        } else {
+            status.textContent = "实时采集中 · 等待压测数据";
+        }
+    }
+
+    function clearMetricsReplayTimer() {
+        if (state.metricsReplayTimer) {
+            window.clearTimeout(state.metricsReplayTimer);
+            state.metricsReplayTimer = null;
+        }
+    }
+
+    function finishMetricsReplay(skipRouteInference, skipRestore) {
+        clearMetricsReplayTimer();
+        state.metricsReplaying = false;
+        state.metricsReplayPaused = false;
+        state.metricsReplayFrames = [];
+        state.metricsReplayIndex = 0;
+        if (state.metricsLatest && !skipRestore) {
+            renderSnapshot(state.metricsLatest, skipRouteInference);
+        }
+        updateMetricsPlaybackControls();
+    }
+
+    function playNextMetricsFrame() {
+        if (!state.metricsReplaying || state.metricsReplayPaused) {
+            return;
+        }
+        if (state.metricsReplayIndex >= state.metricsReplayFrames.length) {
+            finishMetricsReplay(true, false);
+            return;
+        }
+        renderSnapshot(state.metricsReplayFrames[state.metricsReplayIndex], true);
+        state.metricsReplayIndex += 1;
+        updateMetricsPlaybackControls();
+        state.metricsReplayTimer = window.setTimeout(playNextMetricsFrame, state.reducedMotion ? 120 : 500);
+    }
+
+    function startMetricsReplay() {
+        if (state.metricsReplaying) {
+            finishMetricsReplay(true, false);
+            return;
+        }
+        if (state.metricsLoadActive) {
+            showToast("压测进行中，指标必须保持实时。", "danger");
+            return;
+        }
+        if (!hasReplayableMetrics()) {
+            showToast("还没有可重放的压测指标。", "danger");
+            return;
+        }
+        var frames = replayMetricsWindow();
+        var firstActive = frames.findIndex(metricsFrameIsActive);
+        state.metricsReplayFrames = frames.slice(Math.max(0, firstActive - 2));
+        state.metricsReplayIndex = 0;
+        state.metricsReplaying = true;
+        state.metricsReplayPaused = false;
+        playNextMetricsFrame();
+    }
+
+    function toggleMetricsReplayPause() {
+        if (!state.metricsReplaying) {
+            return;
+        }
+        state.metricsReplayPaused = !state.metricsReplayPaused;
+        clearMetricsReplayTimer();
+        updateMetricsPlaybackControls();
+        if (!state.metricsReplayPaused) {
+            playNextMetricsFrame();
+        }
+    }
+
+    function resetMetricsHistory() {
+        clearMetricsReplayTimer();
+        state.metricsHistory = [];
+        state.metricsLatest = null;
+        state.metricsLoadActive = false;
+        state.metricsReplaying = false;
+        state.metricsReplayPaused = false;
+        state.metricsReplayFrames = [];
+        state.metricsReplayIndex = 0;
+        updateMetricsPlaybackControls();
+    }
+
+    function acceptMetricsSnapshot(snapshot) {
+        if (!snapshot || !snapshot.archiveRead) {
+            return;
+        }
+        state.metricsLatest = snapshot;
+        state.metricsHistory.push(snapshot);
+        if (state.metricsHistory.length > 90) {
+            state.metricsHistory.shift();
+        }
+
+        var loadActive = metricsFrameIsActive(snapshot);
+        if (loadActive && state.metricsReplaying) {
+            state.metricsLoadActive = true;
+            finishMetricsReplay(true, true);
+            showToast("检测到新的实时流量，已退出重放。", "success");
+        } else {
+            state.metricsLoadActive = loadActive;
+        }
+
+        if (!state.metricsReplaying) {
+            renderSnapshot(snapshot);
+        }
+        updateMetricsPlaybackControls();
     }
 
     async function fetchSnapshot() {
         try {
             var result = await requestJSON("/api/metrics/snapshot");
-            renderSnapshot(result.body);
+            acceptMetricsSnapshot(result.body);
             setConnection(true);
         } catch (_) {
             setConnection(false);
@@ -535,7 +691,7 @@
         state.stream = new EventSource("/api/metrics/stream");
         state.stream.addEventListener("metrics", function (event) {
             try {
-                renderSnapshot(JSON.parse(event.data));
+                acceptMetricsSnapshot(JSON.parse(event.data));
                 setConnection(true);
             } catch (_) {
                 setConnection(false);
@@ -564,7 +720,10 @@
             byId("actual-latency").textContent = "—";
             byId("actual-source").textContent = "—";
             byId("replay-status").textContent = "尚未开始";
-            renderArchiveRead(result.body && result.body.snapshot);
+            resetMetricsHistory();
+            if (result.body && result.body.snapshot) {
+                acceptMetricsSnapshot({ archiveRead: result.body.snapshot });
+            }
             showToast("Redis 档案缓存和本章指标已清空。", "success");
         } catch (error) {
             showToast(error.message, "danger");
@@ -579,6 +738,8 @@
         byId("mode-cached").addEventListener("click", function () { setMode("cached"); });
         byId("query-archive").addEventListener("click", readArchive);
         byId("reset-lab").addEventListener("click", resetLab);
+        byId("replay-metrics").addEventListener("click", startMetricsReplay);
+        byId("pause-metrics-replay").addEventListener("click", toggleMetricsReplayPause);
         byId("purchase-entry").addEventListener("click", function () {
             showToast("购买实验尚未接入；价格与真实库存会在购买请求中重新校验。", "success");
         });
@@ -594,6 +755,7 @@
         setMode(incomingMode());
         resetRouteVisual();
         updateControlState();
+        updateMetricsPlaybackControls();
         if (entry === "crowd") {
             byId("request-status").textContent = "已从室外跟随压测请求进入";
             byId("replay-status").textContent = "等待 SSE 捕获后续请求";
@@ -610,5 +772,6 @@
         if (state.pollTimer) {
             window.clearInterval(state.pollTimer);
         }
+        clearMetricsReplayTimer();
     });
 }());

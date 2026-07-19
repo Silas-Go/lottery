@@ -8,7 +8,7 @@
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-crowd-scale" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260719-metrics-replay" />
 </head>
 
 <body class="lab-page" data-lab-mode="direct" data-route-state="idle">
@@ -180,7 +180,14 @@
                             <span>04 / LIVE SSE METRICS</span>
                             <h2 id="metrics-heading">两条路径的真实指标</h2>
                         </div>
-                        <span id="metrics-timestamp" class="metrics-timestamp">等待快照</span>
+                        <div class="metrics-playback">
+                            <span id="metrics-timestamp" class="metrics-timestamp">等待快照</span>
+                            <div role="group" aria-label="指标重放控制">
+                                <button id="replay-metrics" type="button" disabled>重放指标</button>
+                                <button id="pause-metrics-replay" type="button" aria-pressed="false" disabled>暂停重放</button>
+                            </div>
+                            <small id="metrics-playback-state" role="status" aria-live="polite">实时采集中 · 等待压测数据</small>
+                        </div>
                     </div>
 
                     <div class="metrics-table" role="table" aria-label="MySQL Direct 与 Redis Cache-Aside 指标对比">
@@ -208,7 +215,7 @@
     </main>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260719-crowd-scale"></script>
+    <script src="/js/seckill-lab.js?v=20260719-metrics-replay"></script>
 </body>
 
 </html>
