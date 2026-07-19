@@ -63,3 +63,15 @@ insert ignore into profession_archives (id,code,name,title,sigil,accent,summary,
 (2,'clockwork-smith','机巧师','让沉默的铜与铁重新学会呼吸','械','#9a6737','机巧师的工作台从不真正安静。齿轮记得手指的温度，旧钟会在无人处低声报时，而每一件被世人判定报废的器物，都可能在他们掌心获得第二次心跳。','世上没有废铁，只有尚未被听懂的请求。'),
 (3,'star-reader','观星者','从群星的迟信里辨认尚未发生的风暴','星','#6659a8','他们在最高的塔上记录星辰，把几百年前启程的光译成今日的预兆。观星者并不预言命运；他们只是比旁人更早看见选择的代价。','星辰从不回答，只把问题照得更清楚。'),
 (4,'raven-physician','渡鸦医师','在瘟风经过之后替名字留住体温','鸦','#48645a','渡鸦医师随黑羽穿过封闭的城门。他们携带草药、银针和一本从不公开的姓名册：治愈一人便划去一个名字，未能归来的人，则由他们亲自送回故乡。','疾病可以带走呼吸，不能带走一个人被记得的方式。');
+
+-- 材料购买顺序实验的独立夹具，不参与秒杀 inventory、orders 或 MQ 链路。
+create table if not exists purchase_lab_inventory(
+    material_id int not null,
+    initial_stock int not null,
+    stock int not null,
+    updated_at datetime not null default current_timestamp on update current_timestamp,
+    primary key (material_id)
+)default charset=utf8mb4;
+
+insert ignore into purchase_lab_inventory (material_id, initial_stock, stock) values
+(1,64,64),(2,48,48),(3,24,24),(4,12,12);

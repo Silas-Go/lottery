@@ -190,6 +190,18 @@ inventory.count
 
 `cancelled` 已经回补，不再扣减；MySQL 模式使用独立 `cache_stock`，也不影响 Redis 可用库存。
 
+## 材料购买写顺序实验（独立夹具）
+
+`/purchase-lab` 使用独立的 `purchase_lab_inventory` 表和
+`purchase-lab:material:{id}:stock` Redis key，不读取或修改秒杀 `inventory`、订单、admission 或 MQ。
+
+每轮从相同热缓存基线开始，服务端真实执行以下两条路径：
+
+- 方案 A：`DELETE CACHE -> UPDATE MYSQL`。开启 T2 后，查询会在删除后读取 MySQL 旧值，等待 T1 更新，再把旧值回填 Redis，稳定复现最终脏缓存。
+- 方案 B：`UPDATE MYSQL -> DELETE CACHE`。开启 T2 后，查询可能在删除前命中一次旧值，但 T1 最终删除旧副本，降低旧值长期留在缓存的概率。
+
+T1/T2 使用进程内 channel 只控制实验步骤的交错时机；返回的库存、命中、MISS、DB Read 和耗时来自真实 MySQL/Redis 操作。前端单步与自动播放只回放服务端 trace，不参与耗时计算。方案 B 不是绝对强一致；本实验也不覆盖订单、支付、幂等或高并发库存裁决。
+
 ## 当前仍然存在的分布式边界
 
 本项目已经具备状态机和幂等消费，但不是完整生产级交易系统。仍需明确：

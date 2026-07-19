@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#07111d" />
+    <meta name="description" content="用真实 MySQL 与 Redis 操作比较 Cache-Aside 两种购买写入顺序。" />
+    <title>Cache-Aside 购买实验室 · Silas</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260720-purchase-lab" />
+</head>
+
+<body class="lab-page purchase-page" data-purchase-strategy="delete-then-update" data-purchase-status="idle">
+    <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
+
+    <header class="lab-header purchase-lab-header">
+        <div class="purchase-brand-area">
+            <a class="lab-brand" id="purchase-query-link" href="/lab" aria-label="返回查询实验">
+                <span>S</span>
+                <div><strong>SILAS</strong><small>PURCHASE LAB</small></div>
+            </a>
+            <nav aria-label="购买实验导航">
+                <a id="back-to-query" href="/lab" data-i18n="nav.backQuery">返回查询实验</a>
+                <a href="/" data-i18n="nav.backMarket">返回室外</a>
+            </nav>
+        </div>
+
+        <div class="current-material" aria-label="当前购买商品">
+            <small>CURRENT PRODUCT</small>
+            <strong><span id="purchase-current-code">—</span> · <span id="purchase-current-name">尚未选择商品</span></strong>
+            <span id="purchase-stock-summary" class="purchase-stock-summary">读取真实库存</span>
+        </div>
+
+        <div class="purchase-header-status" aria-label="购买实验状态">
+            <div><small>CURRENT STRATEGY</small><strong id="header-strategy">先删缓存，再更新数据库</strong></div>
+            <div><small>EXPERIMENT STATUS</small><strong id="header-status">准备中</strong></div>
+        </div>
+    </header>
+
+    <main class="lab-main purchase-main">
+        <section id="purchase-empty" class="lab-empty" hidden>
+            <span>PRODUCT CONTEXT REQUIRED</span>
+            <h1 data-i18n="empty.title">尚未选择材料</h1>
+            <p data-i18n="empty.body">请先在查询实验中读取一份材料档案，再进入购买实验。</p>
+            <a href="/lab" data-i18n="empty.action">返回查询实验</a>
+        </section>
+
+        <div id="purchase-content" class="purchase-content" hidden>
+            <section class="purchase-intro lab-panel" aria-labelledby="purchase-title">
+                <div class="panel-heading">
+                    <div>
+                        <span>WRITE ORDER EXPERIMENT</span>
+                        <h1 id="purchase-title" data-i18n="intro.title">比较 Cache-Aside 写操作的两种执行顺序</h1>
+                    </div>
+                    <span class="endpoint-label">POST /api/purchase-lab/:id/run</span>
+                </div>
+                <p data-i18n="intro.body">每轮都从相同热缓存库存开始。服务端先完成真实 Redis/MySQL 操作，再把真实步骤与耗时交给页面回放。</p>
+                <div class="purchase-boundary-note">
+                    <strong data-i18n="intro.boundaryTitle">本店实验边界</strong>
+                    <span data-i18n="intro.boundaryBody">只演示材料库存缓存失效顺序；不创建订单，不接入 MQ，也不演示秒杀库存。</span>
+                </div>
+            </section>
+
+            <div class="purchase-layout">
+                <aside class="purchase-schemes lab-panel" aria-labelledby="scheme-heading">
+                    <div class="panel-heading">
+                        <div><span>01 / STRATEGY</span><h2 id="scheme-heading" data-i18n="scheme.title">选择写入顺序</h2></div>
+                    </div>
+                    <div class="purchase-scheme-list" role="radiogroup" aria-label="购买实验方案">
+                        <button class="purchase-scheme-card is-active" type="button" role="radio" aria-checked="true" data-strategy="delete-then-update">
+                            <small>SCHEME A · RISK WINDOW</small>
+                            <strong data-i18n="scheme.aTitle">先删缓存，再更新数据库</strong>
+                            <code>DELETE CACHE → UPDATE MYSQL</code>
+                            <span data-i18n="scheme.aBody">竞态查询可能在更新前读到旧值，并在更新后把旧值写回缓存。</span>
+                        </button>
+                        <button class="purchase-scheme-card" type="button" role="radio" aria-checked="false" data-strategy="update-then-delete">
+                            <em>RECOMMENDED</em>
+                            <small>SCHEME B · LOWER RISK</small>
+                            <strong data-i18n="scheme.bTitle">先更新数据库，再删缓存</strong>
+                            <code>UPDATE MYSQL → DELETE CACHE</code>
+                            <span data-i18n="scheme.bBody">降低旧值长期停留在缓存中的概率，但不等于绝对强一致。</span>
+                        </button>
+                    </div>
+                    <p id="scheme-lock-note" class="scheme-lock-note">实验开始后，重置当前实验才能切换方案。</p>
+                </aside>
+
+                <section class="purchase-stage lab-panel" aria-labelledby="timeline-heading">
+                    <div class="panel-heading route-heading-row">
+                        <div><span>02 / DOUBLE REQUEST TIMELINE</span><h2 id="timeline-heading" data-i18n="timeline.title">购买 T1 与查询 T2 的受控交错</h2></div>
+                        <div class="route-result"><small id="timeline-step-label">READY</small><strong id="timeline-step-title">等待开始真实实验</strong></div>
+                    </div>
+
+                    <div class="purchase-data-nodes" aria-label="Redis 与 MySQL 当前步骤快照">
+                        <article id="purchase-redis-node" class="purchase-data-node redis-node">
+                            <small>CACHE COPY</small><strong>Redis</strong><span id="stage-redis-stock">—</span><em id="stage-redis-action">STANDBY</em>
+                        </article>
+                        <div class="purchase-node-link" aria-hidden="true"><i></i><span>CACHE-ASIDE</span><i></i></div>
+                        <article id="purchase-mysql-node" class="purchase-data-node mysql-node">
+                            <small>AUTHORITATIVE DATA</small><strong>MySQL</strong><span id="stage-mysql-stock">—</span><em id="stage-mysql-action">STANDBY</em>
+                        </article>
+                    </div>
+
+                    <div class="purchase-timelines">
+                        <section class="purchase-request-lane t1-lane" aria-labelledby="t1-heading">
+                            <header><span>T1</span><div><strong id="t1-heading">购买请求</strong><small>WRITE REQUEST</small></div></header>
+                            <ol id="t1-steps" class="purchase-step-list"><li class="is-placeholder">真实执行后生成步骤</li></ol>
+                        </section>
+                        <section class="purchase-request-lane t2-lane" aria-labelledby="t2-heading">
+                            <header><span>T2</span><div><strong id="t2-heading">查询请求</strong><small>CONCURRENT READ</small></div></header>
+                            <ol id="t2-steps" class="purchase-step-list"><li class="is-placeholder">未插入并发查询</li></ol>
+                        </section>
+                    </div>
+
+                    <p class="replay-disclaimer">服务端真实实验不会等待动画；单步与自动播放只是回放本次已经发生的数据路径。</p>
+                </section>
+
+                <aside class="purchase-state-panel lab-panel" aria-labelledby="state-heading">
+                    <div class="panel-heading"><div><span>03 / RUN STATE</span><h2 id="state-heading" data-i18n="state.title">真实状态与结果</h2></div></div>
+                    <div id="dirty-warning" class="dirty-cache-warning" role="alert" hidden>
+                        <strong data-i18n="state.warning">检测到缓存与权威数据不一致</strong>
+                        <span>Redis 仍保存旧库存，后续命中会继续返回脏值。</span>
+                    </div>
+                    <dl class="purchase-state-grid">
+                        <div><dt>MySQL 当前库存</dt><dd id="state-mysql-stock">—</dd></div>
+                        <div><dt>Redis 当前库存</dt><dd id="state-redis-stock">—</dd></div>
+                        <div><dt>购买是否成功</dt><dd id="state-purchase-success">等待</dd></div>
+                        <div><dt>脏缓存</dt><dd id="state-dirty-cache">未检测</dd></div>
+                        <div><dt>DB Reads</dt><dd id="state-db-reads">0</dd></div>
+                        <div><dt>Redis Hit / Miss</dt><dd id="state-cache-counts">0 / 0</dd></div>
+                        <div><dt>本次真实延迟</dt><dd id="state-latency">—</dd></div>
+                        <div><dt>T2 返回库存</dt><dd id="state-query-stock">未插入</dd></div>
+                    </dl>
+                    <div class="purchase-consistency-note">
+                        <strong id="consistency-title">尚未运行</strong>
+                        <span id="consistency-copy">MySQL 始终是本实验的权威数据源。</span>
+                    </div>
+                </aside>
+            </div>
+
+            <section class="purchase-controls lab-panel" aria-labelledby="controls-heading">
+                <div class="panel-heading">
+                    <div><span>04 / CONTROLS</span><h2 id="controls-heading" data-i18n="controls.title">执行与教学回放</h2></div>
+                    <span id="control-status" class="freeze-status" role="status" aria-live="polite">等待开始</span>
+                </div>
+                <div class="purchase-control-grid">
+                    <button id="start-purchase-run" class="purchase-primary-control" type="button"><strong>开始实验</strong><small>执行真实服务端路径</small></button>
+                    <button id="toggle-concurrent-query" type="button" aria-pressed="false"><strong>插入并发查询</strong><small id="concurrent-query-state">当前关闭</small></button>
+                    <button id="step-purchase-run" type="button" disabled><strong>单步执行</strong><small>回放下一个真实步骤</small></button>
+                    <button id="autoplay-purchase-run" type="button" disabled><strong>自动播放</strong><small>连续回放，可暂停</small></button>
+                    <button id="reset-purchase-run" type="button"><strong>重置当前实验</strong><small>保留已保存结果</small></button>
+                    <button id="save-purchase-result" type="button" disabled><strong>保存实验结果</strong><small>冻结到当前方案</small></button>
+                    <button id="compare-purchase-results" type="button" disabled><strong>对比两个方案</strong><small>需要 A、B 各一份</small></button>
+                </div>
+            </section>
+
+            <section class="purchase-results results-panel lab-panel" aria-labelledby="purchase-results-heading">
+                <div class="panel-heading">
+                    <div><span>05 / IMMUTABLE RESULTS</span><h2 id="purchase-results-heading" data-i18n="results.title">两种写入顺序的冻结结果</h2></div>
+                    <span id="purchase-freeze-status" class="freeze-status">重置不会删除结果</span>
+                </div>
+
+                <div class="frozen-result-cards">
+                    <article id="purchase-result-a" class="frozen-result-card is-empty">
+                        <header><div><small>SCHEME A</small><strong>先删缓存，再更新数据库</strong></div><span>待实验</span></header>
+                        <p class="frozen-result-context" data-result-context>完成方案 A 后自动冻结</p>
+                        <dl>
+                            <div><dt>Initial</dt><dd data-result="initial">—</dd></div>
+                            <div><dt>MySQL Final</dt><dd data-result="mysql">—</dd></div>
+                            <div><dt>Redis Final</dt><dd data-result="redis">—</dd></div>
+                            <div><dt>Dirty Cache</dt><dd data-result="dirty">—</dd></div>
+                            <div><dt>DB Reads</dt><dd data-result="dbReads">—</dd></div>
+                            <div><dt>Latency</dt><dd data-result="latency">—</dd></div>
+                        </dl>
+                        <footer data-result-time>结果不会随下一轮变化</footer>
+                    </article>
+
+                    <article id="purchase-result-b" class="frozen-result-card is-empty">
+                        <header><div><small>SCHEME B · RECOMMENDED</small><strong>先更新数据库，再删缓存</strong></div><span>待实验</span></header>
+                        <p class="frozen-result-context" data-result-context>完成方案 B 后自动冻结</p>
+                        <dl>
+                            <div><dt>Initial</dt><dd data-result="initial">—</dd></div>
+                            <div><dt>MySQL Final</dt><dd data-result="mysql">—</dd></div>
+                            <div><dt>Redis Final</dt><dd data-result="redis">—</dd></div>
+                            <div><dt>Dirty Cache</dt><dd data-result="dirty">—</dd></div>
+                            <div><dt>DB Reads</dt><dd data-result="dbReads">—</dd></div>
+                            <div><dt>Latency</dt><dd data-result="latency">—</dd></div>
+                        </dl>
+                        <footer data-result-time>结果不会随下一轮变化</footer>
+                    </article>
+                </div>
+
+                <div id="purchase-comparison" class="frozen-comparison is-waiting" hidden>
+                    <header>
+                        <div><small>WRITE ORDER COMPARISON</small><strong id="purchase-comparison-title">等待两种方案结果</strong></div>
+                        <span id="purchase-overall-winner">WAITING</span>
+                    </header>
+                    <div class="frozen-comparison-table" role="table" aria-label="购买实验两种写入顺序对比">
+                        <div class="frozen-comparison-row is-head" role="row"><span>Metric</span><strong>方案 A</strong><strong>方案 B</strong><em>判断</em></div>
+                        <div id="purchase-compare-dirty" class="frozen-comparison-row" role="row"><span>Dirty Cache</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
+                        <div id="purchase-compare-consistency" class="frozen-comparison-row" role="row"><span>Final Cache State</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
+                        <div id="purchase-compare-db" class="frozen-comparison-row" role="row"><span>DB Reads</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
+                        <div id="purchase-compare-cache" class="frozen-comparison-row" role="row"><span>Redis Hit / Miss</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>路径特征</em></div>
+                        <div id="purchase-compare-latency" class="frozen-comparison-row is-context" role="row"><span>Observed Latency</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>仅本轮观测</em></div>
+                    </div>
+                    <p>方案 B 是更稳妥的默认顺序，因为最终会删除旧缓存；它只能降低脏缓存长期存在的概率，不提供绝对强一致保证。</p>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
+    <script src="/js/experiment-state.js?v=20260720-purchase-lab"></script>
+    <script src="/js/purchase-lab.js?v=20260720-purchase-lab"></script>
+</body>
+
+</html>

@@ -13,6 +13,9 @@ type Handlers struct {
 	// Archive 处理第一章《百职录》的只读 Cache-Aside 实验。
 	Archive *handler.ArchiveHandler
 
+	// PurchaseLab 处理独立材料夹具上的 Cache-Aside 写顺序实验。
+	PurchaseLab *handler.PurchaseLabHandler
+
 	// Gift 处理奖品列表和 /lucky 抽奖请求。
 	Gift *handler.GiftHandler
 
@@ -51,6 +54,9 @@ func registerPages(engine *gin.Engine) {
 	engine.GET("/lab", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "lottery.html", nil)
 	})
+	engine.GET("/purchase-lab", func(ctx *gin.Context) {
+		ctx.HTML(http.StatusOK, "purchase-lab.html", nil)
+	})
 	engine.GET("/result", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "pay.html", nil)
 	})
@@ -61,6 +67,9 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/api/archives/:id/direct", handlers.Archive.ReadDirect)
 	engine.GET("/api/archives/:id/cached", handlers.Archive.ReadCached)
 	engine.POST("/api/chapters/cache-aside/reset", handlers.Archive.ResetChapter)
+	engine.GET("/api/purchase-lab/:id/state", handlers.PurchaseLab.State)
+	engine.POST("/api/purchase-lab/:id/reset", handlers.PurchaseLab.Reset)
+	engine.POST("/api/purchase-lab/:id/run", handlers.PurchaseLab.Run)
 	engine.GET("/gifts", handlers.Gift.GetAllGifts)
 	engine.GET("/lucky", handlers.Gift.Lottery)
 	engine.GET("/lucky/cacheaside", handlers.Gift.LotteryCacheAside)

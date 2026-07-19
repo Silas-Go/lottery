@@ -57,15 +57,19 @@ func writeAPIError(ctx *gin.Context, status int, code string, message string, er
 func statusForCode(code string) int {
 	switch code {
 	case service.CodeNoGiftsConfigured,
-		service.CodeArchiveNotFound:
+		service.CodeArchiveNotFound,
+		service.CodePurchaseLabMaterialNotFound:
 		return http.StatusNotFound
 	case service.CodeRateLimited:
 		return http.StatusTooManyRequests
+	case service.CodePurchaseLabInvalidStrategy:
+		return http.StatusBadRequest
 	case service.CodeDuplicateParticipation,
 		service.CodeInventoryRetryExhaust,
 		service.CodeOrderCancelled,
 		service.CodeOrderAlreadyPaid,
-		service.CodeOrderStateConflict:
+		service.CodeOrderStateConflict,
+		service.CodePurchaseLabSoldOut:
 		return http.StatusConflict
 	case service.CodeOrderProcessing:
 		return http.StatusTooEarly
@@ -78,7 +82,8 @@ func statusForCode(code string) int {
 		service.CodeMQSendFailed,
 		service.CodeCacheAsideOverload,
 		service.CodeArchiveDBReadFailed,
-		service.CodeArchiveCacheResetFailed:
+		service.CodeArchiveCacheResetFailed,
+		service.CodePurchaseLabUnavailable:
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError

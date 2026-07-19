@@ -1019,7 +1019,11 @@
         byId("replay-metrics").addEventListener("click", startMetricsReplay);
         byId("pause-metrics-replay").addEventListener("click", toggleMetricsReplayPause);
         byId("purchase-entry").addEventListener("click", function () {
-            showToast("购买实验尚未接入；价格与真实库存会在购买请求中重新校验。", "success");
+            if (!state.lastResponse || !state.profile) {
+                showToast("请先完成一次真实材料查询。", "danger");
+                return;
+            }
+            window.location.href = "/purchase-lab?material=" + encodeURIComponent(state.profile.code);
         });
     }
 

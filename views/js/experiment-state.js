@@ -4,6 +4,7 @@
     var STORAGE_KEY = "silas.cache-aside.experiment-state.v1";
     var RESULTS_KEY = "silas.cache-aside.experiment-results.v1";
     var PENDING_RUN_KEY = "silas.cache-aside.pending-run.v1";
+    var PURCHASE_RESULTS_KEY = "silas.cache-aside.purchase-results.v1";
     var EVENT_NAME = "silas:experiment-state-change";
     var RESULTS_EVENT_NAME = "silas:experiment-results-change";
     var DEFAULT_STATE = {
@@ -144,5 +145,30 @@
         pending: pendingRun,
         clearPending: clearPendingRun,
         subscribe: subscribeResults
+    });
+
+    function readPurchaseResults() {
+        var stored = safeParse(PURCHASE_RESULTS_KEY, {});
+        return stored && typeof stored === "object" ? stored : {};
+    }
+
+    function listPurchaseResults() {
+        return clone(readPurchaseResults());
+    }
+
+    function savePurchaseResult(candidate) {
+        var result = Object.assign({}, clone(candidate || {}), {
+            frozenAt: new Date().toISOString()
+        });
+        var results = readPurchaseResults();
+        results[result.strategy] = result;
+        safeWrite(PURCHASE_RESULTS_KEY, results);
+        global.dispatchEvent(new CustomEvent("silas:purchase-results-change", { detail: clone(result) }));
+        return Object.freeze(clone(result));
+    }
+
+    global.SilasPurchaseLabResults = Object.freeze({
+        list: listPurchaseResults,
+        save: savePurchaseResult
     });
 }(window));
