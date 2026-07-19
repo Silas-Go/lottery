@@ -227,8 +227,6 @@
         byId("mode-direct").setAttribute("aria-pressed", cached ? "false" : "true");
         byId("mode-cached").setAttribute("aria-pressed", cached ? "true" : "false");
         byId("query-endpoint").textContent = cached ? "via /cached" : "via /direct";
-        byId("load-mode").textContent = cached ? "REDIS CACHE-ASIDE" : "MYSQL DIRECT";
-        updateCommand();
         renderActiveMetrics();
     }
 
@@ -439,7 +437,6 @@
         byId("active-hit-rate").textContent = state.mode === "cached" ? formatNumber(path.cacheHitRate) + "%" : "—";
         setMetric("active-errors", path.errors);
         byId("mysql-pool-live").textContent = "POOL " + formatNumber(path.poolPeak) + " / " + formatNumber(path.poolCapacity);
-        updateTrafficWindow(path.qps);
     }
 
     function perThousand(path) {
@@ -456,13 +453,6 @@
         var reduction = directRate > 0 ? Math.max(0, Math.round((directRate - cachedRate) * 100 / directRate)) : 0;
         byId("comparison-summary").textContent = "每千次请求的 DB Reads：" +
             formatNumber(directRate) + " → " + formatNumber(cachedRate) + "，减少 " + reduction + "%";
-    }
-
-    function updateTrafficWindow(qps) {
-        var active = qps > 0;
-        byId("traffic-window").classList.toggle("is-active", active);
-        byId("traffic-status").textContent = active ? "LIVE TRAFFIC" : "IDLE";
-        byId("traffic-qps").textContent = formatNumber(qps) + " req/s";
     }
 
     function inferExternalRoute(direct, cached) {
@@ -554,40 +544,6 @@
         state.stream.onerror = function () { setConnection(false); };
     }
 
-    function updateCommand() {
-        if (!state.id) {
-            return;
-        }
-        var rate = byId("rate-range").value;
-        var connections = byId("connections-range").value;
-        var duration = byId("duration-select").value;
-        var path = state.mode === "cached" ? "cached" : "direct";
-        byId("rate-value").textContent = rate + " req/s";
-        byId("connections-value").textContent = connections;
-        byId("load-command").textContent = "docker compose --profile loadtest run --rm --no-deps " +
-            "-e RATE=" + rate + " -e DURATION=" + duration + " -e CONNECTIONS=" + connections + " " +
-            "-e TARGET_URL=http://app:5678/api/archives/" + state.id + "/" + path + " " +
-            "-e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
-    }
-
-    async function copyCommand() {
-        var command = byId("load-command").textContent;
-        try {
-            await navigator.clipboard.writeText(command);
-            showToast("wrk2 命令已复制。运行后这里会通过 SSE 显示真实指标。", "success");
-        } catch (_) {
-            var textarea = document.createElement("textarea");
-            textarea.value = command;
-            textarea.style.position = "fixed";
-            textarea.style.opacity = "0";
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand("copy");
-            textarea.remove();
-            showToast("wrk2 命令已复制。", "success");
-        }
-    }
-
     async function resetLab() {
         var button = byId("reset-lab");
         button.disabled = true;
@@ -623,10 +579,6 @@
         byId("mode-cached").addEventListener("click", function () { setMode("cached"); });
         byId("query-archive").addEventListener("click", readArchive);
         byId("reset-lab").addEventListener("click", resetLab);
-        byId("rate-range").addEventListener("input", updateCommand);
-        byId("connections-range").addEventListener("input", updateCommand);
-        byId("duration-select").addEventListener("change", updateCommand);
-        byId("copy-command").addEventListener("click", copyCommand);
         byId("purchase-entry").addEventListener("click", function () {
             showToast("购买实验尚未接入；价格与真实库存会在购买请求中重新校验。", "success");
         });

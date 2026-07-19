@@ -8,7 +8,7 @@
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-crowd-flow" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260719-crowd-scale" />
 </head>
 
 <body class="lab-page" data-lab-mode="direct" data-route-state="idle">
@@ -204,42 +204,11 @@
                 </section>
             </div>
 
-            <section class="load-panel lab-panel" aria-labelledby="load-heading">
-                <div class="panel-heading">
-                    <div>
-                        <span>05 / WRK2 LOAD TEST</span>
-                        <h2 id="load-heading">把真实外部流量送入当前读取路径</h2>
-                    </div>
-                    <span id="load-mode" class="load-mode">MYSQL DIRECT</span>
-                </div>
-
-                <div class="load-layout">
-                    <div class="load-controls">
-                        <label>Rate <strong id="rate-value">300 req/s</strong><input id="rate-range" type="range" min="20" max="1000" step="20" value="300" /></label>
-                        <label>Connections <strong id="connections-value">96</strong><input id="connections-range" type="range" min="4" max="256" step="4" value="96" /></label>
-                        <label>Duration
-                            <select id="duration-select"><option value="10s">10s</option><option value="20s" selected>20s</option><option value="30s">30s</option></select>
-                        </label>
-                    </div>
-
-                    <div class="command-console">
-                        <code id="load-command">正在生成 wrk2 命令…</code>
-                        <button id="copy-command" type="button">复制当前命令</button>
-                        <small>命令在真实 wrk2 容器中执行；页面只观察 SSE 返回的请求、延迟与数据库压力，不伪造压测结果。</small>
-                    </div>
-
-                    <aside id="traffic-window" class="traffic-window" aria-label="外部流量观察窗">
-                        <header><span>EXTERNAL TRAFFIC</span><strong id="traffic-status">IDLE</strong></header>
-                        <div class="traffic-figures" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                        <p><strong id="traffic-qps">0 req/s</strong><span>人群只是 QPS 的辅助视图</span></p>
-                    </aside>
-                </div>
-            </section>
         </div>
     </main>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/seckill-lab.js?v=20260719-crowd-flow"></script>
+    <script src="/js/seckill-lab.js?v=20260719-crowd-scale"></script>
 </body>
 
 </html>

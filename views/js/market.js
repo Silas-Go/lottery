@@ -15,6 +15,7 @@
     var crowdBaseline = null;
     var crowdArmed = false;
     var crowdTransitionStarted = false;
+    var crowdSize = 60;
 
     function byId(id) {
         return document.getElementById(id);
@@ -61,9 +62,32 @@
 
     function crowdCommand() {
         return "docker compose --profile loadtest run --rm --no-deps " +
-            "-e RATE=300 -e DURATION=20s -e CONNECTIONS=96 " +
+            "-e RATE=" + crowdSize + " -e DURATION=20s -e CONNECTIONS=96 " +
             "-e TARGET_URL=http://app:5678/api/archives/" + materialNumericId() + "/cached " +
             "-e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
+    }
+
+    function renderCrowdSize(invalidateCopiedCommand) {
+        var range = byId("crowd-size-range");
+        crowdSize = Math.max(1, Math.min(300, Number(range.value) || 1));
+        byId("crowd-size-value").textContent = crowdSize + " / 300 人";
+        if (selectedCode) {
+            byId("market-load-command").textContent = crowdCommand();
+        }
+
+        var visibleFigures = Math.max(1, Math.ceil(crowdSize / 10));
+        Array.prototype.forEach.call(byId("crowd-queue").children, function (figure, index) {
+            figure.classList.toggle("is-visible", index < visibleFigures);
+        });
+
+        if (invalidateCopiedCommand && state === "crowd_armed") {
+            crowdArmed = false;
+            setState("crowd_preparing");
+            byId("crowd-status-title").textContent = "人数已调整，请重新复制命令";
+            byId("crowd-status-copy").textContent = crowdSize + " 位访客正在门口等待投递。";
+        } else if (state === "crowd_preparing") {
+            byId("crowd-status-copy").textContent = crowdSize + " 位访客正在门口排队，但尚未开始投递。";
+        }
     }
 
     function updateCrowdTicketCodes() {
@@ -213,10 +237,9 @@
         crowdArmed = false;
         crowdTransitionStarted = false;
         crowdBaseline = null;
-        byId("market-load-command").textContent = crowdCommand();
         byId("crowd-status-title").textContent = "等待外部请求到达";
-        byId("crowd-status-copy").textContent = "人群已在门口排队，但尚未开始投递。";
         setState("crowd_preparing");
+        renderCrowdSize(false);
         primeCrowdBaseline();
         connectCrowdMetrics();
         byId("copy-market-command").focus({ preventScroll: true });
@@ -242,7 +265,7 @@
         crowdArmed = true;
         setState("crowd_armed");
         byId("crowd-status-title").textContent = "已准备，等待你在终端执行";
-        byId("crowd-status-copy").textContent = "队伍已经扩充；只有检测到真实请求后，他们才会开始投递。";
+        byId("crowd-status-copy").textContent = crowdSize + " 位访客已准备；检测到真实请求后才会投递。";
         showToast("压测命令已复制");
         byId("market-announcer").textContent = "压测命令已复制，队伍已准备，等待终端执行";
         if (crowdBaseline === null) {
@@ -311,6 +334,7 @@
         });
         byId("single-request").addEventListener("click", enterLab);
         byId("crowd-test").addEventListener("click", openCrowdMode);
+        byId("crowd-size-range").addEventListener("input", function () { renderCrowdSize(true); });
         byId("copy-market-command").addEventListener("click", copyCrowdCommand);
         byId("leave-crowd-mode").addEventListener("click", leaveCrowdMode);
     }
