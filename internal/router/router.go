@@ -46,6 +46,9 @@ func registerStaticAssets(engine *gin.Engine) {
 
 func registerPages(engine *gin.Engine) {
 	engine.GET("/", func(ctx *gin.Context) {
+		ctx.HTML(http.StatusOK, "market.html", nil)
+	})
+	engine.GET("/lab", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "lottery.html", nil)
 	})
 	engine.GET("/result", func(ctx *gin.Context) {

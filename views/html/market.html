@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#08111d" />
+    <meta name="description" content="在 Silas 炼金市选择材料索引，再进入 Cache-Aside 数据检索实验室。" />
+    <title>魔法潮汐将至 · Silas 炼金市</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=3" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260719-two-page-2" />
+</head>
+
+<body class="cache-lab-page market-entry-page">
+    <div class="lab-background" aria-hidden="true">
+        <div class="lab-grid"></div>
+        <div class="lab-haze haze-one"></div>
+        <div class="lab-haze haze-two"></div>
+    </div>
+
+    <header class="market-entry-header">
+        <a class="lab-brand" href="/" aria-label="Silas 炼金市首页">
+            <span class="lab-brand-mark">S</span>
+            <span><strong>SILAS</strong><small>ALCHEMY MARKET</small></span>
+        </a>
+        <span class="market-entry-location"><i></i>炼金市材料情报处 · OPEN</span>
+    </header>
+
+    <main class="market-entry-main">
+        <section class="market-entry-hero" aria-labelledby="market-title">
+            <div class="market-entry-copy">
+                <p>MARKET EXTERIOR · MATERIAL INTELLIGENCE</p>
+                <h1 id="market-title">魔法潮汐将至</h1>
+                <h2>Silas 炼金市材料情报查询</h2>
+                <p class="market-entry-summary">
+                    大量访客会在短时间内查询同一份材料档案。本实验将展示：如果每次都直读 MySQL，会发生什么；如果先查 Redis Cache-Aside，又会发生什么。
+                </p>
+                <div class="market-entry-comparison" aria-label="实验对比说明">
+                    <span><i>MYSQL DIRECT</i><b>每次查询进入数据库</b></span>
+                    <span><i>REDIS CACHE-ASIDE</i><b>重复读取优先停在缓存</b></span>
+                </div>
+            </div>
+
+            <div class="market-entry-visual" aria-hidden="true">
+                <div class="entry-shop-sign"><span>SILAS</span><small>MATERIAL ARCHIVES</small></div>
+                <div class="entry-shop-window"><i></i><i></i><i></i></div>
+                <div class="entry-counter-slot"></div>
+                <div class="entry-visitor entry-visitor-main"><i></i></div>
+                <div class="entry-visitor entry-visitor-back entry-visitor-one"><i></i></div>
+                <div class="entry-visitor entry-visitor-back entry-visitor-two"><i></i></div>
+                <div class="entry-query-ticket">ARC-???</div>
+            </div>
+        </section>
+
+        <section class="market-directory" aria-labelledby="directory-title">
+            <div class="market-directory-heading">
+                <div>
+                    <p>01 / MATERIAL INDEX</p>
+                    <h2 id="directory-title">选择一份材料索引</h2>
+                    <span>目录只提供档案编号、模糊轮廓和线索；完整资料需要进入实验室查询。</span>
+                </div>
+                <span id="entry-directory-status" class="entry-directory-status" role="status">正在读取材料目录</span>
+            </div>
+
+            <div id="entry-material-grid" class="entry-material-grid" role="listbox" aria-label="材料情报目录">
+                <span class="entry-material-skeleton"></span>
+                <span class="entry-material-skeleton"></span>
+                <span class="entry-material-skeleton"></span>
+                <span class="entry-material-skeleton"></span>
+            </div>
+
+            <div class="market-entry-footer">
+                <div class="entry-selection-summary">
+                    <span>CURRENT MATERIAL</span>
+                    <strong id="entry-selected-title">尚未选择材料</strong>
+                    <p id="entry-selected-copy">请选择一份想要查询的材料索引。</p>
+                </div>
+                <div class="entry-action-group">
+                    <button id="enter-lab" type="button" disabled>进入检索实验室</button>
+                    <small>将当前选中的材料带入实验室，进入后可切换 MySQL Direct / Redis Cache-Aside。</small>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="story-toast" class="lab-toast" role="status" aria-live="polite"></div>
+    <script src="/js/seckill-lab.js?v=20260719-two-page-2"></script>
+</body>
+
+</html>
