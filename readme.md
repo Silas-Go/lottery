@@ -6,7 +6,7 @@
 
 > **那本不该被翻烂的《百职录》**
 >
-> 当几千个人反复询问同一份职业档案，为什么“每次都查 MySQL”这条诚实的旧规矩会失效？Cache-Aside 又究竟替系统挡住了什么？
+> 当几千个人反复询问同一份材料聚合详情，为什么“每次都 JOIN 与聚合 MySQL”这条诚实的旧规矩会失效？Cache-Aside 又究竟替系统挡住了什么？
 
 首页不会提前展示库存、订单或 MQ。第一章只讲读取；写入竞争会在后续章节登场。
 
@@ -26,18 +26,27 @@ docker compose up -d --build
 http://localhost:5678/
 ```
 
+### Windows / macOS 压测兼容
+
+`docker/wrk2/Dockerfile` 会读取 Docker BuildKit 提供的 `TARGETARCH`，不需要手动指定 `--platform`：
+
+- `amd64`（常见 Windows、Intel Mac）构建 wrk2 主线版本；
+- `arm64`（Apple Silicon Mac、Windows on ARM）构建 AArch64 兼容版本。
+
+仓库通过 `.gitattributes` 强制 Shell 和 Lua 脚本使用 LF，避免 Windows 的 CRLF 让 Linux 容器入口启动失败。首次构建 wrk2 需要下载编译工具链；Dockerfile 会按 CPU 架构隔离 apt 缓存，并对镜像源的临时 5xx 和中断下载自动重试。
+
 然后按页面顺序完成四件事：
 
-1. 从《百职录》选择一种职业。此时每次翻页都直接查询 MySQL 真本。
-2. 复制“旧规矩”压测指令到项目终端，观察真本翻阅次数、QPS、P99 和连接池峰值。
-3. 唤醒 Redis 记忆水晶。第一次查询真实发生 `MISS -> MySQL -> SET`，后续查询命中缓存。
-4. 使用相同压力运行第二条指令，查看每千请求 MySQL 读取数的归一化对比。
+1. 从市场选择一种材料。基础列表保持轻量，进入实验室后读取聚合详情。
+2. 复制“旧规矩”压测指令到项目终端，观察 SQL 查询数、QPS、P99 和连接池峰值。
+3. 唤醒 Redis 记忆水晶。第一次查询真实发生 `MISS -> 4 SQL -> SET DTO`，后续直接命中最终 JSON。
+4. 使用相同压力运行第二条指令，查看每千请求 SQL 查询数的归一化对比。
 
-推荐先使用页面默认的 `300 人/秒 × 20 秒`。它足以产生清晰证据，又不会像无上限压测一样把本机基础设施推向失控。
+推荐从页面默认的 `300 req/s` 开始，再按 `500 -> 1000 req/s` 阶梯寻找本机拐点；目标速率不是并发连接数，页面生成的命令固定使用 96 个连接。
 
 重新讲述本章时，点击页脚的“合拢书本，重新讲述”。它只会清空：
 
-- `archive:profession:*` Redis 缓存；
+- `archive:material-detail:v1:*` Redis 最终 DTO 缓存；
 - 第一章的直读与缓存读指标。
 
 它不会删除秒杀订单，也不会改动任何库存。
@@ -48,8 +57,8 @@ http://localhost:5678/
 
 | 不变量 | 内容 |
 |---|---|
-| 业务语义 | 读取同一页职业档案 |
-| 权威数据 | MySQL `profession_archives` |
+| 业务语义 | 读取同一份材料聚合详情 |
+| 权威数据 | MySQL 材料基础、组成、交易与评分表 |
 | HTTP 响应体 | 完全相同的 JSON |
 | 压测工具 | wrk2 固定 QPS |
 | 速率、时长、连接数 | 页面同时更新两条命令 |
@@ -75,7 +84,7 @@ Browser / wrk2 -> Go API -> Redis
 | 故事语言 | 技术指标 |
 |---|---|
 | 赶来的访客 | HTTP `totalRequests` |
-| 真本翻阅次数 | MySQL `dbReads` |
+| 真本查询次数 | MySQL `sqlQueries`（兼容字段 `dbReads` 同值） |
 | 每秒问询 | 最近请求桶计算的 `qps` |
 | 99% 回答不超过 | `p99` 端到端延迟 |
 | 长廊最高占用 | MySQL pool peak / capacity |
@@ -89,9 +98,9 @@ Browser / wrk2 -> Go API -> Redis
 
 | 路径 | 方法 | 说明 |
 |---|---|---|
-| `/api/archives` | GET | 职业目录；不计入对比指标 |
-| `/api/archives/:id/direct` | GET | 每次直读 MySQL |
-| `/api/archives/:id/cached` | GET | Redis Cache-Aside 读取 |
+| `/api/archives` | GET | 材料基础列表；不计入对比指标 |
+| `/api/archives/:id/direct` | GET | 每次执行 4 条 SQL 组装聚合详情 |
+| `/api/archives/:id/cached` | GET | Redis Cache-Aside 读取最终 DTO |
 | `/api/chapters/cache-aside/reset` | POST | 清缓存并重置本章指标 |
 | `/api/metrics/snapshot` | GET | 全部服务端指标快照，含 `archiveRead` |
 | `/api/metrics/stream` | GET | SSE 实时指标流 |
@@ -101,14 +110,15 @@ Browser / wrk2 -> Go API -> Redis
 ```text
 X-Read-Path: mysql-direct | cache-aside
 X-Archive-Source: mysql | redis-miss | redis-hit | redis-fallback
+X-SQL-Queries: 0 | 1..4
 ```
 
 缓存 key 与边界：
 
 ```text
-key: archive:profession:{id}
+key: archive:material-detail:v1:{id}
 TTL: 300s
-权威源: MySQL profession_archives
+权威源: MySQL material_catalog / material_components / material_trades / material_reviews
 ```
 
 同进程冷启动并发通过双检互斥合并回源，避免第一波 MISS 放大成缓存击穿。Redis 故障时请求降级回源 MySQL：缓存可以失去，真本不能失去。

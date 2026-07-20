@@ -28,29 +28,31 @@ type ArchiveReadSnapshot struct {
 type ArchiveReadPathSnapshot struct {
 	TotalRequests int64 `json:"totalRequests"`
 	QPS           int64 `json:"qps"`
-	DBReads       int64 `json:"dbReads"`
-	CacheHits     int64 `json:"cacheHits"`
-	CacheMisses   int64 `json:"cacheMisses"`
-	CacheErrors   int64 `json:"cacheErrors"`
-	Coalesced     int64 `json:"coalesced"`
-	CacheHitRate  int64 `json:"cacheHitRate"`
-	Errors        int64 `json:"errors"`
-	AvgLatency    int64 `json:"avgLatency"`
-	P95           int64 `json:"p95"`
-	P99           int64 `json:"p99"`
-	MaxLatency    int64 `json:"maxLatency"`
-	DBAvgLatency  int64 `json:"dbAvgLatency"`
-	DBP95Latency  int64 `json:"dbP95Latency"`
-	DBP99Latency  int64 `json:"dbP99Latency"`
-	PoolInUse     int64 `json:"poolInUse"`
-	PoolPeak      int64 `json:"poolPeak"`
-	PoolCapacity  int64 `json:"poolCapacity"`
-	PoolUsage     int64 `json:"poolUsage"`
+	// SQLQueries 是详情组装实际执行的 SQL 语句数；DBReads 保留为旧前端兼容别名。
+	SQLQueries   int64 `json:"sqlQueries"`
+	DBReads      int64 `json:"dbReads"`
+	CacheHits    int64 `json:"cacheHits"`
+	CacheMisses  int64 `json:"cacheMisses"`
+	CacheErrors  int64 `json:"cacheErrors"`
+	Coalesced    int64 `json:"coalesced"`
+	CacheHitRate int64 `json:"cacheHitRate"`
+	Errors       int64 `json:"errors"`
+	AvgLatency   int64 `json:"avgLatency"`
+	P95          int64 `json:"p95"`
+	P99          int64 `json:"p99"`
+	MaxLatency   int64 `json:"maxLatency"`
+	DBAvgLatency int64 `json:"dbAvgLatency"`
+	DBP95Latency int64 `json:"dbP95Latency"`
+	DBP99Latency int64 `json:"dbP99Latency"`
+	PoolInUse    int64 `json:"poolInUse"`
+	PoolPeak     int64 `json:"poolPeak"`
+	PoolCapacity int64 `json:"poolCapacity"`
+	PoolUsage    int64 `json:"poolUsage"`
 }
 
 type archivePathMeter struct {
 	totalRequests int64
-	dbReads       int64
+	sqlQueries    int64
 	cacheHits     int64
 	cacheMisses   int64
 	cacheErrors   int64
@@ -110,10 +112,11 @@ func RecordArchiveLatency(path string, duration time.Duration, failed bool) {
 	meter.mu.Unlock()
 }
 
-// RecordArchiveDBRead 记录一次真正翻阅 MySQL 真本的查询及连接池采样。
-func RecordArchiveDBRead(path string, duration time.Duration, inUse, capacity int) {
+// RecordArchiveSQLQueries 记录一次详情 DTO 组装实际执行的 SQL 数量、总耗时和连接池采样。
+// duration 是整个查询束的耗时，而不是人为叠加的单 SQL 延迟。
+func RecordArchiveSQLQueries(path string, duration time.Duration, queryCount, inUse, capacity int) {
 	meter := archiveMeter(path)
-	atomic.AddInt64(&meter.dbReads, 1)
+	atomic.AddInt64(&meter.sqlQueries, int64(queryCount))
 	atomic.StoreInt64(&meter.poolInUse, int64(inUse))
 	atomic.StoreInt64(&meter.poolCapacity, int64(capacity))
 	updateMax(&meter.poolPeak, int64(inUse))
@@ -144,7 +147,7 @@ func appendBounded(values []int64, value int64) []int64 {
 func ResetArchiveRead() {
 	for _, meter := range archiveMeters {
 		atomic.StoreInt64(&meter.totalRequests, 0)
-		atomic.StoreInt64(&meter.dbReads, 0)
+		atomic.StoreInt64(&meter.sqlQueries, 0)
 		atomic.StoreInt64(&meter.cacheHits, 0)
 		atomic.StoreInt64(&meter.cacheMisses, 0)
 		atomic.StoreInt64(&meter.cacheErrors, 0)
@@ -193,9 +196,10 @@ func snapshotArchivePath(now time.Time, meter *archivePathMeter) ArchiveReadPath
 	if capacity > 0 {
 		usage = peak * 100 / capacity
 	}
+	sqlQueries := atomic.LoadInt64(&meter.sqlQueries)
 	return ArchiveReadPathSnapshot{
 		TotalRequests: atomic.LoadInt64(&meter.totalRequests), QPS: qps,
-		DBReads: atomic.LoadInt64(&meter.dbReads), CacheHits: hits, CacheMisses: misses,
+		SQLQueries: sqlQueries, DBReads: sqlQueries, CacheHits: hits, CacheMisses: misses,
 		CacheErrors: atomic.LoadInt64(&meter.cacheErrors), Coalesced: atomic.LoadInt64(&meter.coalesced),
 		CacheHitRate: hitRate, Errors: atomic.LoadInt64(&meter.errors),
 		AvgLatency: average(latencies), P95: percentile(latencies, .95), P99: percentile(latencies, .99),

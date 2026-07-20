@@ -2,8 +2,9 @@
     "use strict";
 
     var STORAGE_KEY = "silas.cache-aside.experiment-state.v1";
-    var RESULTS_KEY = "silas.cache-aside.experiment-results.v1";
-    var PENDING_RUN_KEY = "silas.cache-aside.pending-run.v1";
+    // v2 使用“最终 DTO + 实际 SQL 条数”口径，不能与旧版单表 DB Read 结果混合比较。
+    var RESULTS_KEY = "silas.cache-aside.experiment-results.v2";
+    var PENDING_RUN_KEY = "silas.cache-aside.pending-run.v2";
     var PURCHASE_RESULTS_KEY = "silas.cache-aside.purchase-results.v1";
     var EVENT_NAME = "silas:experiment-state-change";
     var RESULTS_EVENT_NAME = "silas:experiment-results-change";
@@ -131,6 +132,16 @@
         }
     }
 
+    function clearResults() {
+        try {
+            global.sessionStorage.removeItem(RESULTS_KEY);
+            global.sessionStorage.removeItem(PENDING_RUN_KEY);
+        } catch (_) {
+            // 页面仍会立即收到清空事件；禁用存储只影响跨页面恢复。
+        }
+        global.dispatchEvent(new CustomEvent(RESULTS_EVENT_NAME, { detail: null }));
+    }
+
     function subscribeResults(listener) {
         function handle(event) { listener(event.detail || null); }
         global.addEventListener(RESULTS_EVENT_NAME, handle);
@@ -144,6 +155,7 @@
         arm: armRun,
         pending: pendingRun,
         clearPending: clearPendingRun,
+        clear: clearResults,
         subscribe: subscribeResults
     });
 

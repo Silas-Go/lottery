@@ -18,7 +18,8 @@
     var crowdBaselinePath = null;
     var crowdArmed = false;
     var crowdTransitionStarted = false;
-    var crowdSize = 60;
+    var crowdSize = 300;
+    var crowdDurationSeconds = 20;
 
     function byId(id) {
         return document.getElementById(id);
@@ -67,7 +68,7 @@
         var experiment = experimentState.get();
         var path = experiment.mode === "cached" ? "cached" : "direct";
         var loadCommand = "docker compose --profile loadtest run --rm --no-deps " +
-            "-e RATE=" + crowdSize + " -e DURATION=20s -e CONNECTIONS=96 " +
+            "-e RATE=" + crowdSize + " -e DURATION=" + crowdDurationSeconds + "s -e CONNECTIONS=96 " +
             "-e TARGET_URL=http://app:5678/api/archives/" + materialNumericId() + "/" + path + " " +
             "-e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
         if (experiment.mode === "cached" && experiment.cacheTemperature === "cold") {
@@ -102,8 +103,8 @@
 
     function renderCrowdSize(invalidateCopiedCommand) {
         var range = byId("crowd-size-range");
-        crowdSize = Math.max(1, Math.min(300, Number(range.value) || 1));
-        byId("crowd-size-value").textContent = crowdSize + " / 300 人";
+        crowdSize = Math.max(100, Math.min(1000, Number(range.value) || 300));
+        byId("crowd-size-value").textContent = crowdSize + " / 1000 req/s";
         if (selectedCode) {
             byId("market-load-command").textContent = crowdCommand();
         }
@@ -118,9 +119,9 @@
             experimentResults.clearPending();
             setState("crowd_preparing");
             byId("crowd-status-title").textContent = "人数已调整，请重新复制命令";
-            byId("crowd-status-copy").textContent = crowdSize + " 位访客正在门口等待投递。";
+            byId("crowd-status-copy").textContent = "目标 " + crowdSize + " req/s，等待重新复制命令。";
         } else if (state === "crowd_preparing") {
-            byId("crowd-status-copy").textContent = crowdSize + " 位访客正在门口排队，但尚未开始投递。";
+            byId("crowd-status-copy").textContent = "目标 " + crowdSize + " req/s，尚未开始投递。";
         }
     }
 
@@ -203,7 +204,7 @@
         }
         return {
             totalRequests: Number(path.totalRequests || 0),
-            dbReads: Number(path.dbReads || 0),
+            sqlQueries: Number(path.sqlQueries === undefined ? path.dbReads || 0 : path.sqlQueries),
             cacheHits: Number(path.cacheHits || 0),
             cacheMisses: Number(path.cacheMisses || 0),
             cacheErrors: Number(path.cacheErrors || 0),
@@ -338,12 +339,13 @@
             mode: experiment.mode,
             cacheTemperature: experiment.cacheTemperature,
             expectedRate: crowdSize,
+            expectedDurationSeconds: crowdDurationSeconds,
             baseline: crowdBaselinePath,
             armedAt: new Date().toISOString()
         });
         setState("crowd_armed");
         byId("crowd-status-title").textContent = "已准备，等待你在终端执行";
-        byId("crowd-status-copy").textContent = crowdSize + " 位访客已准备；检测到真实请求后才会投递。";
+        byId("crowd-status-copy").textContent = "目标 " + crowdSize + " req/s 已准备；检测到真实请求后才会投递。";
         showToast("压测命令已复制");
         byId("market-announcer").textContent = "压测命令已复制，队伍已准备，等待终端执行";
         if (crowdBaseline === null) {

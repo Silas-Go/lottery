@@ -8,7 +8,7 @@
     <meta name="description" content="在阳光下的 Silas 炼金市选择材料档案片，再进入 Cache-Aside 技术实验室。" />
     <title>Silas 炼金市 · 材料情报店</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-shared-strategy" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260720-clear-comparison" />
 </head>
 
 <body class="market-page" data-event-state="arrival">
@@ -176,7 +176,7 @@
                                 <strong>单人购买</strong><small>先投递一次只读资料校验</small>
                             </button>
                             <button id="crowd-test" type="button">
-                                <strong>召集人潮</strong><small>调整 1～300 位访客，准备批量投递</small>
+                                <strong>召集人潮</strong><small>调整 100～1000 req/s，准备批量投递</small>
                             </button>
                         </div>
                         <small class="purchase-boundary">此处不会直接扣减库存；购买时会重新校验价格与库存。</small>
@@ -188,9 +188,9 @@
                             <button id="leave-crowd-mode" type="button">返回方式选择</button>
                         </header>
                         <label class="crowd-size-control" for="crowd-size-range">
-                            <span><strong>压测人数</strong><output id="crowd-size-value" for="crowd-size-range">60 / 300 人</output></span>
-                            <input id="crowd-size-range" type="range" min="1" max="300" step="1" value="60" aria-describedby="crowd-size-note" />
-                            <small id="crowd-size-note">向右滑动会增加门口队伍；1 位访客对应 1 req/s。</small>
+                            <span><strong>目标速率</strong><output id="crowd-size-value" for="crowd-size-range">300 / 1000 req/s</output></span>
+                            <input id="crowd-size-range" type="range" min="100" max="1000" step="100" value="300" aria-describedby="crowd-size-note" />
+                            <small id="crowd-size-note">队伍是请求速率的故事隐喻；并发连接固定为 96，不等于访客数字。</small>
                         </label>
                         <code id="market-load-command">正在生成压测命令…</code>
                         <button id="copy-market-command" class="event-primary" type="button">复制压测命令</button>
@@ -215,8 +215,8 @@
 
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
-    <script src="/js/experiment-state.js?v=20260719-shared-strategy"></script>
-    <script src="/js/market.js?v=20260719-shared-strategy"></script>
+    <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
+    <script src="/js/market.js?v=20260720-material-detail"></script>
 </body>
 
 </html>

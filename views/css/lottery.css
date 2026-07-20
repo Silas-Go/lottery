@@ -2500,6 +2500,34 @@ select:focus-visible {
     letter-spacing: .03em !important;
 }
 
+.result-heading-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+}
+
+#clear-comparison {
+    min-height: 30px;
+    padding: 0 10px;
+    cursor: pointer;
+    border: 1px solid rgba(102, 211, 208, .28);
+    border-radius: 3px;
+    background: rgba(102, 211, 208, .05);
+    color: #9adbd8;
+    font: 900 9px/1 "SFMono-Regular", Consolas, monospace;
+}
+
+#clear-comparison:hover:not(:disabled) {
+    border-color: rgba(102, 211, 208, .52);
+    background: rgba(102, 211, 208, .1);
+}
+
+#clear-comparison:disabled {
+    cursor: wait;
+    opacity: .5;
+}
+
 .frozen-result-cards {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2881,6 +2909,8 @@ select:focus-visible {
     .lab-status-actions { align-items: stretch; flex-direction: column; }
     .connection-state { justify-content: center; }
     .panel-heading { align-items: stretch; flex-direction: column; gap: 9px; }
+    .result-heading-actions { align-items: stretch; flex-direction: column; }
+    #clear-comparison { align-self: flex-start; }
     .endpoint-label,
     .metrics-timestamp,
     .readonly-badge { align-self: flex-start; }

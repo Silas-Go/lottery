@@ -61,12 +61,12 @@
             label: "MYSQL DIRECT",
             title: "Client → Go API → MySQL → Response",
             redis: "NOT INVOLVED",
-            mysql: "DB READ",
+            mysql: "4 SQL QUERIES",
             tone: "direct",
             events: [
                 ["MYSQL DIRECT", "Go API 选择直读路径", "本次不查询 Redis"],
                 ["REDIS NOT INVOLVED", "Redis 不参与", "缓存层保持待机"],
-                ["MYSQL DB READ", "读取权威材料档案", "DB Reads 增加"],
+                ["MYSQL AGGREGATION", "组装材料聚合详情", "基础 JOIN、组成、交易、评分共 4 条 SQL"],
                 ["RESPONSE", "只读 JSON 返回 Client", "完成本次真实路径回放"]
             ],
             frames: [
@@ -83,7 +83,7 @@
             tone: "hit",
             events: [
                 ["CACHE LOOKUP", "Go API 查询 Redis 槽位", "按 archive ID 读取缓存副本"],
-                ["REDIS CACHE HIT", "命中只读档案副本", "不产生 MySQL DB Read"],
+                ["REDIS CACHE HIT", "命中最终详情 DTO", "不执行 MySQL JOIN 或聚合"],
                 ["MYSQL STANDBY", "MySQL 保持待机", "连接池不承接本次读取"],
                 ["RESPONSE", "缓存内容返回 Client", "完成本次真实路径回放"]
             ],
@@ -97,13 +97,13 @@
             label: "CACHE MISS → CACHE FILLED",
             title: "Client → Go API → Redis → MySQL → Redis → Response",
             redis: "CACHE MISS",
-            mysql: "DB READ",
+            mysql: "4 SQL QUERIES",
             tone: "miss",
             events: [
                 ["CACHE LOOKUP", "Go API 查询 Redis 槽位", "当前 key 没有可用副本"],
                 ["CACHE MISS", "Redis 返回未命中", "请求继续回源 MySQL"],
-                ["MYSQL DB READ", "读取权威材料档案", "DB Reads 增加"],
-                ["CACHE FILLED", "响应体回填 Redis", "TTL 重置为 300 秒"],
+                ["MYSQL AGGREGATION", "组装材料聚合详情", "执行 4 条真实 SQL"],
+                ["CACHE FILLED", "最终 DTO 回填 Redis", "TTL 重置为 300 秒"],
                 ["RESPONSE", "只读 JSON 返回 Client", "完成本次真实路径回放"]
             ],
             frames: [
@@ -122,7 +122,7 @@
             events: [
                 ["CACHE LOOKUP", "Go API 尝试读取 Redis", "缓存层返回异常"],
                 ["REDIS FALLBACK", "启用 MySQL 安全旁路", "缓存故障不阻断正确读取"],
-                ["MYSQL DB READ", "读取权威材料档案", "本次不执行缓存回填"],
+                ["MYSQL AGGREGATION", "安全回源并组装详情", "执行 4 条 SQL，本次不回填"],
                 ["RESPONSE", "只读 JSON 返回 Client", "完成降级路径回放"]
             ],
             frames: [
@@ -245,7 +245,7 @@
             (next.cacheTemperature === "cold" ?
                 "查询前先清空档案缓存与本章指标，首个真实响应应映射为 Cache Miss。" :
                 "保留已有 Redis 副本；实际结果仍以 X-Archive-Source 的 Hit 或 Miss 为准。") :
-            "Redis 不参与；每次请求都会产生 MySQL DB Read。";
+            "Redis 不参与；每次请求都执行基础 JOIN、组成、交易和评分共 4 条 SQL。";
         renderActiveMetrics();
     }
 
@@ -373,13 +373,24 @@
     }
 
     function resultMetric(result, key) {
-        return Number(result && result.metrics && result.metrics[key] || 0);
+        var metrics = result && result.metrics || {};
+        if (key === "sqlQueries" && metrics.sqlQueries === undefined) {
+            return Number(metrics.dbReads || 0);
+        }
+        return Number(metrics[key] || 0);
     }
 
     function renderFrozenCard(mode, result) {
         var card = byId(mode === "cached" ? "frozen-cached" : "frozen-direct");
         if (!result) {
             card.classList.add("is-empty");
+            card.querySelector("header > span").textContent = "待测试";
+            card.querySelector("[data-result-context]").textContent = mode === "cached" ?
+                "完成旁路缓存测试后自动冻结" : "完成直查测试后自动冻结";
+            Array.prototype.forEach.call(card.querySelectorAll("[data-result]"), function (node) {
+                node.textContent = "—";
+            });
+            card.querySelector("[data-result-time]").textContent = "结果不会随实时指标变化";
             return;
         }
         card.classList.remove("is-empty");
@@ -387,7 +398,8 @@
         var temperature = mode === "cached" ?
             " · " + (result.cacheTemperature === "hot" ? "热缓存" : "冷缓存") : "";
         var runKind = result.entry === "crowd" ?
-            "多人压测" + (result.expectedRate ? " · " + result.expectedRate + " req/s" : "") : "单次检索";
+            "多人压测" + (result.expectedRate ? " · " + result.expectedRate + " req/s" : "") +
+            (result.expectedDurationSeconds ? " · " + result.expectedDurationSeconds + "s" : "") : "单次检索";
         card.querySelector("[data-result-context]").textContent =
             (result.materialCode || "材料未标记") + " · " + (result.materialName || "") + temperature + " · " + runKind;
         Array.prototype.forEach.call(card.querySelectorAll("[data-result]"), function (node) {
@@ -407,7 +419,7 @@
             new Date(result.frozenAt).toLocaleTimeString("zh-CN", { hour12: false });
     }
 
-    function setComparisonRow(name, directText, cachedText, directValue, cachedValue, preference, comparable) {
+    function setComparisonRow(name, directText, cachedText, directValue, cachedValue, preference, comparable, tieTolerance) {
         var row = byId("compare-" + name + "-row");
         byId("compare-" + name + "-direct").textContent = directText;
         byId("compare-" + name + "-cached").textContent = cachedText;
@@ -416,7 +428,7 @@
             byId("compare-" + name + "-winner").textContent = "条件不同";
             return null;
         }
-        if (directValue === cachedValue) {
+        if (Math.abs(directValue - cachedValue) <= Number(tieTolerance || 0)) {
             row.classList.add("is-tie");
             byId("compare-" + name + "-winner").textContent = "持平";
             return "tie";
@@ -434,13 +446,28 @@
         if (direct.materialCode !== cached.materialCode) {
             return false;
         }
-        return Number(direct.expectedRate || 0) === Number(cached.expectedRate || 0);
+        return Number(direct.expectedRate || 0) === Number(cached.expectedRate || 0) &&
+            Number(direct.expectedDurationSeconds || 20) === Number(cached.expectedDurationSeconds || 20);
+    }
+
+    function resetFrozenComparison() {
+        ["db", "qps", "p99", "pool", "error"].forEach(function (name) {
+            var row = byId("compare-" + name + "-row");
+            row.classList.remove("winner-direct", "winner-cached", "is-tie");
+            byId("compare-" + name + "-direct").textContent = "—";
+            byId("compare-" + name + "-cached").textContent = "—";
+            byId("compare-" + name + "-winner").textContent = "等待";
+        });
+        byId("compare-hit-row").classList.remove("winner-direct", "winner-cached", "is-tie");
+        byId("compare-hit-cached").textContent = "—";
+        byId("compare-hit-assessment").textContent = "Redis 专属指标";
     }
 
     function renderFrozenComparison(direct, cached) {
         var panel = byId("frozen-comparison");
         if (!direct || !cached) {
             panel.classList.add("is-waiting");
+            resetFrozenComparison();
             byId("frozen-comparison-title").textContent = "还需要两种路径各完成一轮测试";
             byId("frozen-overall-winner").textContent = "WAITING";
             return;
@@ -450,17 +477,18 @@
         var fair = comparisonIsFair(direct, cached);
         var directRequests = Math.max(1, resultMetric(direct, "requests"));
         var cachedRequests = Math.max(1, resultMetric(cached, "requests"));
-        var directDBRate = resultMetric(direct, "dbReads") * 1000 / directRequests;
-        var cachedDBRate = resultMetric(cached, "dbReads") * 1000 / cachedRequests;
+        var directDBRate = resultMetric(direct, "sqlQueries") * 1000 / directRequests;
+        var cachedDBRate = resultMetric(cached, "sqlQueries") * 1000 / cachedRequests;
         var directErrorRate = resultMetric(direct, "errors") * 1000 / directRequests;
         var cachedErrorRate = resultMetric(cached, "errors") * 1000 / cachedRequests;
         var directPoolUsage = resultMetric(direct, "poolCapacity") ?
             resultMetric(direct, "poolPeak") * 100 / resultMetric(direct, "poolCapacity") : 0;
         var cachedPoolUsage = resultMetric(cached, "poolCapacity") ?
             resultMetric(cached, "poolPeak") * 100 / resultMetric(cached, "poolCapacity") : 0;
+        var qpsTieTolerance = Math.max(resultMetric(direct, "qps"), resultMetric(cached, "qps")) * .02;
         var winners = [
             setComparisonRow("db", directDBRate.toFixed(1), cachedDBRate.toFixed(1), directDBRate, cachedDBRate, "lower", fair),
-            setComparisonRow("qps", formatNumber(resultMetric(direct, "qps")), formatNumber(resultMetric(cached, "qps")), resultMetric(direct, "qps"), resultMetric(cached, "qps"), "higher", fair),
+            setComparisonRow("qps", formatNumber(resultMetric(direct, "qps")), formatNumber(resultMetric(cached, "qps")), resultMetric(direct, "qps"), resultMetric(cached, "qps"), "higher", fair, qpsTieTolerance),
             setComparisonRow("p99", resultMetric(direct, "p99") + " ms", resultMetric(cached, "p99") + " ms", resultMetric(direct, "p99"), resultMetric(cached, "p99"), "lower", fair),
             setComparisonRow("pool", directPoolUsage.toFixed(1) + "%", cachedPoolUsage.toFixed(1) + "%", directPoolUsage, cachedPoolUsage, "lower", fair),
             setComparisonRow("error", directErrorRate.toFixed(1), cachedErrorRate.toFixed(1), directErrorRate, cachedErrorRate, "lower", fair)
@@ -473,8 +501,8 @@
         if (!fair) {
             var onlyPathChecks = direct.entry === "single" && cached.entry === "single";
             byId("frozen-comparison-title").textContent = onlyPathChecks ?
-                "单次检索只验证路径；请各完成一轮同人数压测后再判胜负" :
-                "两轮材料或压测人数不同，仅展示结果，不判总胜负";
+                "单次检索只验证路径；请各完成一轮同速率压测后再判胜负" :
+                "两轮材料、目标速率或时长不同，仅展示结果，不判总胜负";
             byId("frozen-overall-winner").textContent = onlyPathChecks ? "PATH CHECK ONLY" : "NOT COMPARABLE";
             return;
         }
@@ -508,10 +536,9 @@
         showToast("本轮实验结果已冻结，可用于下一轮对比。", "success");
     }
 
-    function freezeSingleResult(source, latency) {
+    function freezeSingleResult(source, latency, sqlQueries) {
         var experiment = currentExperiment();
         var cached = experiment.mode === "cached";
-        var didDBRead = source === "mysql" || source === "redis-miss" || source === "redis-fallback";
         var hitRate = cached ? (source === "redis-hit" ? 100 : (source === "redis-miss" ? 0 : null)) : null;
         var currentPath = state.snapshot && (cached ? state.snapshot.cached : state.snapshot.direct);
         completeResult({
@@ -523,7 +550,7 @@
             metrics: {
                 requests: 1,
                 qps: 1,
-                dbReads: didDBRead ? 1 : 0,
+                sqlQueries: Number(sqlQueries || 0),
                 p99: Math.max(1, Math.round(latency)),
                 poolPeak: Number(currentPath && currentPath.poolPeak || 0),
                 poolCapacity: Number(currentPath && currentPath.poolCapacity || 0),
@@ -534,7 +561,14 @@
     }
 
     function runCounterDelta(current, baseline, key) {
-        return Math.max(0, Number(current[key] || 0) - Number(baseline[key] || 0));
+        function value(source) {
+            source = source || {};
+            if (key === "sqlQueries" && source.sqlQueries === undefined) {
+                return Number(source.dbReads || 0);
+            }
+            return Number(source[key] || 0);
+        }
+        return Math.max(0, value(current) - value(baseline));
     }
 
     function trackCrowdRun(direct, cached, at) {
@@ -560,8 +594,6 @@
             state.crowdRun = {
                 baseline: baseline,
                 latest: path,
-                peakQPS: path.qps,
-                peakP99: path.p99,
                 peakPool: path.poolPeak,
                 poolCapacity: path.poolCapacity,
                 startedAt: at || new Date().toISOString()
@@ -572,8 +604,6 @@
             }
         } else {
             state.crowdRun.latest = path;
-            state.crowdRun.peakQPS = Math.max(state.crowdRun.peakQPS, path.qps);
-            state.crowdRun.peakP99 = Math.max(state.crowdRun.peakP99, path.p99);
             state.crowdRun.peakPool = Math.max(state.crowdRun.peakPool, path.poolPeak);
             state.crowdRun.poolCapacity = Math.max(state.crowdRun.poolCapacity, path.poolCapacity);
         }
@@ -585,6 +615,7 @@
         var requests = runCounterDelta(run.latest, run.baseline, "totalRequests");
         var hits = runCounterDelta(run.latest, run.baseline, "cacheHits");
         var misses = runCounterDelta(run.latest, run.baseline, "cacheMisses");
+        var durationSeconds = Math.max(1, Number(state.pendingRun.expectedDurationSeconds || 20));
         if (requests <= 0) {
             return;
         }
@@ -595,12 +626,13 @@
             mode: mode,
             cacheTemperature: state.pendingRun.cacheTemperature,
             expectedRate: state.pendingRun.expectedRate,
+            expectedDurationSeconds: durationSeconds,
             startedAt: run.startedAt,
             metrics: {
                 requests: requests,
-                qps: run.peakQPS,
-                dbReads: runCounterDelta(run.latest, run.baseline, "dbReads"),
-                p99: run.peakP99,
+                qps: Math.round(requests / durationSeconds),
+                sqlQueries: runCounterDelta(run.latest, run.baseline, "sqlQueries"),
+                p99: run.latest.p99,
                 poolPeak: run.peakPool,
                 poolCapacity: run.poolCapacity,
                 hitRate: mode === "cached" && hits + misses > 0 ? Math.round(hits * 100 / (hits + misses)) : null,
@@ -616,14 +648,23 @@
         byId("record-placeholder").hidden = true;
         byId("record-result").hidden = false;
         byId("record-result").dataset.kind = profile.kind;
-        byId("record-result-code").textContent = profile.code;
-        byId("record-result-name").textContent = profile.name;
-        byId("record-result-sigil").textContent = profile.sigil;
-        byId("record-rarity").textContent = profile.rarity;
-        byId("record-origin").textContent = profile.origin;
-        byId("record-attribute").textContent = profile.attribute;
-        byId("record-usage").textContent = profile.usage;
-        byId("record-risk").textContent = profile.risk;
+        byId("record-result-code").textContent = body.code || profile.code;
+        byId("record-result-name").textContent = body.name || profile.name;
+        byId("record-result-sigil").textContent = body.sigil || profile.sigil;
+        byId("record-rarity").textContent = body.rarity && body.rarity.label || profile.rarity;
+        byId("record-origin").textContent = body.source ? body.source.name + " · " + body.source.region : profile.origin;
+        byId("record-attribute").textContent = body.attribute || profile.attribute;
+        byId("record-usage").textContent = body.usage || profile.usage;
+        byId("record-risk").textContent = body.risk || profile.risk;
+        byId("record-price").textContent = formatNumber(body.price) + " 金币";
+        byId("record-stock").textContent = formatNumber(body.stock) + " 份";
+        byId("record-components").textContent = (body.components || []).map(function (component) {
+            return component.name + " × " + component.quantity + component.unit;
+        }).join("、") || "—";
+        byId("record-trades").textContent = body.tradeStats ?
+            formatNumber(body.tradeStats.transactions24h) + " 笔 · " + formatNumber(body.tradeStats.volume24h) + " 份" : "—";
+        byId("record-rating").textContent = body.rating ?
+            Number(body.rating.score || 0).toFixed(2) + " / 5 · " + formatNumber(body.rating.count) + " 条" : "—";
         byId("record-source").textContent = sourceLabel(source);
         byId("record-latency").textContent = latency.toFixed(1) + " ms";
     }
@@ -664,13 +705,14 @@
             var result = await requestJSON("/api/archives/" + state.id + "/" + path);
             var latency = window.performance.now() - started;
             var source = result.response.headers.get("X-Archive-Source") || "unknown";
+            var sqlQueries = Number(result.response.headers.get("X-SQL-Queries") || 0);
             state.isRequesting = false;
             byId("request-status").textContent = "响应已接收并保存";
             byId("actual-latency").textContent = latency.toFixed(1) + " ms";
             byId("actual-source").textContent = source;
             renderRecord(result.body, source, latency);
             if (state.entry === "single") {
-                freezeSingleResult(source, latency);
+                freezeSingleResult(source, latency, sqlQueries);
             }
             playRoute(source, "manual");
         } catch (error) {
@@ -689,7 +731,7 @@
         path = path || {};
         return {
             totalRequests: Number(path.totalRequests || 0), qps: Number(path.qps || 0),
-            dbReads: Number(path.dbReads || 0), p99: Number(path.p99 || 0),
+            sqlQueries: Number(path.sqlQueries === undefined ? path.dbReads || 0 : path.sqlQueries), p99: Number(path.p99 || 0),
             poolPeak: Number(path.poolPeak || 0), poolCapacity: Number(path.poolCapacity || 0),
             cacheHits: Number(path.cacheHits || 0), cacheMisses: Number(path.cacheMisses || 0),
             cacheErrors: Number(path.cacheErrors || 0), cacheHitRate: Number(path.cacheHitRate || 0),
@@ -708,7 +750,7 @@
         var cached = currentExperiment().mode === "cached";
         var path = cached ? state.snapshot.cached : state.snapshot.direct;
         setMetric("active-qps", path.qps);
-        setMetric("active-db-reads", path.dbReads);
+        setMetric("active-db-reads", path.sqlQueries);
         setMetric("active-p99", path.p99, " ms");
         byId("active-pool").textContent = formatNumber(path.poolPeak) + " / " + formatNumber(path.poolCapacity);
         byId("active-hit-rate").textContent = cached ? formatNumber(path.cacheHitRate) + "%" : "—";
@@ -717,7 +759,7 @@
     }
 
     function perThousand(path) {
-        return path.totalRequests ? Math.round(path.dbReads * 1000 / path.totalRequests) : null;
+        return path.totalRequests ? Math.round(path.sqlQueries * 1000 / path.totalRequests) : null;
     }
 
     function renderComparison(direct, cached) {
@@ -728,7 +770,7 @@
             return;
         }
         var reduction = directRate > 0 ? Math.max(0, Math.round((directRate - cachedRate) * 100 / directRate)) : 0;
-        byId("comparison-summary").textContent = "每千次请求的 DB Reads：" +
+        byId("comparison-summary").textContent = "每千次请求的 SQL Queries：" +
             formatNumber(directRate) + " → " + formatNumber(cachedRate) + "，减少 " + reduction + "%";
     }
 
@@ -766,8 +808,8 @@
         state.snapshot = { direct: direct, cached: cached };
         setMetric("direct-total", direct.totalRequests);
         setMetric("cached-total", cached.totalRequests);
-        setMetric("direct-db-reads", direct.dbReads);
-        setMetric("cached-db-reads", cached.dbReads);
+        setMetric("direct-db-reads", direct.sqlQueries);
+        setMetric("cached-db-reads", cached.sqlQueries);
         setMetric("direct-p99", direct.p99, " ms");
         setMetric("cached-p99", cached.p99, " ms");
         byId("direct-pool").textContent = formatNumber(direct.poolPeak) + " / " + formatNumber(direct.poolCapacity);
@@ -1013,9 +1055,34 @@
         }
     }
 
+    async function clearComparison() {
+        var button = byId("clear-comparison");
+        button.disabled = true;
+        experimentResults.clear();
+        state.pendingRun = null;
+        state.crowdRun = null;
+        state.previousRead = null;
+        resetMetricsHistory();
+        renderFrozenResults();
+        byId("freeze-status").textContent = "对比已清空 · 等待新一轮测试";
+        try {
+            var result = await requestJSON("/api/chapters/cache-aside/reset", { method: "POST" });
+            if (result.body && result.body.snapshot) {
+                acceptMetricsSnapshot({ archiveRead: result.body.snapshot });
+            }
+            showToast("对比结果、待运行状态、Redis 档案缓存和本章指标已清空。", "success");
+        } catch (error) {
+            showToast("本地对比已清空；服务端缓存与指标重置失败：" + error.message, "danger");
+        } finally {
+            button.disabled = false;
+            updateControlState();
+        }
+    }
+
     function bindEvents() {
         byId("query-archive").addEventListener("click", readArchive);
         byId("reset-lab").addEventListener("click", resetLab);
+        byId("clear-comparison").addEventListener("click", clearComparison);
         byId("replay-metrics").addEventListener("click", startMetricsReplay);
         byId("pause-metrics-replay").addEventListener("click", toggleMetricsReplayPause);
         byId("purchase-entry").addEventListener("click", function () {

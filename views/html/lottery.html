@@ -8,7 +8,7 @@
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260719-shared-strategy" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260720-clear-comparison" />
 </head>
 
 <body class="lab-page" data-lab-mode="direct" data-route-state="idle">
@@ -133,7 +133,7 @@
 
                 <div class="active-metrics" aria-label="当前策略 SSE 实时指标">
                     <div><small>QPS</small><strong id="active-qps">0</strong></div>
-                    <div><small>DB Reads</small><strong id="active-db-reads">0</strong></div>
+                    <div><small>SQL Queries</small><strong id="active-db-reads">0</strong></div>
                     <div><small>P99 Latency</small><strong id="active-p99">0 ms</strong></div>
                     <div><small>Pool Peak / Capacity</small><strong id="active-pool">0 / 0</strong></div>
                     <div><small>Hit Rate</small><strong id="active-hit-rate">—</strong></div>
@@ -166,8 +166,13 @@
                         <dl>
                             <div><dt>稀有度</dt><dd id="record-rarity">—</dd></div>
                             <div><dt>产地</dt><dd id="record-origin">—</dd></div>
+                            <div><dt>当前价格</dt><dd id="record-price">—</dd></div>
+                            <div><dt>展示库存</dt><dd id="record-stock">—</dd></div>
                             <div><dt>特性</dt><dd id="record-attribute">—</dd></div>
                             <div><dt>炼金用途</dt><dd id="record-usage">—</dd></div>
+                            <div class="record-risk"><dt>组成材料</dt><dd id="record-components">—</dd></div>
+                            <div><dt>最近 24h 交易</dt><dd id="record-trades">—</dd></div>
+                            <div><dt>聚合评分</dt><dd id="record-rating">—</dd></div>
                             <div class="record-risk"><dt>风险说明</dt><dd id="record-risk">—</dd></div>
                         </dl>
                         <div class="record-proof">
@@ -201,7 +206,7 @@
                             <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong>
                         </div>
                         <div class="metrics-row" role="row"><span>Requests</span><strong id="direct-total">0</strong><strong id="cached-total">0</strong></div>
-                        <div class="metrics-row emphasis" role="row"><span>DB Reads</span><strong id="direct-db-reads">0</strong><strong id="cached-db-reads">0</strong></div>
+                        <div class="metrics-row emphasis" role="row"><span>SQL Queries</span><strong id="direct-db-reads">0</strong><strong id="cached-db-reads">0</strong></div>
                         <div class="metrics-row" role="row"><span>P99 Latency</span><strong id="direct-p99">0 ms</strong><strong id="cached-p99">0 ms</strong></div>
                         <div class="metrics-row" role="row"><span>Pool Peak / Capacity</span><strong id="direct-pool">0 / 0</strong><strong id="cached-pool">0 / 0</strong></div>
                         <div class="metrics-row" role="row"><span>Cache Hit Rate</span><strong>—</strong><strong id="cached-hit-rate">0%</strong></div>
@@ -210,8 +215,8 @@
                     <div id="comparison-summary" class="comparison-summary">等待两条路径产生真实请求</div>
 
                     <div class="engineering-notes">
-                        <div><strong>MySQL 是权威数据源</strong><span>Redis 只保存可丢弃、带 TTL 的只读副本。</span></div>
-                        <div><strong>Cache Miss 会回源并回填</strong><span>首次读取仍产生 DB Read，后续命中才避开 MySQL。</span></div>
+                        <div><strong>MySQL 组装最终读模型</strong><span>每次 Direct 都执行基础 JOIN、组成、交易聚合和评分聚合。</span></div>
+                        <div><strong>Redis 缓存最终 DTO</strong><span>首次 MISS 执行 4 条 SQL 并回填，后续 HIT 只读取一份 JSON。</span></div>
                         <div><strong>Redis 故障不牺牲正确性</strong><span>Fallback 绕过缓存，由 MySQL 安全返回档案。</span></div>
                     </div>
                 </section>
@@ -223,7 +228,10 @@
                         <span>05 / IMMUTABLE RUN RESULTS</span>
                         <h2 id="results-heading">已完成实验与胜负对比</h2>
                     </div>
-                    <span id="freeze-status" class="freeze-status" role="status" aria-live="polite">等待一轮测试结束</span>
+                    <div class="result-heading-actions">
+                        <span id="freeze-status" class="freeze-status" role="status" aria-live="polite">等待一轮测试结束</span>
+                        <button id="clear-comparison" type="button">清空对比</button>
+                    </div>
                 </div>
 
                 <div class="frozen-result-cards">
@@ -232,8 +240,8 @@
                         <p class="frozen-result-context" data-result-context>完成直查测试后自动冻结</p>
                         <dl>
                             <div><dt>Requests</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>Peak QPS</dt><dd data-result="qps">—</dd></div>
-                            <div><dt>DB Reads</dt><dd data-result="dbReads">—</dd></div>
+                            <div><dt>Avg QPS</dt><dd data-result="qps">—</dd></div>
+                            <div><dt>SQL Queries</dt><dd data-result="sqlQueries">—</dd></div>
                             <div><dt>P99</dt><dd data-result="p99">—</dd></div>
                             <div><dt>Pool Peak</dt><dd data-result="pool">—</dd></div>
                             <div><dt>Errors</dt><dd data-result="errors">—</dd></div>
@@ -246,8 +254,8 @@
                         <p class="frozen-result-context" data-result-context>完成旁路缓存测试后自动冻结</p>
                         <dl>
                             <div><dt>Requests</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>Peak QPS</dt><dd data-result="qps">—</dd></div>
-                            <div><dt>DB Reads</dt><dd data-result="dbReads">—</dd></div>
+                            <div><dt>Avg QPS</dt><dd data-result="qps">—</dd></div>
+                            <div><dt>SQL Queries</dt><dd data-result="sqlQueries">—</dd></div>
                             <div><dt>P99</dt><dd data-result="p99">—</dd></div>
                             <div><dt>Hit Rate</dt><dd data-result="hitRate">—</dd></div>
                             <div><dt>Errors</dt><dd data-result="errors">—</dd></div>
@@ -265,14 +273,14 @@
                         <div class="frozen-comparison-row is-head" role="row">
                             <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong><em role="columnheader">判断</em>
                         </div>
-                        <div id="compare-db-row" class="frozen-comparison-row" role="row"><span>DB Reads / 1k</span><strong id="compare-db-direct">—</strong><strong id="compare-db-cached">—</strong><em id="compare-db-winner">等待</em></div>
-                        <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>Peak QPS</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
+                        <div id="compare-db-row" class="frozen-comparison-row" role="row"><span>SQL Queries / 1k</span><strong id="compare-db-direct">—</strong><strong id="compare-db-cached">—</strong><em id="compare-db-winner">等待</em></div>
+                        <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>Avg QPS</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
                         <div id="compare-p99-row" class="frozen-comparison-row" role="row"><span>P99 Latency</span><strong id="compare-p99-direct">—</strong><strong id="compare-p99-cached">—</strong><em id="compare-p99-winner">等待</em></div>
                         <div id="compare-pool-row" class="frozen-comparison-row" role="row"><span>Pool Usage</span><strong id="compare-pool-direct">—</strong><strong id="compare-pool-cached">—</strong><em id="compare-pool-winner">等待</em></div>
                         <div id="compare-error-row" class="frozen-comparison-row" role="row"><span>Errors / 1k</span><strong id="compare-error-direct">—</strong><strong id="compare-error-cached">—</strong><em id="compare-error-winner">等待</em></div>
                         <div id="compare-hit-row" class="frozen-comparison-row is-context" role="row"><span>Cache Hit Rate</span><strong>不适用</strong><strong id="compare-hit-cached">—</strong><em id="compare-hit-assessment">Redis 专属指标</em></div>
                     </div>
-                    <p>请求量与错误按每千请求归一化；P99 越低越好，QPS 越高越好，Pool Usage 越低越好。单次检索只校验路径，胜负只取同材料、同人数压测。</p>
+                    <p>请求量与错误按每千请求归一化；Avg QPS 按本轮完成请求数 ÷ 固定压测时长计算，差异不超过 2% 视为持平；P99 取本轮结束时的累计分位值。单次检索只校验路径，胜负只取同材料、同速率、同时长压测。</p>
                 </div>
             </section>
 
@@ -280,8 +288,8 @@
     </main>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/experiment-state.js?v=20260719-shared-strategy"></script>
-    <script src="/js/seckill-lab.js?v=20260720-purchase-entry"></script>
+    <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
+    <script src="/js/seckill-lab.js?v=20260720-material-detail"></script>
 </body>
 
 </html>

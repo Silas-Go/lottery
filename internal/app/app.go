@@ -124,8 +124,9 @@ func initInfrastructure() *database.Store {
 		slog.Error("ensure cache stock schema failed", "error", err)
 		panic(err)
 	}
-	if err := store.EnsureProfessionArchiveSchema(); err != nil {
-		slog.Error("ensure profession archive schema failed", "error", err)
+	// 第一章详情读实验使用独立材料表、组成关系与交易/评分事实，避免复用秒杀 gift/order 造成语义串线。
+	if err := store.EnsureMaterialReadModelSchema(); err != nil {
+		slog.Error("ensure material read model schema failed", "error", err)
 		panic(err)
 	}
 	// 材料购买顺序实验使用独立夹具，不能复用后续秒杀店的 inventory、订单或 MQ 状态。

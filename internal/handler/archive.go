@@ -38,20 +38,22 @@ func (h *ArchiveHandler) ReadCached(ctx *gin.Context) {
 func (h *ArchiveHandler) read(ctx *gin.Context, cached bool) {
 	id, err := strconv.Atoi(ctx.Param("id"))
 	if err != nil || id <= 0 {
-		writeAPIError(ctx, http.StatusBadRequest, "INVALID_ARCHIVE_ID", "职业档案编号无效", err)
+		writeAPIError(ctx, http.StatusBadRequest, "INVALID_ARCHIVE_ID", "材料档案编号无效", err)
 		return
 	}
 	var archiveSource service.ArchiveSource
 	var appErr *service.AppError
 	var archive any
+	var sqlQueries int
 	if cached {
-		archive, archiveSource, appErr = h.archive.ReadCached(id)
+		archive, archiveSource, sqlQueries, appErr = h.archive.ReadCached(id)
 		ctx.Header("X-Read-Path", "cache-aside")
 	} else {
-		archive, archiveSource, appErr = h.archive.ReadDirect(id)
+		archive, archiveSource, sqlQueries, appErr = h.archive.ReadDirect(id)
 		ctx.Header("X-Read-Path", "mysql-direct")
 	}
 	ctx.Header("X-Archive-Source", string(archiveSource))
+	ctx.Header("X-SQL-Queries", strconv.Itoa(sqlQueries))
 	if appErr != nil {
 		writeServiceError(ctx, appErr)
 		return
