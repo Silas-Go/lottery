@@ -5,18 +5,18 @@
 ## 第一章的只读边界：Cache-Aside 不参与库存裁决
 
 首页第一章使用独立材料读模型演示聚合详情读取。基础列表不计入实验；详情由
-`material_catalog`、稀有度/来源字典、`material_components`、`material_trades` 和
-`material_reviews` 共同组成，不复用秒杀 `orders`：
+`materials`、稀有度/来源字典、`material_components`、`trades` 和
+`reviews` 共同组成，不复用秒杀 `orders`：
 
 ```text
 直读：GET /api/archives/:id/direct
      -> MySQL 基础 JOIN
-     -> 组成列表
-     -> 24h/7d 交易聚合
-     -> 评分聚合
+     -> material_components JOIN materials 组成列表
+     -> trades：COUNT / AVG / MAX 交易聚合
+     -> reviews：AVG / COUNT 评分聚合
 
 缓存读：GET /api/archives/:id/cached
-     -> Redis GET archive:material-detail:v1:{id}
+     -> Redis GET archive:material-detail:v2:{id}
      -> HIT 直接返回
      -> MISS 执行相同 4 条 SQL -> 缓存最终 DTO 300s -> 返回
 ```
@@ -26,6 +26,7 @@
 一致性边界：
 
 - MySQL 材料基础、组成、交易和评分表是权威源，Redis 只保存可丢弃的最终 DTO 副本。
+- 组成关系只保存材料外键与用量，组成项名称仍来自 `materials`，避免关系表复制基础字段。
 - 缓存不可用时降级回源 MySQL，本次响应正确性不依赖 Redis。
 - 单进程按 material id 使用双检互斥合并冷缓存回源；多实例缓存击穿仍需要更完整的治理。
 - 用户购买状态不进入公共 DTO，避免 key 按 uid 膨胀；需要时应作为独立用户读模型查询或短缓存。

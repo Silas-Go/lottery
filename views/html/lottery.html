@@ -8,7 +8,7 @@
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260720-clear-comparison" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260720-data-composition" />
 </head>
 
 <body class="lab-page" data-lab-mode="direct" data-route-state="idle">
@@ -148,7 +148,10 @@
                             <span>03 / RESPONSE BODY</span>
                             <h2 id="record-heading">READ-ONLY MATERIAL RECORD</h2>
                         </div>
-                        <span class="readonly-badge">只读</span>
+                        <div class="record-heading-actions">
+                            <button id="show-data-composition" type="button">查看数据构成</button>
+                            <span class="readonly-badge">只读</span>
+                        </div>
                     </div>
 
                     <div id="record-placeholder" class="record-placeholder">
@@ -171,7 +174,7 @@
                             <div><dt>特性</dt><dd id="record-attribute">—</dd></div>
                             <div><dt>炼金用途</dt><dd id="record-usage">—</dd></div>
                             <div class="record-risk"><dt>组成材料</dt><dd id="record-components">—</dd></div>
-                            <div><dt>最近 24h 交易</dt><dd id="record-trades">—</dd></div>
+                            <div><dt>最近 24h / 7d 交易</dt><dd id="record-trades">—</dd></div>
                             <div><dt>聚合评分</dt><dd id="record-rating">—</dd></div>
                             <div class="record-risk"><dt>风险说明</dt><dd id="record-risk">—</dd></div>
                         </dl>
@@ -287,9 +290,50 @@
         </div>
     </main>
 
+    <dialog id="data-composition-dialog" class="data-composition-dialog" aria-labelledby="data-composition-title">
+        <div class="data-composition-shell">
+            <header>
+                <div>
+                    <span>READ MODEL COMPOSITION</span>
+                    <h2 id="data-composition-title">MaterialDetailDTO 如何组成</h2>
+                </div>
+                <button id="close-data-composition" type="button" aria-label="关闭数据构成">×</button>
+            </header>
+            <p class="data-composition-intro">这里只呈现一张整体映射。Direct 每次现场组装，Redis Cache-Aside 命中后直接返回同一份最终 DTO。</p>
+            <div class="data-composition-map" role="list" aria-label="材料详情数据构成映射">
+                <article role="listitem">
+                    <span>基础信息</span>
+                    <code>materials</code>
+                    <small>名称、价格、库存、稀有度与来源</small>
+                </article>
+                <article role="listitem">
+                    <span>组成材料</span>
+                    <code>material_components + materials</code>
+                    <small>关系表 JOIN 材料表，形成 components[]</small>
+                </article>
+                <article role="listitem">
+                    <span>交易统计</span>
+                    <code>trades</code>
+                    <small>COUNT / AVG / MAX</small>
+                </article>
+                <article role="listitem">
+                    <span>评价统计</span>
+                    <code>reviews</code>
+                    <small>AVG / COUNT</small>
+                </article>
+                <article class="is-output" role="listitem">
+                    <span>最终结果</span>
+                    <strong>MaterialDetailDTO</strong>
+                    <small>接口返回对象 · Redis 缓存一份完整 JSON</small>
+                </article>
+            </div>
+            <footer>公共 DTO 不包含用户购买状态，避免热点缓存按用户维度膨胀。</footer>
+        </div>
+    </dialog>
+
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/seckill-lab.js?v=20260720-material-detail"></script>
+    <script src="/js/seckill-lab.js?v=20260720-data-composition"></script>
 </body>
 
 </html>

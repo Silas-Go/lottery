@@ -662,7 +662,8 @@
             return component.name + " × " + component.quantity + component.unit;
         }).join("、") || "—";
         byId("record-trades").textContent = body.tradeStats ?
-            formatNumber(body.tradeStats.transactions24h) + " 笔 · " + formatNumber(body.tradeStats.volume24h) + " 份" : "—";
+            formatNumber(body.tradeStats.transactions24h) + " 笔 · 7d 均价 " + formatNumber(body.tradeStats.averagePrice7d) +
+            " · 最高 " + formatNumber(body.tradeStats.maxPrice7d) : "—";
         byId("record-rating").textContent = body.rating ?
             Number(body.rating.score || 0).toFixed(2) + " / 5 · " + formatNumber(body.rating.count) + " 条" : "—";
         byId("record-source").textContent = sourceLabel(source);
@@ -1079,10 +1080,41 @@
         }
     }
 
+    function showDataComposition() {
+        var dialog = byId("data-composition-dialog");
+        if (typeof dialog.showModal === "function") {
+            if (!dialog.open) {
+                dialog.showModal();
+            }
+            return;
+        }
+        dialog.setAttribute("open", "");
+    }
+
+    function closeDataComposition() {
+        var dialog = byId("data-composition-dialog");
+        if (typeof dialog.close === "function") {
+            dialog.close();
+            return;
+        }
+        dialog.removeAttribute("open");
+    }
+
     function bindEvents() {
         byId("query-archive").addEventListener("click", readArchive);
         byId("reset-lab").addEventListener("click", resetLab);
         byId("clear-comparison").addEventListener("click", clearComparison);
+        byId("show-data-composition").addEventListener("click", showDataComposition);
+        byId("close-data-composition").addEventListener("click", closeDataComposition);
+        byId("data-composition-dialog").addEventListener("click", function (event) {
+            var dialog = event.currentTarget;
+            var bounds = dialog.getBoundingClientRect();
+            var outside = event.clientX < bounds.left || event.clientX > bounds.right ||
+                event.clientY < bounds.top || event.clientY > bounds.bottom;
+            if (outside) {
+                closeDataComposition();
+            }
+        });
         byId("replay-metrics").addEventListener("click", startMetricsReplay);
         byId("pause-metrics-replay").addEventListener("click", toggleMetricsReplayPause);
         byId("purchase-entry").addEventListener("click", function () {

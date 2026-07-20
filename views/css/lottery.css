@@ -1765,6 +1765,175 @@ select:focus-visible {
     letter-spacing: .04em !important;
 }
 
+.record-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#show-data-composition {
+    min-height: 28px;
+    padding: 0 9px;
+    cursor: pointer;
+    border: 1px solid rgba(116, 181, 195, .18);
+    border-radius: 3px;
+    background: transparent;
+    color: #78949f;
+    font: 800 9px/1 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .04em;
+    transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+
+#show-data-composition:hover,
+#show-data-composition:focus-visible {
+    border-color: rgba(102, 211, 208, .42);
+    background: rgba(102, 211, 208, .055);
+    color: #b8d9dc;
+    outline: 0;
+}
+
+.data-composition-dialog {
+    width: min(820px, calc(100vw - 32px));
+    max-width: none;
+    max-height: calc(100vh - 32px);
+    padding: 0;
+    overflow: auto;
+    border: 1px solid rgba(102, 211, 208, .34);
+    border-radius: 6px;
+    background: #081622;
+    color: #dcebed;
+    box-shadow: 0 28px 90px rgba(0, 3, 8, .72), inset 0 1px rgba(255, 255, 255, .025);
+}
+
+.data-composition-dialog::backdrop {
+    background: rgba(0, 7, 13, .76);
+    backdrop-filter: blur(4px);
+}
+
+.data-composition-shell {
+    padding: clamp(20px, 3vw, 30px);
+    background:
+        linear-gradient(135deg, rgba(102, 211, 208, .055), transparent 42%),
+        repeating-linear-gradient(0deg, transparent 0 35px, rgba(116, 181, 195, .025) 35px 36px);
+}
+
+.data-composition-shell > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding-bottom: 17px;
+    border-bottom: 1px solid rgba(116, 181, 195, .18);
+}
+
+.data-composition-shell > header span {
+    color: var(--lab-cyan);
+    font: 900 9px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .14em;
+}
+
+.data-composition-shell > header h2 {
+    margin: 7px 0 0;
+    color: #eff8f9;
+    font-size: clamp(19px, 3vw, 26px);
+}
+
+#close-data-composition {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    border: 1px solid rgba(116, 181, 195, .24);
+    border-radius: 3px;
+    background: rgba(4, 12, 20, .46);
+    color: #8ca8b1;
+    font: 300 23px/1 sans-serif;
+}
+
+#close-data-composition:hover,
+#close-data-composition:focus-visible {
+    border-color: rgba(102, 211, 208, .48);
+    color: #dff5f5;
+    outline: 0;
+}
+
+.data-composition-intro {
+    margin: 17px 0;
+    color: #91aab4;
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.data-composition-map {
+    display: grid;
+    gap: 7px;
+}
+
+.data-composition-map article {
+    display: grid;
+    grid-template-columns: 104px minmax(210px, 1fr) minmax(190px, .9fr);
+    align-items: center;
+    gap: 14px;
+    min-height: 58px;
+    padding: 11px 14px;
+    border: 1px solid rgba(116, 181, 195, .14);
+    border-radius: 3px;
+    background: rgba(5, 15, 24, .58);
+}
+
+.data-composition-map article > span {
+    color: #b6cbd0;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.data-composition-map code,
+.data-composition-map strong {
+    color: #78d6d3;
+    font: 800 11px/1.5 "SFMono-Regular", Consolas, monospace;
+    overflow-wrap: anywhere;
+}
+
+.data-composition-map small {
+    color: #79939e;
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.data-composition-map .is-output {
+    border-color: rgba(102, 211, 208, .4);
+    background: rgba(102, 211, 208, .075);
+}
+
+.data-composition-map .is-output strong {
+    color: #d9fbf8;
+    font-size: 12px;
+}
+
+.data-composition-shell > footer {
+    margin-top: 16px;
+    color: #657f89;
+    font: 700 9px/1.6 "SFMono-Regular", Consolas, monospace;
+}
+
+@media (max-width: 650px) {
+    .record-heading-actions {
+        align-items: flex-start;
+        flex-direction: column-reverse;
+    }
+
+    .data-composition-dialog {
+        width: calc(100vw - 20px);
+        max-height: calc(100vh - 20px);
+    }
+
+    .data-composition-map article {
+        grid-template-columns: 1fr;
+        gap: 5px;
+        padding: 13px;
+    }
+}
+
 .metrics-playback {
     display: grid;
     min-width: 280px;

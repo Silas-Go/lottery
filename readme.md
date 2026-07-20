@@ -116,12 +116,16 @@ X-SQL-Queries: 0 | 1..4
 缓存 key 与边界：
 
 ```text
-key: archive:material-detail:v1:{id}
+key: archive:material-detail:v2:{id}
 TTL: 300s
-权威源: MySQL material_catalog / material_components / material_trades / material_reviews
+权威源: MySQL materials / material_components / trades / reviews
 ```
 
 同进程冷启动并发通过双检互斥合并回源，避免第一波 MISS 放大成缓存击穿。Redis 故障时请求降级回源 MySQL：缓存可以失去，真本不能失去。
+
+实验页的弱入口“查看数据构成”只展开一张整体映射：`materials` 提供基础信息，
+`material_components + materials` JOIN 组成材料，`trades` 执行 `COUNT / AVG / MAX`，
+`reviews` 执行 `AVG / COUNT`，最后组装为 Redis 直接缓存的 `MaterialDetailDTO`。
 
 ## 书页背后的完整项目
 
