@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" preserveAspectRatio="none" role="img" aria-labelledby="title description">
+  <title id="title">暗潮街室外市场背景占位图</title>
+  <desc id="description">夕阳下向右上方延伸的旧城区青石街道，左右分别是秒杀实验室和材料情报店。</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b8ad93"/>
+      <stop offset="0.48" stop-color="#8f8c7f"/>
+      <stop offset="1" stop-color="#5a605c"/>
+    </linearGradient>
+    <linearGradient id="street" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#575d59"/>
+      <stop offset="0.55" stop-color="#626762"/>
+      <stop offset="1" stop-color="#4c5350"/>
+    </linearGradient>
+    <linearGradient id="leftFacade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#303330"/>
+      <stop offset="1" stop-color="#494943"/>
+    </linearGradient>
+    <linearGradient id="rightFacade" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#393a35"/>
+      <stop offset="1" stop-color="#5b5549"/>
+    </linearGradient>
+    <radialGradient id="lampGlow">
+      <stop offset="0" stop-color="#ffd68a" stop-opacity="0.84"/>
+      <stop offset="1" stop-color="#d89b43" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="farBlur" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="1.2"/>
+    </filter>
+    <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <rect width="1440" height="900" fill="url(#sky)"/>
+  <circle cx="1110" cy="110" r="62" fill="#f4cc83" opacity="0.42" filter="url(#softGlow)"/>
+  <circle cx="1110" cy="110" r="34" fill="#efd08f" opacity="0.48"/>
+  <path d="M0 290 C280 245 460 285 670 253 C880 221 1095 247 1440 184 L1440 390 L0 390 Z" fill="#d1c7ae" opacity="0.08"/>
+
+  <!-- 远景轮廓故意留出偏右的街道出口，不设置中央塔楼。 -->
+  <g filter="url(#farBlur)" opacity="0.58">
+    <path d="M0 188 L168 154 L287 176 L287 407 L0 407 Z" fill="#555a56"/>
+    <path d="M105 154 L184 105 L260 176" fill="#4d524f"/>
+    <path d="M265 244 L432 214 L516 237 L516 419 L265 419 Z" fill="#61645e"/>
+    <path d="M314 214 L395 172 L478 235" fill="#515652"/>
+    <path d="M958 225 L1118 185 L1217 209 L1217 420 L958 420 Z" fill="#565b57"/>
+    <path d="M994 184 L1075 139 L1174 207" fill="#4d524f"/>
+    <path d="M1191 174 L1340 134 L1440 163 L1440 414 L1191 414 Z" fill="#4f5451"/>
+    <path d="M1250 134 L1320 91 L1401 156" fill="#474c49"/>
+    <path d="M470 300 L590 277 L648 293 L648 424 L470 424 Z" fill="#686a63"/>
+    <path d="M849 290 L941 272 L986 288 L986 423 L849 423 Z" fill="#62665f"/>
+    <g fill="#303633" opacity="0.46">
+      <rect x="42" y="241" width="17" height="31"/>
+      <rect x="92" y="228" width="17" height="31"/>
+      <rect x="346" y="283" width="14" height="24"/>
+      <rect x="406" y="272" width="14" height="24"/>
+      <rect x="1045" y="257" width="15" height="27"/>
+      <rect x="1273" y="222" width="17" height="29"/>
+    </g>
+  </g>
+
+  <path d="M0 250 C370 222 530 278 675 252" fill="none" stroke="#303431" stroke-width="2" opacity="0.48"/>
+  <path d="M1440 230 C1190 214 1015 263 815 246" fill="none" stroke="#303431" stroke-width="2" opacity="0.45"/>
+  <g transform="translate(555 205) rotate(-4)">
+    <path d="M64 0 V45" stroke="#393d3a" stroke-width="2"/>
+    <rect y="42" width="130" height="58" rx="2" fill="#55534b" stroke="#3a3d39" stroke-width="5"/>
+    <text x="65" y="77" fill="#d8cab0" opacity="0.73" text-anchor="middle" font-family="serif" font-size="16" letter-spacing="6">旧市街</text>
+  </g>
+
+  <!-- 连续街道轮廓是一张背景图的一部分，边界随旧建筑转角轻微弯折。 -->
+  <path d="M325 900 L386 814 L432 744 L474 697 L493 646 L535 596 L552 544 L600 500 L620 448 L663 408 L680 352 L798 350 L814 408 L852 449 L866 505 L910 548 L929 608 L977 659 L1000 722 L1062 790 L1142 900 Z" fill="url(#street)"/>
+  <path d="M325 900 L386 814 L432 744 L474 697 L493 646 L535 596 L552 544 L600 500 L620 448 L663 408 L680 352" fill="none" stroke="#353b38" stroke-width="13" opacity="0.72"/>
+  <path d="M798 350 L814 408 L852 449 L866 505 L910 548 L929 608 L977 659 L1000 722 L1062 790 L1142 900" fill="none" stroke="#333936" stroke-width="12" opacity="0.68"/>
+
+  <!-- 不等距短台阶与休息平台。 -->
+  <g fill="none" stroke-linecap="round">
+    <path d="M410 792 C590 803 852 792 1046 770" stroke="#303633" stroke-width="10" opacity="0.64"/>
+    <path d="M434 751 C612 759 842 748 1007 728" stroke="#74786f" stroke-width="3" opacity="0.45"/>
+    <path d="M478 686 C616 697 820 683 951 666" stroke="#303633" stroke-width="9" opacity="0.62"/>
+    <path d="M498 652 C626 663 811 650 925 635" stroke="#777b72" stroke-width="3" opacity="0.38"/>
+    <path d="M548 582 C646 590 793 583 893 567" stroke="#303633" stroke-width="8" opacity="0.6"/>
+    <path d="M571 548 C661 556 789 546 864 536" stroke="#777b72" stroke-width="3" opacity="0.34"/>
+    <path d="M624 477 C684 483 771 477 834 467" stroke="#303633" stroke-width="7" opacity="0.55"/>
+    <path d="M647 428 C691 434 763 430 811 421" stroke="#2f3532" stroke-width="6" opacity="0.5"/>
+  </g>
+
+  <!-- 低细节青石接缝：前景大、远景少。 -->
+  <g fill="none" stroke="#343a37" stroke-width="3" opacity="0.42">
+    <path d="M382 850 L585 817 L607 900"/>
+    <path d="M600 817 L806 807 L839 900"/>
+    <path d="M816 806 L1031 789"/>
+    <path d="M458 716 L619 704 L650 764"/>
+    <path d="M644 700 L833 691 L862 744"/>
+    <path d="M535 615 L667 608 L682 661"/>
+    <path d="M695 605 L858 593"/>
+  </g>
+  <g fill="none" stroke="#7a7d74" stroke-width="2" opacity="0.26">
+    <path d="M566 532 L672 524"/>
+    <path d="M692 523 L841 511"/>
+    <path d="M628 455 L714 451"/>
+    <path d="M728 450 L812 443"/>
+  </g>
+
+  <!-- 左侧秒杀实验室背景轮廓。 -->
+  <path d="M0 90 L408 49 L500 97 L485 900 L0 900 Z" fill="url(#leftFacade)"/>
+  <path d="M0 85 L425 38 L512 82 L493 139 L0 173 Z" fill="#2d312f"/>
+  <path d="M0 190 L475 150" stroke="#222725" stroke-width="12" opacity="0.75"/>
+  <g opacity="0.22" stroke="#b7a77f" stroke-width="2">
+    <path d="M92 188 L72 900"/><path d="M268 170 L247 900"/><path d="M433 151 L411 900"/>
+    <path d="M0 336 L477 312"/><path d="M0 535 L474 520"/>
+  </g>
+  <rect x="54" y="163" width="365" height="112" rx="2" fill="#393934" stroke="#242927" stroke-width="9"/>
+  <text x="236" y="205" fill="#cbb994" opacity="0.64" text-anchor="middle" font-family="serif" font-size="12" letter-spacing="4">LIMITED REQUEST OFFICE</text>
+  <text x="236" y="240" fill="#ead4a8" text-anchor="middle" font-family="serif" font-size="29" letter-spacing="7">秒杀实验室</text>
+  <text x="236" y="260" fill="#b9aa8c" opacity="0.6" text-anchor="middle" font-family="serif" font-size="10" letter-spacing="3">SECKILL LAB · PREVIEW</text>
+  <rect x="75" y="371" width="300" height="430" fill="#302d28" stroke="#222624" stroke-width="14"/>
+  <path d="M112 404 H338 M112 548 H338 M112 695 H338" stroke="#202422" stroke-width="7" opacity="0.72"/>
+  <rect x="15" y="303" width="40" height="58" fill="#e2a952" opacity="0.55"/>
+  <circle cx="35" cy="332" r="38" fill="url(#lampGlow)" opacity="0.45"/>
+
+  <!-- 右侧材料情报店背景轮廓。 -->
+  <path d="M948 105 L1040 59 L1440 96 L1440 900 L958 900 Z" fill="url(#rightFacade)"/>
+  <path d="M936 88 L1042 38 L1440 75 L1440 160 L954 137 Z" fill="#30332f"/>
+  <path d="M971 308 L1408 334 L1440 419 L951 392 Z" fill="#746957" stroke="#35352f" stroke-width="9"/>
+  <g opacity="0.18" stroke="#d2bd94" stroke-width="2">
+    <path d="M1050 144 L1070 900"/><path d="M1230 156 L1242 900"/><path d="M1383 165 L1388 900"/>
+    <path d="M976 530 L1440 548"/>
+  </g>
+  <rect x="1003" y="153" width="380" height="118" rx="2" fill="#4b4439" stroke="#2a2d2a" stroke-width="9"/>
+  <text x="1193" y="195" fill="#d3bf99" opacity="0.64" text-anchor="middle" font-family="serif" font-size="12" letter-spacing="4">MATERIAL INTELLIGENCE</text>
+  <text x="1193" y="231" fill="#ead8b5" text-anchor="middle" font-family="serif" font-size="29" letter-spacing="7">材料情报店</text>
+  <text x="1193" y="253" fill="#baa98b" opacity="0.6" text-anchor="middle" font-family="serif" font-size="10" letter-spacing="3">SILAS · MATERIAL ARCHIVES</text>
+  <rect x="1041" y="430" width="341" height="289" fill="#413d34" stroke="#2c2d29" stroke-width="13"/>
+  <g fill="#5a4938" stroke="#2c2c27" stroke-width="4">
+    <rect x="1195" y="460" width="70" height="43"/><rect x="1273" y="460" width="70" height="43"/>
+    <rect x="1195" y="511" width="70" height="43"/><rect x="1273" y="511" width="70" height="43"/>
+  </g>
+  <path d="M1076 625 Q1135 592 1190 624 Q1246 591 1298 625 L1289 677 Q1238 649 1190 678 Q1138 650 1084 676 Z" fill="#c3b28d" stroke="#6a5a42" stroke-width="4"/>
+  <path d="M1020 710 L1405 728" stroke="#292b27" stroke-width="18"/>
+  <rect x="1315" y="746" width="108" height="98" fill="#504638" stroke="#2e302d" stroke-width="5" transform="rotate(2 1369 795)"/>
+  <text x="1368" y="780" fill="#d5c29e" text-anchor="middle" font-family="serif" font-size="15" letter-spacing="3">档案检索</text>
+  <text x="1368" y="805" fill="#b8a889" text-anchor="middle" font-family="serif" font-size="10">材料查询</text>
+  <rect x="1390" y="366" width="32" height="49" fill="#e0a34e" opacity="0.5"/>
+  <circle cx="1406" cy="391" r="35" fill="url(#lampGlow)" opacity="0.38"/>
+
+  <!-- 建筑转角、旧路灯和栏杆都属于静态背景，不再由页面布局代码生成。 -->
+  <path d="M295 775 L434 742 L476 783 L421 838 L283 852 Z" fill="#3b403d"/>
+  <path d="M973 699 L1090 670 L1160 704 L1111 756 L989 765 Z" fill="#3e423e"/>
+  <path d="M430 617 L537 592 L570 620 L532 653 L423 656 Z" fill="#424743"/>
+  <path d="M886 544 L973 524 L1001 551 L968 579 L888 582 Z" fill="#434740"/>
+  <g transform="translate(532 438) rotate(-2)">
+    <path d="M0 0 V137" stroke="#292e2c" stroke-width="7"/>
+    <path d="M0 3 H34" stroke="#292e2c" stroke-width="6"/>
+    <rect x="23" y="2" width="21" height="29" fill="#d89d45" stroke="#292e2c" stroke-width="5"/>
+    <circle cx="34" cy="17" r="28" fill="url(#lampGlow)" opacity="0.45"/>
+  </g>
+  <g transform="translate(817 484) rotate(-5)" stroke="#343936" stroke-width="5">
+    <path d="M0 0 H116"/>
+    <path d="M4 -4 V43 M57 -4 V43 M112 -4 V43"/>
+  </g>
+
+  <rect y="0" width="1440" height="900" fill="none" stroke="#292e2c" stroke-opacity="0.2" stroke-width="18"/>
+</svg>

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#8f8063" />
+    <meta name="description" content="暗潮街 17 号：选择秒杀请求预览，或进入材料情报店体验 Cache-Aside。" />
+    <title>暗潮街 17 号 · 高并发交互实验室</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
+    <link rel="stylesheet" href="/css/market-street.css?v=20260721-static-scene" />
+</head>
+
+<body class="market-street-shell" data-dialogue="street" data-seckill-state="idle">
+    <header class="market-header" data-component="MarketHeader">
+        <a class="market-header__brand" href="/" aria-label="暗潮街 17 号首页">
+            <span class="market-header__seal" aria-hidden="true">S</span>
+            <span><strong>SILAS</strong><small>CONCURRENCY QUARTER</small></span>
+        </a>
+        <div class="market-header__location">
+            <i aria-hidden="true"></i>
+            <span><strong>暗潮街 17 号</strong><small>夕潮将至 · 交易频度上升</small></span>
+        </div>
+    </header>
+
+    <main id="market-street-page" class="market-street-page" data-component="MarketStreetPage">
+        <h1 class="sr-only">暗潮街高并发交互实验室入口</h1>
+
+        <section class="market-stage" aria-label="夕阳下向上延伸的青石坡道与两家实验店铺">
+            <div id="market-scene-canvas" class="market-scene-canvas">
+                <img class="market-scene-background" src="/img/market-street-bg.svg?v=20260721-placeholder" alt="" aria-hidden="true" />
+
+                <article id="seckill-shop" class="shop-interaction scene-positioned" data-scene-key="seckillShop" data-shop="seckill">
+                    <button id="seckill-shop-hitbox" class="shop-interaction__hitbox" type="button" aria-label="进入秒杀实验室小型预览" aria-describedby="seckill-shop-description"></button>
+                    <p id="seckill-shop-description" class="sr-only">浏览器内请求卡片演示，不连接真实秒杀接口。</p>
+                </article>
+
+                <article id="archive-shop" class="shop-interaction scene-positioned" data-scene-key="archiveShop" data-shop="archive">
+                    <button id="archive-shop-hitbox" class="shop-interaction__hitbox" type="button" aria-label="进入材料情报店和现有 Cache-Aside 实验"></button>
+                </article>
+
+                <div id="submit-slot" class="request-slot scene-positioned" data-scene-key="submitSlot" aria-hidden="true">
+                    <small>递交请求</small><i></i><span class="request-slot__shutter"></span>
+                </div>
+                <div id="result-slot" class="request-slot scene-positioned" data-scene-key="resultSlot" aria-hidden="true">
+                    <small>领取结果</small><i></i>
+                </div>
+
+                <div class="shop-status scene-positioned" data-scene-key="seckillStatus" role="status">
+                    <i aria-hidden="true"></i>
+                    <span><small>WINDOW STATUS</small><strong id="shop-status-text">秒杀尚未开始</strong></span>
+                </div>
+                <span class="shop-preview-ribbon scene-positioned" data-scene-key="seckillRibbon">小型预览 · 功能建设中</span>
+
+                <div id="seckill-crowd" class="silhouette-crowd" data-component="SilhouetteCrowd" aria-hidden="true">
+                    <span class="queue-figure scene-positioned" data-scene-key="queue1"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue2"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue3"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue4"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue5"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue6"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue7"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue8"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue9"><i></i></span>
+                    <span class="queue-figure scene-positioned" data-scene-key="queue10"><i></i></span>
+                </div>
+
+                <div class="distant-silhouettes" aria-hidden="true">
+                    <span class="silhouette scene-positioned" data-scene-key="walker1"></span>
+                    <span class="silhouette scene-positioned" data-scene-key="walker2"></span>
+                    <span class="silhouette scene-positioned" data-scene-key="walker3"></span>
+                </div>
+
+                <div id="request-flow" class="request-flow" data-component="RequestCardFlow" aria-hidden="true"></div>
+                <div id="ambient-particles" class="ambient-particles" data-component="AmbientParticles" aria-hidden="true"></div>
+                <div class="market-vignette" aria-hidden="true"></div>
+            </div>
+        </section>
+
+        <section class="event-dialogue" data-component="EventDialogue" aria-live="polite">
+            <div id="street-dialogue" class="event-dialogue__view event-dialogue__view--street">
+                <div class="event-dialogue__heading">
+                    <span>街道事件 · 黄昏</span>
+                    <small>MARKET EVENT 01</small>
+                </div>
+                <h2>暗潮街 17 号</h2>
+                <p>魔法潮汐接近，街上的交易比往常更加频繁。左边的店正在收集大量限时委托，右边的店保存着材料的历史记录。</p>
+                <div class="event-choices" aria-label="选择前往的店铺">
+                    <button id="dialogue-seckill" type="button">
+                        <span aria-hidden="true">Ⅰ</span><strong>前往秒杀实验室<small>观看请求卡片的前端演示</small></strong>
+                    </button>
+                    <button id="dialogue-archive" type="button">
+                        <span aria-hidden="true">Ⅱ</span><strong>前往材料情报店<small>进入现有 Cache-Aside 实验</small></strong>
+                    </button>
+                </div>
+            </div>
+
+            <div id="seckill-dialogue" class="event-dialogue__view event-dialogue__view--seckill" hidden>
+                <div class="event-dialogue__heading">
+                    <span>小型预览 · 功能建设中</span>
+                    <small>FRONTEND-ONLY MOCK</small>
+                </div>
+                <div class="seckill-dialogue__title">
+                    <h2 id="preview-status-title">秒杀尚未开始</h2>
+                    <strong id="preview-countdown" aria-label="倒计时"></strong>
+                </div>
+                <p id="preview-status-copy">提交口仍暗着。门前只有几位访客在等待限时委托。</p>
+                <ol class="preview-progress" aria-label="秒杀演示阶段">
+                    <li data-preview-step="idle"><i></i><span>等待</span></li>
+                    <li data-preview-step="countdown"><i></i><span>倒计时</span></li>
+                    <li data-preview-step="running"><i></i><span>提交中</span></li>
+                    <li data-preview-step="sold_out"><i></i><span>售罄</span></li>
+                </ol>
+                <div class="result-key" aria-label="返回结果图例">
+                    <span class="result-key__success"><i>✓</i>成功凭证</span>
+                    <span class="result-key__limited"><i>!</i>限流印章</span>
+                    <span class="result-key__duplicate"><i>↩</i>重复退回</span>
+                </div>
+                <div class="preview-actions">
+                    <button id="preview-replay" type="button" hidden>再看一轮</button>
+                    <button id="preview-close" type="button">返回街道选择</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
+    <script src="/js/market-scene-config.js?v=20260721-static-scene"></script>
+    <script src="/js/seckill-mock.js?v=20260721-state-machine"></script>
+    <script src="/js/market-street.js?v=20260721-static-scene"></script>
+</body>
+
+</html>
