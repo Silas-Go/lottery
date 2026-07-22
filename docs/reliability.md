@@ -52,6 +52,10 @@ Browser -> app:5678 -> loadtest-runner:8090 -> wrk2 child process
 `taskId` 进入店内；`/lab` 才订阅任务 SSE、轮询恢复状态、显示详细指标和日志、执行停止，
 并在完整 Task 到达后冻结本轮结果。这样室外入口保持轻量，刷新或重新入店仍能从 Runner 权威状态恢复。
 
+任务完成后的购买意愿是明确的教学映射而非后端业务预测：人数取 Runner 返回的白名单挡位
+`tier.rate`，固定 10% 进入购买请求池，90% 继续作为查询观察者；`actualRequests` 只用于压测指标，
+不会被误当作独立用户数。购买实验仍在独立夹具中抽取真实 T1/T2 竞态，不触碰订单、支付或秒杀库存。
+
 可靠性与安全约束：
 
 - Runner 不挂载 `/var/run/docker.sock`，也不执行 `docker compose run`；它只能管理自己的 wrk2 子进程。
@@ -62,6 +66,7 @@ Browser -> app:5678 -> loadtest-runner:8090 -> wrk2 child process
 - 创建请求的 HTTP 生命周期不拥有任务 context；页面关闭只断开 SSE，不能停止任务。停止必须显式调用 `/api/loadtests/:id/stop`。
 - 任务快照和有限事件历史写入 `loadtest-runner-data`。Runner 重启后发现 `starting/resetting/running/collecting` 遗留状态会标记为 `failed`，不会永久占锁。
 - SSE 使用事件 ID 回放，浏览器断线后同时通过状态查询恢复。日志只记录重置、启动、目标速率、异常、结束和解析，不逐请求输出。
+- 最终吞吐、实际时长和 P50/P90/P95/P99 均从 wrk2 汇总与有界直方图解析；页面不使用目标 RATE 或前端计时器伪造 Actual QPS、Duration 和延迟分位值。
 - wrk2 对极低延迟多线程直方图存在上游断言缺陷，因此只读实验固定一个 wrk2 线程；连接数仍按挡位提升到 96，本机可以维持 3000 req/s 目标附近的压力。
 
 任务正常状态机：

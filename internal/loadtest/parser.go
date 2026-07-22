@@ -20,6 +20,7 @@ type wrkResult struct {
 	QPS        float64
 	Duration   float64
 	P50MS      float64
+	P90MS      float64
 	P95MS      float64
 	P99MS      float64
 	Timeouts   int64
@@ -55,6 +56,8 @@ func parseWrkOutput(output string) wrkResult {
 			switch match[1] {
 			case "50":
 				result.P50MS = value
+			case "90":
+				result.P90MS = value
 			case "99":
 				result.P99MS = value
 			}
@@ -97,6 +100,9 @@ func parseWrkOutput(output string) wrkResult {
 	}
 	if result.P50MS == 0 {
 		result.P50MS = percentileAt(points, .50)
+	}
+	if result.P90MS == 0 {
+		result.P90MS = percentileAt(points, .90)
 	}
 	result.P95MS = percentileAt(points, .95)
 	if result.P99MS == 0 {

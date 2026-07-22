@@ -31,7 +31,9 @@ Transfer/sec:    779.63KB`
 		t.Fatalf("unexpected counts: %+v", result)
 	}
 	assertNear(t, result.QPS, 3000)
+	assertNear(t, result.Duration, 20)
 	assertNear(t, result.P50MS, 1.1)
+	assertNear(t, result.P90MS, 2.4)
 	assertNear(t, result.P95MS, 3.5)
 	assertNear(t, result.P99MS, 8.2)
 }

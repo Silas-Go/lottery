@@ -120,19 +120,21 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 
 // TaskMetrics 合并 wrk2 延迟/吞吐结果与应用已有的缓存、SQL 指标。
 type TaskMetrics struct {
-	ActualRequests int64   `json:"actualRequests"`
-	ActualQPS      float64 `json:"actualQps"`
-	P50MS          float64 `json:"p50Ms"`
-	P95MS          float64 `json:"p95Ms"`
-	P99MS          float64 `json:"p99Ms"`
-	ErrorRate      float64 `json:"errorRate"`
-	Timeouts       int64   `json:"timeouts"`
-	RedisHits      int64   `json:"redisHits"`
-	MySQLFallbacks int64   `json:"mysqlFallbacks"`
-	SQLQueries     int64   `json:"sqlQueries"`
-	CacheHitRate   float64 `json:"cacheHitRate"`
-	PoolPeak       int64   `json:"poolPeak"`
-	PoolCapacity   int64   `json:"poolCapacity"`
+	ActualRequests  int64   `json:"actualRequests"`
+	ActualQPS       float64 `json:"actualQps"`
+	DurationSeconds float64 `json:"durationSeconds"`
+	P50MS           float64 `json:"p50Ms"`
+	P90MS           float64 `json:"p90Ms"`
+	P95MS           float64 `json:"p95Ms"`
+	P99MS           float64 `json:"p99Ms"`
+	ErrorRate       float64 `json:"errorRate"`
+	Timeouts        int64   `json:"timeouts"`
+	RedisHits       int64   `json:"redisHits"`
+	MySQLFallbacks  int64   `json:"mysqlFallbacks"`
+	SQLQueries      int64   `json:"sqlQueries"`
+	CacheHitRate    float64 `json:"cacheHitRate"`
+	PoolPeak        int64   `json:"poolPeak"`
+	PoolCapacity    int64   `json:"poolCapacity"`
 }
 
 // TaskLog 只保存任务级关键事件，不保存逐请求日志。

@@ -333,7 +333,9 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 	}
 	metrics.ActualRequests = parsed.Requests
 	metrics.ActualQPS = parsed.QPS
+	metrics.DurationSeconds = parsed.Duration
 	metrics.P50MS = parsed.P50MS
+	metrics.P90MS = parsed.P90MS
 	metrics.P95MS = parsed.P95MS
 	metrics.P99MS = parsed.P99MS
 	metrics.Timeouts = parsed.Timeouts

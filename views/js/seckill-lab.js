@@ -396,6 +396,36 @@
         return Number(metrics[key] || 0);
     }
 
+    function formatResultLatency(value) {
+        value = Number(value || 0);
+        return value > 0 ? value.toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + " ms" : "—";
+    }
+
+    function formatResultQPS(value) {
+        value = Number(value || 0);
+        return value > 0 ? value.toLocaleString("zh-CN", { maximumFractionDigits: 2 }) : "—";
+    }
+
+    function formatResultDuration(value) {
+        value = Number(value || 0);
+        return value > 0 ? value.toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + " s" : "—";
+    }
+
+    function renderFinalTaskMetrics(mode, result) {
+        var isCrowdResult = Boolean(result && result.entry === "crowd");
+        byId(mode + "-actual-qps").textContent = isCrowdResult ?
+            formatResultQPS(resultMetric(result, "qps")) : "—";
+        byId(mode + "-duration").textContent = isCrowdResult ?
+            formatResultDuration(resultMetric(result, "durationSeconds")) : "—";
+        byId(mode + "-p50").textContent = isCrowdResult ?
+            formatResultLatency(resultMetric(result, "p50")) : "—";
+        byId(mode + "-p90").textContent = isCrowdResult ?
+            formatResultLatency(resultMetric(result, "p90")) : "—";
+        if (isCrowdResult) {
+            byId(mode + "-p99").textContent = formatResultLatency(resultMetric(result, "p99"));
+        }
+    }
+
     function renderFrozenCard(mode, result) {
         var card = byId(mode === "cached" ? "frozen-cached" : "frozen-direct");
         if (!result) {
@@ -421,8 +451,12 @@
         Array.prototype.forEach.call(card.querySelectorAll("[data-result]"), function (node) {
             var key = node.dataset.result;
             var value = resultMetric(result, key);
-            if (key === "p99") {
-                node.textContent = value + " ms";
+            if (["p50", "p90", "p99"].indexOf(key) >= 0) {
+                node.textContent = formatResultLatency(value);
+            } else if (key === "qps") {
+                node.textContent = formatResultQPS(value);
+            } else if (key === "durationSeconds") {
+                node.textContent = formatResultDuration(value);
             } else if (key === "pool") {
                 node.textContent = resultMetric(result, "poolPeak") + " / " + resultMetric(result, "poolCapacity");
             } else if (key === "hitRate") {
@@ -455,6 +489,21 @@
         return cachedWins ? "cached" : "direct";
     }
 
+    function setLatencyComparisonRow(name, direct, cached, fair) {
+        var directValue = resultMetric(direct, name);
+        var cachedValue = resultMetric(cached, name);
+        if (fair && (directValue <= 0 || cachedValue <= 0)) {
+            var row = byId("compare-" + name + "-row");
+            row.classList.remove("winner-direct", "winner-cached", "is-tie");
+            byId("compare-" + name + "-direct").textContent = formatResultLatency(directValue);
+            byId("compare-" + name + "-cached").textContent = formatResultLatency(cachedValue);
+            byId("compare-" + name + "-winner").textContent = "等待新结果";
+            return null;
+        }
+        return setComparisonRow(name, formatResultLatency(directValue), formatResultLatency(cachedValue),
+            directValue, cachedValue, "lower", fair);
+    }
+
     function comparisonIsFair(direct, cached) {
         if (direct.entry !== "crowd" || cached.entry !== "crowd") {
             return false;
@@ -467,7 +516,7 @@
     }
 
     function resetFrozenComparison() {
-        ["db", "qps", "p99", "pool", "error"].forEach(function (name) {
+        ["db", "qps", "p50", "p90", "p99", "pool", "error"].forEach(function (name) {
             var row = byId("compare-" + name + "-row");
             row.classList.remove("winner-direct", "winner-cached", "is-tie");
             byId("compare-" + name + "-direct").textContent = "—";
@@ -504,8 +553,10 @@
         var qpsTieTolerance = Math.max(resultMetric(direct, "qps"), resultMetric(cached, "qps")) * .02;
         var winners = [
             setComparisonRow("db", directDBRate.toFixed(1), cachedDBRate.toFixed(1), directDBRate, cachedDBRate, "lower", fair),
-            setComparisonRow("qps", formatNumber(resultMetric(direct, "qps")), formatNumber(resultMetric(cached, "qps")), resultMetric(direct, "qps"), resultMetric(cached, "qps"), "higher", fair, qpsTieTolerance),
-            setComparisonRow("p99", resultMetric(direct, "p99") + " ms", resultMetric(cached, "p99") + " ms", resultMetric(direct, "p99"), resultMetric(cached, "p99"), "lower", fair),
+            setComparisonRow("qps", formatResultQPS(resultMetric(direct, "qps")), formatResultQPS(resultMetric(cached, "qps")), resultMetric(direct, "qps"), resultMetric(cached, "qps"), "higher", fair, qpsTieTolerance),
+            setLatencyComparisonRow("p50", direct, cached, fair),
+            setLatencyComparisonRow("p90", direct, cached, fair),
+            setLatencyComparisonRow("p99", direct, cached, fair),
             setComparisonRow("pool", directPoolUsage.toFixed(1) + "%", cachedPoolUsage.toFixed(1) + "%", directPoolUsage, cachedPoolUsage, "lower", fair),
             setComparisonRow("error", directErrorRate.toFixed(1), cachedErrorRate.toFixed(1), directErrorRate, cachedErrorRate, "lower", fair)
         ];
@@ -537,6 +588,8 @@
     function renderFrozenResults() {
         var direct = experimentResults.latest("direct");
         var cached = experimentResults.latest("cached");
+        renderFinalTaskMetrics("direct", direct);
+        renderFinalTaskMetrics("cached", cached);
         renderFrozenCard("direct", direct);
         renderFrozenCard("cached", cached);
         renderFrozenComparison(direct, cached);
@@ -646,10 +699,12 @@
             metrics: {
                 requests: requestCount,
                 qps: Number(metrics.actualQps || 0),
+                durationSeconds: Number(metrics.durationSeconds || task.elapsedSeconds || 0),
                 sqlQueries: Number(metrics.sqlQueries || 0),
                 p50: Number(metrics.p50Ms || 0),
+                p90: Number(metrics.p90Ms || 0),
                 p95: Number(metrics.p95Ms || 0),
-                p99: Math.round(Number(metrics.p99Ms || 0)),
+                p99: Number(metrics.p99Ms || 0),
                 poolPeak: Number(metrics.poolPeak || 0),
                 poolCapacity: Number(metrics.poolCapacity || 0),
                 hitRate: task.mode === "cached" ? Math.round(Number(metrics.cacheHitRate || 0)) : null,
@@ -1129,8 +1184,14 @@
         setMetric("cached-total", cached.totalRequests);
         setMetric("direct-db-reads", direct.sqlQueries);
         setMetric("cached-db-reads", cached.sqlQueries);
-        setMetric("direct-p99", direct.p99, " ms");
-        setMetric("cached-p99", cached.p99, " ms");
+        var directResult = experimentResults.latest("direct");
+        var cachedResult = experimentResults.latest("cached");
+        if (!directResult || directResult.entry !== "crowd") {
+            setMetric("direct-p99", direct.p99, " ms");
+        }
+        if (!cachedResult || cachedResult.entry !== "crowd") {
+            setMetric("cached-p99", cached.p99, " ms");
+        }
         byId("direct-pool").textContent = formatNumber(direct.poolPeak) + " / " + formatNumber(direct.poolCapacity);
         byId("cached-pool").textContent = formatNumber(cached.poolPeak) + " / " + formatNumber(cached.poolCapacity);
         setMetric("cached-hit-rate", cached.cacheHitRate, "%");

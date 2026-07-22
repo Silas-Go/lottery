@@ -8,7 +8,7 @@
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260722-crowd-conversion" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260722-result-metrics" />
 </head>
 
 <body class="lab-page" data-lab-mode="direct" data-route-state="idle">
@@ -251,7 +251,11 @@
                             <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong>
                         </div>
                         <div class="metrics-row" role="row"><span>Requests</span><strong id="direct-total">0</strong><strong id="cached-total">0</strong></div>
+                        <div class="metrics-row" role="row"><span>Actual QPS</span><strong id="direct-actual-qps">—</strong><strong id="cached-actual-qps">—</strong></div>
+                        <div class="metrics-row" role="row"><span>Duration</span><strong id="direct-duration">—</strong><strong id="cached-duration">—</strong></div>
                         <div class="metrics-row emphasis" role="row"><span>SQL Queries</span><strong id="direct-db-reads">0</strong><strong id="cached-db-reads">0</strong></div>
+                        <div class="metrics-row" role="row"><span>P50 Latency</span><strong id="direct-p50">—</strong><strong id="cached-p50">—</strong></div>
+                        <div class="metrics-row" role="row"><span>P90 Latency</span><strong id="direct-p90">—</strong><strong id="cached-p90">—</strong></div>
                         <div class="metrics-row" role="row"><span>P99 Latency</span><strong id="direct-p99">0 ms</strong><strong id="cached-p99">0 ms</strong></div>
                         <div class="metrics-row" role="row"><span>Pool Peak / Capacity</span><strong id="direct-pool">0 / 0</strong><strong id="cached-pool">0 / 0</strong></div>
                         <div class="metrics-row" role="row"><span>Cache Hit Rate</span><strong>—</strong><strong id="cached-hit-rate">0%</strong></div>
@@ -285,8 +289,11 @@
                         <p class="frozen-result-context" data-result-context>完成直查测试后自动冻结</p>
                         <dl>
                             <div><dt>Requests</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>Avg QPS</dt><dd data-result="qps">—</dd></div>
+                            <div><dt>Actual QPS</dt><dd data-result="qps">—</dd></div>
+                            <div><dt>Duration</dt><dd data-result="durationSeconds">—</dd></div>
                             <div><dt>SQL Queries</dt><dd data-result="sqlQueries">—</dd></div>
+                            <div><dt>P50 Latency</dt><dd data-result="p50">—</dd></div>
+                            <div><dt>P90 Latency</dt><dd data-result="p90">—</dd></div>
                             <div><dt>P99</dt><dd data-result="p99">—</dd></div>
                             <div><dt>Pool Peak</dt><dd data-result="pool">—</dd></div>
                             <div><dt>Errors</dt><dd data-result="errors">—</dd></div>
@@ -299,8 +306,11 @@
                         <p class="frozen-result-context" data-result-context>完成旁路缓存测试后自动冻结</p>
                         <dl>
                             <div><dt>Requests</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>Avg QPS</dt><dd data-result="qps">—</dd></div>
+                            <div><dt>Actual QPS</dt><dd data-result="qps">—</dd></div>
+                            <div><dt>Duration</dt><dd data-result="durationSeconds">—</dd></div>
                             <div><dt>SQL Queries</dt><dd data-result="sqlQueries">—</dd></div>
+                            <div><dt>P50 Latency</dt><dd data-result="p50">—</dd></div>
+                            <div><dt>P90 Latency</dt><dd data-result="p90">—</dd></div>
                             <div><dt>P99</dt><dd data-result="p99">—</dd></div>
                             <div><dt>Hit Rate</dt><dd data-result="hitRate">—</dd></div>
                             <div><dt>Errors</dt><dd data-result="errors">—</dd></div>
@@ -319,13 +329,15 @@
                             <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong><em role="columnheader">判断</em>
                         </div>
                         <div id="compare-db-row" class="frozen-comparison-row" role="row"><span>SQL Queries / 1k</span><strong id="compare-db-direct">—</strong><strong id="compare-db-cached">—</strong><em id="compare-db-winner">等待</em></div>
-                        <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>Avg QPS</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
+                        <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>Actual QPS</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
+                        <div id="compare-p50-row" class="frozen-comparison-row" role="row"><span>P50 Latency</span><strong id="compare-p50-direct">—</strong><strong id="compare-p50-cached">—</strong><em id="compare-p50-winner">等待</em></div>
+                        <div id="compare-p90-row" class="frozen-comparison-row" role="row"><span>P90 Latency</span><strong id="compare-p90-direct">—</strong><strong id="compare-p90-cached">—</strong><em id="compare-p90-winner">等待</em></div>
                         <div id="compare-p99-row" class="frozen-comparison-row" role="row"><span>P99 Latency</span><strong id="compare-p99-direct">—</strong><strong id="compare-p99-cached">—</strong><em id="compare-p99-winner">等待</em></div>
                         <div id="compare-pool-row" class="frozen-comparison-row" role="row"><span>Pool Usage</span><strong id="compare-pool-direct">—</strong><strong id="compare-pool-cached">—</strong><em id="compare-pool-winner">等待</em></div>
                         <div id="compare-error-row" class="frozen-comparison-row" role="row"><span>Errors / 1k</span><strong id="compare-error-direct">—</strong><strong id="compare-error-cached">—</strong><em id="compare-error-winner">等待</em></div>
                         <div id="compare-hit-row" class="frozen-comparison-row is-context" role="row"><span>Cache Hit Rate</span><strong>不适用</strong><strong id="compare-hit-cached">—</strong><em id="compare-hit-assessment">Redis 专属指标</em></div>
                     </div>
-                    <p>请求量与错误按每千请求归一化；Avg QPS 按本轮完成请求数 ÷ 固定压测时长计算，差异不超过 2% 视为持平；P99 取本轮结束时的累计分位值。单次检索只校验路径，胜负只取同材料、同速率、同时长压测。</p>
+                    <p>请求量与错误按每千请求归一化；Actual QPS 与 Duration 取 wrk2 最终汇总，QPS 差异不超过 2% 视为持平；P50/P90/P99 取本轮累计延迟分布。单次检索只校验路径，胜负只取同材料、同速率、同时长压测。</p>
                 </div>
             </section>
 
@@ -375,7 +387,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/seckill-lab.js?v=20260722-crowd-conversion"></script>
+    <script src="/js/seckill-lab.js?v=20260722-result-metrics"></script>
 </body>
 
 </html>
