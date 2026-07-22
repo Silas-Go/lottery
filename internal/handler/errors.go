@@ -64,13 +64,18 @@ func statusForCode(code string) int {
 		return http.StatusTooManyRequests
 	case service.CodePurchaseLabInvalidStrategy:
 		return http.StatusBadRequest
+	case service.CodeLoadtestInvalidRequest:
+		return http.StatusBadRequest
 	case service.CodeDuplicateParticipation,
 		service.CodeInventoryRetryExhaust,
 		service.CodeOrderCancelled,
 		service.CodeOrderAlreadyPaid,
 		service.CodeOrderStateConflict,
-		service.CodePurchaseLabSoldOut:
+		service.CodePurchaseLabSoldOut,
+		service.CodeLoadtestAlreadyRunning:
 		return http.StatusConflict
+	case service.CodeLoadtestNotFound:
+		return http.StatusNotFound
 	case service.CodeOrderProcessing:
 		return http.StatusTooEarly
 	case service.CodeOrderNotOwned:
@@ -83,8 +88,12 @@ func statusForCode(code string) int {
 		service.CodeCacheAsideOverload,
 		service.CodeArchiveDBReadFailed,
 		service.CodeArchiveCacheResetFailed,
-		service.CodePurchaseLabUnavailable:
+		service.CodePurchaseLabUnavailable,
+		service.CodeLoadtestRunnerFailure,
+		service.CodeLoadtestRunnerUnavailable:
 		return http.StatusServiceUnavailable
+	case service.CodeLoadtestStopTimeout:
+		return http.StatusGatewayTimeout
 	default:
 		return http.StatusInternalServerError
 	}

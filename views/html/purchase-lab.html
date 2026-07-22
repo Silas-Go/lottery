@@ -8,7 +8,7 @@
     <meta name="description" content="用真实 MySQL 与 Redis 操作比较 Cache-Aside 两种购买写入顺序。" />
     <title>Cache-Aside 购买实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260720-purchase-lab" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260722-crowd-conversion" />
 </head>
 
 <body class="lab-page purchase-page" data-purchase-strategy="delete-then-update" data-purchase-status="idle">
@@ -56,6 +56,19 @@
                     <span class="endpoint-label">POST /api/purchase-lab/:id/run</span>
                 </div>
                 <p data-i18n="intro.body">每轮都从相同热缓存库存开始。服务端先完成真实 Redis/MySQL 操作，再把真实步骤与耗时交给页面回放。</p>
+                <section id="purchase-crowd-context" class="purchase-crowd-context" aria-labelledby="purchase-crowd-title" hidden>
+                    <div>
+                        <small>ARRIVING REQUEST POOL · 10% CONVERSION</small>
+                        <strong id="purchase-crowd-title">购买者已经抵达材料柜台</strong>
+                        <p id="purchase-crowd-copy">购买请求将持续进入，观察者会继续查询库存。</p>
+                    </div>
+                    <dl>
+                        <div><dt>完成调查</dt><dd id="purchase-crowd-total">0</dd></div>
+                        <div><dt>持续下单</dt><dd id="purchase-crowd-buyers">0</dd></div>
+                        <div><dt>继续查询</dt><dd id="purchase-crowd-observers">0</dd></div>
+                    </dl>
+                    <p>本页每轮从购买请求池抽取一个真实 T1，并让观察者提供 T2 查询样本，用于观察写入顺序的竞态影响。</p>
+                </section>
                 <div class="purchase-boundary-note">
                     <strong data-i18n="intro.boundaryTitle">本店实验边界</strong>
                     <span data-i18n="intro.boundaryBody">只演示材料库存缓存失效顺序；不创建订单，不接入 MQ，也不演示秒杀库存。</span>
@@ -211,7 +224,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-purchase-lab"></script>
-    <script src="/js/purchase-lab.js?v=20260720-purchase-lab"></script>
+    <script src="/js/purchase-lab.js?v=20260722-crowd-conversion"></script>
 </body>
 
 </html>

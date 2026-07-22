@@ -14,12 +14,23 @@
     var selectedCode = null;
     var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var crowdStream = null;
-    var crowdBaseline = null;
-    var crowdBaselinePath = null;
-    var crowdArmed = false;
-    var crowdTransitionStarted = false;
-    var crowdSize = 300;
-    var crowdDurationSeconds = 20;
+    var crowdPollTimer = null;
+    var activeTask = null;
+    var enteringCrowdLab = false;
+    var ACTIVE_TASK_KEY = "silas.cache-aside.active-loadtest.v1";
+    // ID 是前端唯一提交给后端的压力参数；数值只用于展示和生成等价调试命令。
+    var crowdTiers = Object.freeze({
+        visitors: Object.freeze({ label: "零星访客", rate: 100, connections: 16, duration: 20, visibleFigures: 3 }),
+        tide_eve: Object.freeze({ label: "潮汐前夜", rate: 500, connections: 32, duration: 20, visibleFigures: 9 }),
+        crowd: Object.freeze({ label: "人潮涌入", rate: 1500, connections: 64, duration: 20, visibleFigures: 19 }),
+        boiling_city: Object.freeze({ label: "王城沸腾", rate: 3000, connections: 96, duration: 20, visibleFigures: 30 })
+    });
+    var crowdShells = Object.freeze({
+        powershell: Object.freeze({ label: "PowerShell 5.1+" }),
+        bash: Object.freeze({ label: "Bash / WSL" })
+    });
+    var crowdTierID = "tide_eve";
+    var crowdShell = "powershell";
 
     function byId(id) {
         return document.getElementById(id);
@@ -34,7 +45,6 @@
             choosing: "选择材料",
             record_selected: "取得档案片",
             crowd_preparing: "召集人潮",
-            crowd_armed: "召集人潮",
             crowd_submitting: "请求投递",
             inserting_record: "插入档案片",
             entering_lab: "进入机器内部"
@@ -66,15 +76,19 @@
 
     function crowdCommand() {
         var experiment = experimentState.get();
+        var tier = crowdTiers[crowdTierID];
         var path = experiment.mode === "cached" ? "cached" : "direct";
         var loadCommand = "docker compose --profile loadtest run --rm --no-deps " +
-            "-e RATE=" + crowdSize + " -e DURATION=" + crowdDurationSeconds + "s -e CONNECTIONS=96 " +
+            "-e RATE=" + tier.rate + " -e DURATION=" + tier.duration + "s -e THREADS=1 -e CONNECTIONS=" + tier.connections + " " +
             "-e TARGET_URL=http://app:5678/api/archives/" + materialNumericId() + "/" + path + " " +
             "-e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
-        if (experiment.mode === "cached" && experiment.cacheTemperature === "cold") {
-            return "curl -fsS -X POST http://localhost:5678/api/chapters/cache-aside/reset >/dev/null && " + loadCommand;
+        if (crowdShell === "powershell") {
+            return "$ErrorActionPreference = \"Stop\"\n" +
+                "Invoke-WebRequest -UseBasicParsing -Method Post " +
+                "-Uri \"http://localhost:5678/api/chapters/cache-aside/reset\" | Out-Null\n" +
+                loadCommand;
         }
-        return loadCommand;
+        return "curl -fsS -X POST http://localhost:5678/api/chapters/cache-aside/reset >/dev/null && " + loadCommand;
     }
 
     function renderExperimentState(next) {
@@ -93,36 +107,52 @@
             "当前：Redis Cache-Aside · " + (next.cacheTemperature === "cold" ? "冷缓存" : "热缓存") :
             "当前：MySQL Direct";
 
-        if (selectedCode && (state === "crowd_preparing" || state === "crowd_armed")) {
-            crowdBaseline = null;
-            crowdBaselinePath = null;
-            renderCrowdSize(true);
-            primeCrowdBaseline();
+        if (selectedCode && state === "crowd_preparing" && !isTaskActive()) {
+            renderCrowdTier();
         }
     }
 
-    function renderCrowdSize(invalidateCopiedCommand) {
-        var range = byId("crowd-size-range");
-        crowdSize = Math.max(100, Math.min(1000, Number(range.value) || 300));
-        byId("crowd-size-value").textContent = crowdSize + " / 1000 req/s";
+    function renderCrowdTier() {
+        var tier = crowdTiers[crowdTierID] || crowdTiers.tide_eve;
+        if (!crowdTiers[crowdTierID]) {
+            crowdTierID = "tide_eve";
+        }
+        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (button) {
+            var active = button.dataset.crowdTier === crowdTierID;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        byId("crowd-size-value").textContent = tier.label + " · " + tier.rate.toLocaleString("zh-CN") +
+            " req/s · " + tier.connections + " 连接";
+        byId("crowd-size-note").textContent = "固定运行 " + tier.duration +
+            " 秒；批量实验会先重置数据，参数由 Runner 白名单决定。";
         if (selectedCode) {
             byId("market-load-command").textContent = crowdCommand();
         }
 
-        var visibleFigures = Math.max(1, Math.ceil(crowdSize / 10));
         Array.prototype.forEach.call(byId("crowd-queue").children, function (figure, index) {
-            figure.classList.toggle("is-visible", index < visibleFigures);
+            figure.classList.toggle("is-visible", index < tier.visibleFigures);
         });
 
-        if (invalidateCopiedCommand && state === "crowd_armed") {
-            crowdArmed = false;
-            experimentResults.clearPending();
-            setState("crowd_preparing");
-            byId("crowd-status-title").textContent = "人数已调整，请重新复制命令";
-            byId("crowd-status-copy").textContent = "目标 " + crowdSize + " req/s，等待重新复制命令。";
-        } else if (state === "crowd_preparing") {
-            byId("crowd-status-copy").textContent = "目标 " + crowdSize + " req/s，尚未开始投递。";
+        if (state === "crowd_preparing" && !activeTask) {
+            byId("crowd-status-copy").textContent = tier.label + "已就绪，点击后由页面直接启动实验。";
         }
+    }
+
+    function renderCrowdShell() {
+        var shell = crowdShells[crowdShell] || crowdShells.powershell;
+        if (!crowdShells[crowdShell]) {
+            crowdShell = "powershell";
+        }
+        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-shell]"), function (button) {
+            var active = button.dataset.crowdShell === crowdShell;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        if (selectedCode) {
+            byId("market-load-command").textContent = crowdCommand();
+        }
+        byId("copy-market-command").setAttribute("aria-label", "复制 " + shell.label + " 等价命令");
     }
 
     function updateCrowdTicketCodes() {
@@ -131,9 +161,9 @@
         });
     }
 
-    function selectMaterial(code) {
+    function applySelectedMaterial(code) {
         var material = materials[code];
-        if (!material || state !== "choosing") {
+        if (!material) {
             return;
         }
         selectedCode = code;
@@ -144,6 +174,13 @@
         byId("accepted-material").textContent = code + " · " + material.name;
         updateCrowdTicketCodes();
         rememberMaterial(code);
+    }
+
+    function selectMaterial(code) {
+        if (state !== "choosing") {
+            return;
+        }
+        applySelectedMaterial(code);
         setState("record_selected");
         byId("single-request").focus({ preventScroll: true });
     }
@@ -184,140 +221,256 @@
         });
     }
 
-    function stopCrowdMetrics() {
+    function isTaskActive(task) {
+        var status = (task || activeTask || {}).status;
+        return status === "starting" || status === "resetting" || status === "running" || status === "collecting";
+    }
+
+    function closeTaskTracking() {
         if (crowdStream) {
             crowdStream.close();
             crowdStream = null;
         }
+        if (crowdPollTimer) {
+            window.clearInterval(crowdPollTimer);
+            crowdPollTimer = null;
+        }
     }
 
-    function readCrowdTotal(snapshot) {
-        var path = readCrowdPath(snapshot);
-        return Number(path && path.totalRequests || 0);
+    function setExperimentControlsLocked(locked) {
+        ["roof-mode-direct", "roof-mode-cached", "choose-again", "single-request", "leave-crowd-mode"].forEach(function (id) {
+            byId(id).disabled = locked;
+        });
+        Array.prototype.forEach.call(document.querySelectorAll("[name='cache-temperature'], [data-crowd-tier]"), function (control) {
+            control.disabled = locked;
+        });
     }
 
-    function readCrowdPath(snapshot) {
-        var mode = experimentState.get().mode === "cached" ? "cached" : "direct";
-        var path = snapshot && snapshot.archiveRead && snapshot.archiveRead[mode];
-        if (!path) {
+    function formatClock(seconds) {
+        var safe = Math.max(0, Number(seconds || 0));
+        return String(Math.floor(safe / 60)).padStart(2, "0") + ":" + String(safe % 60).padStart(2, "0");
+    }
+
+    function renderTask(task) {
+        activeTask = task;
+        if (task.tier && task.tier.id && crowdTiers[task.tier.id]) {
+            crowdTierID = task.tier.id;
+            renderCrowdTier();
+        }
+        var active = isTaskActive(task);
+        var titles = {
+            starting: "准备实验",
+            resetting: "正在重置数据",
+            running: "人潮正在涌入",
+            collecting: "正在收集结果",
+            completed: "实验已完成",
+            failed: "实验失败",
+            stopped: "实验已停止"
+        };
+        var copies = {
+            starting: "委托已受理，正在打开通往店内实验室的门。",
+            resetting: "店内正在清理上一轮记录。",
+            running: "人潮已经进入店内，完整指标在实验室中展示。",
+            collecting: "店内正在整理本轮记录。",
+            completed: "本轮记录已整理完成，可进入店内查看。",
+            failed: task.errorMessage || "实验未能完成，可进入店内查看原因。",
+            stopped: "本轮人潮已经停止。"
+        };
+        setState(active ? "crowd_submitting" : "crowd_preparing");
+        setExperimentControlsLocked(active);
+        byId("start-crowd-test").disabled = active;
+        byId("start-crowd-test").textContent = active ? "人潮正在涌入" : (task.status === "completed" ? "再次召集人潮" : "召集人潮");
+        byId("enter-crowd-lab").hidden = !task.taskId;
+        byId("enter-crowd-lab").textContent = active ? "进入店内查看" : "进入店内查看结果";
+        byId("crowd-status-title").textContent = titles[task.status] || "等待召集";
+        byId("crowd-status-copy").textContent = copies[task.status] || "任务状态正在同步。";
+        byId("crowd-clock").textContent = formatClock(task.elapsedSeconds) + " / " +
+            formatClock((task.elapsedSeconds || 0) + (task.remainingSeconds || 0));
+        if (active) {
+            try { window.localStorage.setItem(ACTIVE_TASK_KEY, task.taskId); } catch (_) { /* 状态查询仍可继续。 */ }
+        } else {
+            closeTaskTracking();
+            try { window.localStorage.removeItem(ACTIVE_TASK_KEY); } catch (_) { /* 无持久化不影响当前结果。 */ }
+        }
+    }
+
+    async function readAPIError(response) {
+        try {
+            var body = await response.json();
+            return body.message || body.detail || ("HTTP " + response.status);
+        } catch (_) {
+            return "HTTP " + response.status;
+        }
+    }
+
+    async function refreshTask(taskID) {
+        try {
+            var response = await fetch("/api/loadtests/" + encodeURIComponent(taskID), { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(await readAPIError(response));
+            }
+            var task = await response.json();
+            if (!selectedCode) {
+                applySelectedMaterial("ARC-" + String(task.archiveId).padStart(3, "0"));
+            }
+            if (experimentState.get().mode !== task.mode) {
+                experimentState.set({ mode: task.mode, cacheTemperature: "cold" });
+            }
+            renderTask(task);
+            return task;
+        } catch (error) {
+            byId("crowd-status-copy").textContent = "状态查询暂时中断，SSE 将自动重连：" + error.message;
             return null;
         }
-        return {
-            totalRequests: Number(path.totalRequests || 0),
-            sqlQueries: Number(path.sqlQueries === undefined ? path.dbReads || 0 : path.sqlQueries),
-            cacheHits: Number(path.cacheHits || 0),
-            cacheMisses: Number(path.cacheMisses || 0),
-            cacheErrors: Number(path.cacheErrors || 0),
-            errors: Number(path.errors || 0)
+    }
+
+    function handleTaskEvent(event) {
+        try {
+            var data = JSON.parse(event.data);
+            if (!activeTask || data.taskId !== activeTask.taskId) {
+                return;
+            }
+            activeTask.status = data.status || activeTask.status;
+            activeTask.elapsedSeconds = data.elapsedSeconds;
+            activeTask.remainingSeconds = data.remainingSeconds;
+            if (data.metrics) {
+                activeTask.metrics = data.metrics;
+            }
+            renderTask(activeTask);
+            if (data.type === "log" || data.type === "completed" || data.type === "failed" || data.type === "stopped") {
+                refreshTask(data.taskId);
+            }
+        } catch (_) {
+            refreshTask(activeTask.taskId);
+        }
+    }
+
+    function connectTaskEvents(taskID) {
+        if (!window.EventSource) {
+            return;
+        }
+        if (crowdStream) {
+            crowdStream.close();
+        }
+        crowdStream = new EventSource("/api/loadtests/" + encodeURIComponent(taskID) + "/events");
+        ["task_started", "reset_completed", "loadtest_started", "progress", "metric", "log", "completed", "failed", "stopped"].forEach(function (type) {
+            crowdStream.addEventListener(type, handleTaskEvent);
+        });
+        crowdStream.onerror = function () {
+            if (activeTask && isTaskActive(activeTask)) {
+                byId("crowd-status-copy").textContent = "实时连接正在重连，任务仍在 Runner 中继续。";
+                refreshTask(taskID);
+            }
         };
     }
 
-    async function primeCrowdBaseline() {
-        try {
-            var response = await fetch("/api/metrics/snapshot");
-            if (!response.ok) {
-                return null;
-            }
-            var snapshot = await response.json();
-            var path = readCrowdPath(snapshot);
-            var total = readCrowdTotal(snapshot);
-            if (crowdBaseline === null || !crowdArmed) {
-                crowdBaseline = total;
-                crowdBaselinePath = path;
-            } else if (total > crowdBaseline) {
-                startCrowdSubmission();
-            }
-            return path;
-        } catch (_) {
-            // SSE 连接成功后仍可建立基线。
-            return null;
+    function startTaskPolling(taskID) {
+        if (crowdPollTimer) {
+            window.clearInterval(crowdPollTimer);
         }
+        crowdPollTimer = window.setInterval(function () {
+            if (activeTask && isTaskActive(activeTask)) {
+                refreshTask(taskID);
+            }
+        }, 2000);
     }
 
-    function startCrowdSubmission() {
-        if (crowdTransitionStarted || !selectedCode) {
+    function enterCrowdLabView() {
+        if (!selectedCode || !activeTask || !activeTask.taskId || enteringCrowdLab) {
             return;
         }
-        crowdTransitionStarted = true;
-        crowdArmed = false;
-        stopCrowdMetrics();
+        enteringCrowdLab = true;
         setState("crowd_submitting");
-        byId("crowd-status-title").textContent = "检测到外部请求，正在批量投递";
-        byId("crowd-status-copy").textContent = "请求档案已经进入槽口，视角将跟随它们进入系统。";
-        byId("market-announcer").textContent = "检测到真实外部请求，人群开始投递档案片";
+        byId("crowd-status-title").textContent = "正在进入材料情报店";
+        byId("crowd-status-copy").textContent = "请求档案已经进入槽口，完整实验将在店内继续。";
+        byId("market-announcer").textContent = "人潮已受理，正在跟随请求进入材料情报店";
         animateRecordIntoSlot();
-
         window.setTimeout(function () {
             setState("entering_lab");
             byId("accepted-stamp").setAttribute("aria-hidden", "false");
-            byId("market-announcer").textContent = "正在跟随请求档案进入系统内部";
             window.setTimeout(function () {
-                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) + "&entry=crowd");
-            }, reducedMotion ? 80 : 760);
-        }, reducedMotion ? 60 : 950);
+                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) +
+                    "&entry=crowd&task=" + encodeURIComponent(activeTask.taskId));
+            }, reducedMotion ? 40 : 260);
+        }, reducedMotion ? 40 : 420);
     }
 
-    function handleCrowdMetrics(snapshot) {
-        var path = readCrowdPath(snapshot);
-        var total = readCrowdTotal(snapshot);
-        if (crowdBaseline === null) {
-            crowdBaseline = total;
-            crowdBaselinePath = path;
+    async function startCrowdTest() {
+        if (!selectedCode || isTaskActive()) {
             return;
         }
-        if (!crowdArmed) {
-            crowdBaseline = total;
-            crowdBaselinePath = path;
-            return;
-        }
-        if (total < crowdBaseline) {
-            // 冷缓存命令先重置本章指标，以重置后的首帧重新建立流量基线。
-            crowdBaseline = total;
-            return;
-        }
-        if (total > crowdBaseline) {
-            startCrowdSubmission();
-        }
-    }
-
-    function connectCrowdMetrics() {
-        if (crowdStream || !window.EventSource) {
-            return;
-        }
-        crowdStream = new EventSource("/api/metrics/stream");
-        crowdStream.addEventListener("metrics", function (event) {
-            try {
-                handleCrowdMetrics(JSON.parse(event.data));
-            } catch (_) {
-                // 下一条真实指标仍可继续检测。
+        var experiment = experimentState.get();
+        setExperimentControlsLocked(true);
+        byId("start-crowd-test").disabled = true;
+        byId("start-crowd-test").textContent = "人潮正在涌入";
+        byId("crowd-status-title").textContent = "准备实验";
+        byId("crowd-status-copy").textContent = "正在向本地 Runner 创建受控任务。";
+        try {
+            var response = await fetch("/api/loadtests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    experiment: "cache-aside-read",
+                    archiveId: materialNumericId(),
+                    mode: experiment.mode,
+                    tier: crowdTierID
+                })
+            });
+            if (!response.ok) {
+                throw new Error(await readAPIError(response));
             }
-        });
+            var created = await response.json();
+            activeTask = {
+                taskId: created.taskId,
+                status: created.status,
+                elapsedSeconds: 0,
+                remainingSeconds: crowdTiers[crowdTierID].duration,
+                metrics: {},
+                logs: [{ level: "info", message: "准备实验" }]
+            };
+            var tier = crowdTiers[crowdTierID];
+            experimentResults.arm({
+                taskId: created.taskId,
+                entry: "crowd",
+                materialCode: selectedCode,
+                materialName: materials[selectedCode].name,
+                mode: experiment.mode,
+                cacheTemperature: "cold",
+                tier: crowdTierID,
+                expectedRate: tier.rate,
+                expectedDurationSeconds: tier.duration,
+                armedAt: new Date().toISOString()
+            });
+            renderTask(activeTask);
+            connectTaskEvents(created.taskId);
+            startTaskPolling(created.taskId);
+            enterCrowdLabView();
+        } catch (error) {
+            activeTask = null;
+            setExperimentControlsLocked(false);
+            byId("start-crowd-test").disabled = false;
+            byId("start-crowd-test").textContent = "召集人潮";
+            byId("crowd-status-title").textContent = "未能启动实验";
+            byId("crowd-status-copy").textContent = error.message;
+            showToast(error.message);
+        }
     }
 
     function openCrowdMode() {
         if (!selectedCode || state !== "record_selected") {
             return;
         }
-        crowdArmed = false;
-        crowdTransitionStarted = false;
-        crowdBaseline = null;
-        crowdBaselinePath = null;
-        byId("crowd-status-title").textContent = "等待外部请求到达";
+        activeTask = null;
+        enteringCrowdLab = false;
         setState("crowd_preparing");
-        renderCrowdSize(false);
-        primeCrowdBaseline();
-        connectCrowdMetrics();
-        byId("copy-market-command").focus({ preventScroll: true });
+        renderCrowdTier();
+        renderCrowdShell();
+        byId("enter-crowd-lab").hidden = true;
+        byId("start-crowd-test").focus({ preventScroll: true });
     }
 
     async function copyCrowdCommand() {
-        if (state !== "crowd_preparing" && state !== "crowd_armed") {
-            return;
-        }
         var command = byId("market-load-command").textContent;
-        if (!crowdBaselinePath) {
-            await primeCrowdBaseline();
-        }
         try {
             await navigator.clipboard.writeText(command);
         } catch (_) {
@@ -330,41 +483,32 @@
             document.execCommand("copy");
             textarea.remove();
         }
-        crowdArmed = true;
-        var experiment = experimentState.get();
-        experimentResults.arm({
-            entry: "crowd",
-            materialCode: selectedCode,
-            materialName: materials[selectedCode].name,
-            mode: experiment.mode,
-            cacheTemperature: experiment.cacheTemperature,
-            expectedRate: crowdSize,
-            expectedDurationSeconds: crowdDurationSeconds,
-            baseline: crowdBaselinePath,
-            armedAt: new Date().toISOString()
-        });
-        setState("crowd_armed");
-        byId("crowd-status-title").textContent = "已准备，等待你在终端执行";
-        byId("crowd-status-copy").textContent = "目标 " + crowdSize + " req/s 已准备；检测到真实请求后才会投递。";
-        showToast("压测命令已复制");
-        byId("market-announcer").textContent = "压测命令已复制，队伍已准备，等待终端执行";
-        if (crowdBaseline === null) {
-            primeCrowdBaseline();
-        }
-        connectCrowdMetrics();
+        showToast("等价命令已复制");
+        byId("market-announcer").textContent = "当前终端版本的等价压测命令已复制";
     }
 
     function leaveCrowdMode() {
-        if (state !== "crowd_preparing" && state !== "crowd_armed") {
+        if (state !== "crowd_preparing" || isTaskActive()) {
             return;
         }
-        crowdArmed = false;
-        crowdBaseline = null;
-        crowdBaselinePath = null;
-        experimentResults.clearPending();
-        stopCrowdMetrics();
+        activeTask = null;
         setState("record_selected");
         byId("crowd-test").focus({ preventScroll: true });
+    }
+
+    async function restoreActiveTask() {
+        var taskID = "";
+        try { taskID = window.localStorage.getItem(ACTIVE_TASK_KEY) || ""; } catch (_) { /* 无存储时从正常入口启动。 */ }
+        if (!taskID) {
+            return;
+        }
+        var task = await refreshTask(taskID);
+        if (!task || !isTaskActive(task)) {
+            return;
+        }
+        setState("crowd_submitting");
+        connectTaskEvents(taskID);
+        startTaskPolling(taskID);
     }
 
     function enterLab() {
@@ -404,32 +548,55 @@
         });
 
         byId("choose-again").addEventListener("click", function () {
-            if (state !== "record_selected" && state !== "crowd_preparing" && state !== "crowd_armed") {
+            if ((state !== "record_selected" && state !== "crowd_preparing") || isTaskActive()) {
                 return;
             }
-            crowdArmed = false;
-            crowdBaseline = null;
-            crowdBaselinePath = null;
             experimentResults.clearPending();
-            stopCrowdMetrics();
+            closeTaskTracking();
+            activeTask = null;
             selectedCode = null;
             setState("choosing");
             document.querySelector("[data-material]").focus({ preventScroll: true });
         });
         byId("single-request").addEventListener("click", enterLab);
         byId("crowd-test").addEventListener("click", openCrowdMode);
-        byId("crowd-size-range").addEventListener("input", function () { renderCrowdSize(true); });
+        byId("start-crowd-test").addEventListener("click", startCrowdTest);
+        byId("enter-crowd-lab").addEventListener("click", enterCrowdLabView);
+        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (button) {
+            button.addEventListener("click", function () {
+                var nextTier = button.dataset.crowdTier;
+                if (isTaskActive() || !crowdTiers[nextTier] || nextTier === crowdTierID) {
+                    return;
+                }
+                crowdTierID = nextTier;
+                renderCrowdTier();
+            });
+        });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-shell]"), function (button) {
+            button.addEventListener("click", function () {
+                var nextShell = button.dataset.crowdShell;
+                if (!crowdShells[nextShell] || nextShell === crowdShell) {
+                    return;
+                }
+                crowdShell = nextShell;
+                renderCrowdShell();
+            });
+        });
         byId("copy-market-command").addEventListener("click", copyCrowdCommand);
         byId("leave-crowd-mode").addEventListener("click", leaveCrowdMode);
         byId("roof-mode-direct").addEventListener("click", function () {
-            experimentState.set({ mode: "direct" });
+            if (!isTaskActive()) {
+                experimentState.set({ mode: "direct" });
+            }
         });
         byId("roof-mode-cached").addEventListener("click", function () {
-            experimentState.set({ mode: "cached" });
+            if (!isTaskActive()) {
+                experimentState.set({ mode: "cached" });
+            }
         });
         Array.prototype.forEach.call(document.querySelectorAll("[name='cache-temperature']"), function (radio) {
             radio.addEventListener("change", function () {
-                if (radio.checked) {
+                if (radio.checked && !isTaskActive()) {
                     experimentState.set({ cacheTemperature: radio.value });
                 }
             });
@@ -440,6 +607,7 @@
         bindEvents();
         renderExperimentState(experimentState.get());
         experimentState.subscribe(renderExperimentState);
+        restoreActiveTask();
         window.setTimeout(function () {
             if (state === "arrival") {
                 setState("dialogue");
@@ -448,5 +616,5 @@
         }, reducedMotion ? 80 : 480);
     });
 
-    window.addEventListener("beforeunload", stopCrowdMetrics);
+    window.addEventListener("beforeunload", closeTaskTracking);
 }());

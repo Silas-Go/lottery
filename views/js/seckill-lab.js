@@ -33,6 +33,14 @@
         entry: "single",
         pendingRun: null,
         crowdRun: null,
+        loadtestTaskId: null,
+        loadtestTask: null,
+        loadtestStream: null,
+        loadtestPollTimer: null,
+        loadtestResultSaved: false,
+        loadtestLastActiveStatus: "starting",
+        loadtestRecordLoaded: false,
+        crowdHandoff: null,
         snapshot: null,
         previousRead: null,
         lastResponse: null,
@@ -167,6 +175,10 @@
         return new URLSearchParams(window.location.search).get("entry") === "crowd" ? "crowd" : "single";
     }
 
+    function incomingLoadtestTaskID() {
+        return new URLSearchParams(window.location.search).get("task") || "";
+    }
+
     function rememberMaterial(profile) {
         try {
             window.sessionStorage.setItem(STORAGE_KEY, profile.code);
@@ -250,10 +262,14 @@
     }
 
     function updateControlState() {
-        var locked = state.isRequesting || state.isReplaying;
+        var loadtestLocked = loadtestIsActive(state.loadtestTask);
+        var locked = state.isRequesting || state.isReplaying || loadtestLocked;
         byId("query-archive").disabled = locked;
         byId("query-archive").querySelector("span").textContent = state.isRequesting ?
-            "正在等待真实响应" : (state.lastResponse ? "再次检索材料档案" : "检索材料档案");
+            "正在等待真实响应" : (loadtestLocked ? "人潮实验进行中" :
+                (state.lastResponse ? "再次检索材料档案" : "检索材料档案"));
+        byId("reset-lab").disabled = loadtestLocked;
+        byId("clear-comparison").disabled = loadtestLocked;
     }
 
     function clearRouteTimers() {
@@ -536,6 +552,248 @@
         showToast("本轮实验结果已冻结，可用于下一轮对比。", "success");
     }
 
+    function loadtestIsActive(task) {
+        return Boolean(task && ["starting", "resetting", "running", "collecting"].indexOf(task.status) >= 0);
+    }
+
+    function formatLoadtestClock(value) {
+        var seconds = Math.max(0, Math.floor(Number(value || 0)));
+        return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" +
+            String(seconds % 60).padStart(2, "0");
+    }
+
+    function formatLoadtestLatency(value) {
+        var latency = Number(value || 0);
+        return latency > 0 ? latency.toFixed(latency >= 10 ? 1 : 2) + " ms" : "—";
+    }
+
+    function loadtestStatusCopy(status) {
+        var copies = {
+            starting: ["准备实验", "Runner 已接单，正在准备受控压测。"],
+            resetting: ["重置数据", "正在清空缓存和本章指标，保证本轮结果独立。"],
+            running: ["人潮正在涌入", "wrk2 正在店外持续提交真实读取请求。"],
+            collecting: ["收集结果", "压测已结束，正在解析输出并汇总指标。"],
+            completed: ["实验已完成", "结果已经冻结，并已进入下方路径比对。"],
+            failed: ["实验失败", "Runner 未能完成本轮实验，请查看关键事件。"],
+            stopped: ["实验已停止", "wrk2 子进程已回收，本轮不会计入胜负。"]
+        };
+        return copies[status] || ["连接实验任务", "正在恢复 Runner 的权威任务状态。"];
+    }
+
+    function renderLoadtestStages(task) {
+        var order = ["starting", "resetting", "running", "collecting", "completed"];
+        var effectiveStatus = task.status;
+        if (task.status === "failed" || task.status === "stopped") {
+            effectiveStatus = state.loadtestLastActiveStatus || "starting";
+        }
+        var currentIndex = Math.max(0, order.indexOf(effectiveStatus));
+        Array.prototype.forEach.call(byId("lab-loadtest-stages").children, function (item, index) {
+            item.classList.toggle("is-complete", task.status === "completed" || index < currentIndex);
+            item.classList.toggle("is-current", task.status !== "completed" && index === currentIndex);
+            item.classList.toggle("is-failed", (task.status === "failed" || task.status === "stopped") && index === currentIndex);
+        });
+    }
+
+    function renderLoadtestLogs(logs) {
+        var host = byId("lab-loadtest-log");
+        host.innerHTML = "";
+        var entries = Array.isArray(logs) ? logs.slice(-8) : [];
+        if (!entries.length) {
+            var waiting = document.createElement("li");
+            waiting.textContent = "等待 Runner 关键事件";
+            host.appendChild(waiting);
+            return;
+        }
+        entries.forEach(function (entry) {
+            var item = document.createElement("li");
+            item.className = entry.level === "error" ? "is-error" : "";
+            var at = entry.at ? new Date(entry.at).toLocaleTimeString("zh-CN", { hour12: false }) : "--:--:--";
+            var time = document.createElement("time");
+            var message = document.createElement("span");
+            time.textContent = at;
+            message.textContent = entry.message || "任务状态已更新";
+            item.appendChild(time);
+            item.appendChild(message);
+            host.appendChild(item);
+        });
+    }
+
+    function freezeLoadtestResult(task) {
+        if (state.loadtestResultSaved || task.status !== "completed") {
+            return;
+        }
+        var existing = experimentResults.latest(task.mode);
+        if (existing && existing.taskId === task.taskId) {
+            state.loadtestResultSaved = true;
+            renderFrozenResults();
+            return;
+        }
+        state.loadtestResultSaved = true;
+        var metrics = task.metrics || {};
+        var tier = task.tier || {};
+        var pending = state.pendingRun || {};
+        var requestCount = Number(metrics.actualRequests || 0);
+        completeResult({
+            taskId: task.taskId,
+            entry: "crowd",
+            materialCode: pending.materialCode || state.profile.code,
+            materialName: pending.materialName || state.profile.name,
+            mode: task.mode === "cached" ? "cached" : "direct",
+            cacheTemperature: pending.cacheTemperature || "cold",
+            expectedRate: Number(tier.rate || pending.expectedRate || 0),
+            expectedDurationSeconds: Number(tier.durationSeconds || pending.expectedDurationSeconds || 20),
+            startedAt: task.startedAt || task.createdAt,
+            metrics: {
+                requests: requestCount,
+                qps: Number(metrics.actualQps || 0),
+                sqlQueries: Number(metrics.sqlQueries || 0),
+                p50: Number(metrics.p50Ms || 0),
+                p95: Number(metrics.p95Ms || 0),
+                p99: Math.round(Number(metrics.p99Ms || 0)),
+                poolPeak: Number(metrics.poolPeak || 0),
+                poolCapacity: Number(metrics.poolCapacity || 0),
+                hitRate: task.mode === "cached" ? Math.round(Number(metrics.cacheHitRate || 0)) : null,
+                cacheHits: Number(metrics.redisHits || 0),
+                mysqlFallbacks: Number(metrics.mysqlFallbacks || 0),
+                timeouts: Number(metrics.timeouts || 0),
+                errors: Math.round(requestCount * Number(metrics.errorRate || 0) / 100)
+            }
+        });
+    }
+
+    function stopLoadtestConnections() {
+        if (state.loadtestStream) {
+            state.loadtestStream.close();
+            state.loadtestStream = null;
+        }
+        if (state.loadtestPollTimer) {
+            window.clearInterval(state.loadtestPollTimer);
+            state.loadtestPollTimer = null;
+        }
+    }
+
+    function renderLoadtestTask(task) {
+        if (!task) {
+            return;
+        }
+        var previousStatus = state.loadtestTask && state.loadtestTask.status;
+        state.loadtestTask = task;
+        if (loadtestIsActive(task)) {
+            state.loadtestLastActiveStatus = task.status;
+        }
+        var panel = byId("lab-loadtest");
+        var copy = loadtestStatusCopy(task.status);
+        var metrics = task.metrics || {};
+        var duration = Number(task.tier && task.tier.durationSeconds || 20);
+        panel.hidden = false;
+        panel.dataset.status = task.status || "starting";
+        byId("lab-loadtest-title").textContent = copy[0];
+        byId("lab-loadtest-copy").textContent = task.errorMessage || copy[1];
+        byId("lab-loadtest-clock").textContent = formatLoadtestClock(task.elapsedSeconds) + " / " + formatLoadtestClock(duration);
+        byId("lab-stop-loadtest").hidden = !loadtestIsActive(task);
+        byId("lab-stop-loadtest").disabled = false;
+        byId("lab-stop-loadtest").textContent = "停止实验";
+        byId("lab-load-requests").textContent = formatNumber(metrics.actualRequests);
+        byId("lab-load-qps").textContent = Number(metrics.actualQps || 0).toLocaleString("zh-CN", { maximumFractionDigits: 1 });
+        byId("lab-load-p50").textContent = formatLoadtestLatency(metrics.p50Ms);
+        byId("lab-load-p95").textContent = formatLoadtestLatency(metrics.p95Ms);
+        byId("lab-load-p99").textContent = formatLoadtestLatency(metrics.p99Ms);
+        byId("lab-load-errors").textContent = Number(metrics.errorRate || 0).toFixed(2) + "%";
+        byId("lab-load-timeouts").textContent = formatNumber(metrics.timeouts);
+        byId("lab-load-hits").textContent = formatNumber(metrics.redisHits);
+        byId("lab-load-fallbacks").textContent = formatNumber(metrics.mysqlFallbacks);
+        renderLoadtestStages(task);
+        renderLoadtestLogs(task.logs);
+
+        var selected = currentExperiment();
+        if (selected.mode !== task.mode || selected.cacheTemperature !== "cold") {
+            experimentState.set({ mode: task.mode, cacheTemperature: "cold" });
+        }
+        updateControlState();
+
+        if (task.status === "completed") {
+            // SSE 的 completed 事件只带增量字段；必须等 GET 返回完整 Task 后再冻结结果。
+            if (task.endedAt && task.tier) {
+                freezeLoadtestResult(task);
+                renderCrowdConversion(task);
+                loadCrowdMaterialRecord(task);
+                stopLoadtestConnections();
+            }
+        } else if (task.status === "failed" || task.status === "stopped") {
+            experimentResults.clearPending();
+            state.pendingRun = null;
+            byId("freeze-status").textContent = task.status === "failed" ? "本轮压测失败 · 未冻结结果" : "本轮压测已停止 · 未冻结结果";
+            if (previousStatus !== task.status) {
+                showToast(task.errorMessage || (task.status === "failed" ? "压测执行失败。" : "压测已停止。"), task.status === "failed" ? "danger" : "");
+            }
+            stopLoadtestConnections();
+        }
+    }
+
+    async function fetchLoadtestTask() {
+        if (!state.loadtestTaskId) {
+            return;
+        }
+        try {
+            var result = await requestJSON("/api/loadtests/" + encodeURIComponent(state.loadtestTaskId));
+            renderLoadtestTask(result.body);
+        } catch (error) {
+            byId("lab-loadtest").hidden = false;
+            byId("lab-loadtest-title").textContent = "正在恢复实验连接";
+            byId("lab-loadtest-copy").textContent = error.message;
+        }
+    }
+
+    function connectLoadtestTask(taskID) {
+        state.loadtestTaskId = taskID;
+        byId("lab-loadtest").hidden = false;
+        fetchLoadtestTask();
+        state.loadtestPollTimer = window.setInterval(fetchLoadtestTask, 1500);
+        if (!window.EventSource) {
+            return;
+        }
+        state.loadtestStream = new EventSource("/api/loadtests/" + encodeURIComponent(taskID) + "/events");
+        ["task_started", "reset_completed", "loadtest_started", "progress", "metric", "log", "completed", "failed", "stopped"].forEach(function (eventName) {
+            state.loadtestStream.addEventListener(eventName, function (event) {
+                try {
+                    var update = JSON.parse(event.data);
+                    var current = state.loadtestTask || { taskId: taskID, metrics: {}, logs: [] };
+                    renderLoadtestTask(Object.assign({}, current, {
+                        status: update.status || current.status,
+                        elapsedSeconds: update.elapsedSeconds,
+                        remainingSeconds: update.remainingSeconds,
+                        metrics: update.metrics || current.metrics
+                    }));
+                    if (["log", "reset_completed", "loadtest_started", "completed", "failed", "stopped"].indexOf(eventName) >= 0) {
+                        fetchLoadtestTask();
+                    }
+                } catch (_) {
+                    fetchLoadtestTask();
+                }
+            });
+        });
+        state.loadtestStream.onerror = function () {
+            fetchLoadtestTask();
+        };
+    }
+
+    async function stopLoadtest() {
+        if (!loadtestIsActive(state.loadtestTask) || !state.loadtestTaskId) {
+            return;
+        }
+        var button = byId("lab-stop-loadtest");
+        button.disabled = true;
+        button.textContent = "正在停止";
+        try {
+            var result = await requestJSON("/api/loadtests/" + encodeURIComponent(state.loadtestTaskId) + "/stop", { method: "POST" });
+            renderLoadtestTask(result.body);
+        } catch (error) {
+            button.disabled = false;
+            button.textContent = "停止实验";
+            showToast(error.message, "danger");
+        }
+    }
+
     function freezeSingleResult(source, latency, sqlQueries) {
         var experiment = currentExperiment();
         var cached = experiment.mode === "cached";
@@ -572,7 +830,8 @@
     }
 
     function trackCrowdRun(direct, cached, at) {
-        if (state.entry !== "crowd" || !state.pendingRun) {
+        // 新版 Runner 任务使用任务自身的权威指标冻结结果，不能再与全局 SSE 差值重复计数。
+        if (state.loadtestTaskId || state.entry !== "crowd" || !state.pendingRun) {
             return;
         }
         var mode = state.pendingRun.mode === "cached" ? "cached" : "direct";
@@ -668,6 +927,65 @@
             Number(body.rating.score || 0).toFixed(2) + " / 5 · " + formatNumber(body.rating.count) + " 条" : "—";
         byId("record-source").textContent = sourceLabel(source);
         byId("record-latency").textContent = latency.toFixed(1) + " ms";
+    }
+
+    function renderCrowdConversion(task) {
+        var crowdSize = Number(task && task.tier && task.tier.rate || 0);
+        if (!crowdSize) {
+            return;
+        }
+        var buyers = Math.round(crowdSize * .1);
+        var observers = Math.max(0, crowdSize - buyers);
+        state.crowdHandoff = {
+            crowdSize: crowdSize,
+            buyers: buyers,
+            observers: observers,
+            taskId: task.taskId
+        };
+        byId("crowd-conversion").hidden = false;
+        byId("crowd-spread-title").textContent = state.profile.name + "的资料已经传遍黑市。";
+        byId("crowd-survey-count").textContent = formatNumber(crowdSize);
+        byId("crowd-buyer-count").textContent = formatNumber(buyers);
+        byId("crowd-buyer-pool").textContent = formatNumber(buyers) + " 人";
+        byId("crowd-observer-pool").textContent = formatNumber(observers) + " 人";
+        byId("purchase-entry").textContent = "带领购买者进入商店";
+        byId("purchase-entry-note").textContent = formatNumber(buyers) + " 名购买者会作为持续请求池，" +
+            formatNumber(observers) + " 名观察者继续查询库存；不会在同一瞬间全部提交。";
+    }
+
+    async function loadCrowdMaterialRecord(task) {
+        if (state.loadtestRecordLoaded || !task || task.status !== "completed") {
+            return;
+        }
+        state.loadtestRecordLoaded = true;
+        var path = task.mode === "cached" ? "cached" : "direct";
+        var started = window.performance.now();
+        try {
+            var result = await requestJSON("/api/archives/" + state.id + "/" + path);
+            var latency = window.performance.now() - started;
+            var source = result.response.headers.get("X-Archive-Source") || "unknown";
+            renderRecord(result.body, source, latency);
+            byId("request-status").textContent = "人潮调查完成，材料资料已归档";
+            byId("actual-latency").textContent = latency.toFixed(1) + " ms";
+            byId("actual-source").textContent = source;
+        } catch (error) {
+            state.loadtestRecordLoaded = false;
+            byId("request-status").textContent = "压测完成，但材料资料回填失败";
+            showToast(error.message, "danger");
+        }
+    }
+
+    function enterPurchaseLab() {
+        if (!state.lastResponse || !state.profile) {
+            showToast("请先完成一次真实材料查询。", "danger");
+            return;
+        }
+        var target = "/purchase-lab?material=" + encodeURIComponent(state.profile.code);
+        if (state.crowdHandoff) {
+            target += "&crowd=" + encodeURIComponent(state.crowdHandoff.crowdSize) +
+                "&sourceTask=" + encodeURIComponent(state.crowdHandoff.taskId);
+        }
+        window.location.href = target;
     }
 
     async function prepareColdCache() {
@@ -1024,6 +1342,10 @@
     }
 
     async function resetLab() {
+        if (loadtestIsActive(state.loadtestTask)) {
+            showToast("人潮实验进行中，不能单独重置店内数据。", "danger");
+            return;
+        }
         var button = byId("reset-lab");
         button.disabled = true;
         try {
@@ -1039,6 +1361,9 @@
             byId("route-events").innerHTML = "<li><span>READY</span><strong>等待真实响应头</strong><small>不会根据所选模式猜测结果</small></li>";
             byId("record-placeholder").hidden = false;
             byId("record-result").hidden = true;
+            byId("crowd-conversion").hidden = true;
+            state.crowdHandoff = null;
+            state.loadtestRecordLoaded = false;
             byId("request-status").textContent = "等待发起真实请求";
             byId("actual-latency").textContent = "—";
             byId("actual-source").textContent = "—";
@@ -1057,6 +1382,10 @@
     }
 
     async function clearComparison() {
+        if (loadtestIsActive(state.loadtestTask)) {
+            showToast("人潮实验进行中，结束或停止后再清空对比。", "danger");
+            return;
+        }
         var button = byId("clear-comparison");
         button.disabled = true;
         experimentResults.clear();
@@ -1104,6 +1433,7 @@
         byId("query-archive").addEventListener("click", readArchive);
         byId("reset-lab").addEventListener("click", resetLab);
         byId("clear-comparison").addEventListener("click", clearComparison);
+        byId("lab-stop-loadtest").addEventListener("click", stopLoadtest);
         byId("show-data-composition").addEventListener("click", showDataComposition);
         byId("close-data-composition").addEventListener("click", closeDataComposition);
         byId("data-composition-dialog").addEventListener("click", function (event) {
@@ -1117,13 +1447,7 @@
         });
         byId("replay-metrics").addEventListener("click", startMetricsReplay);
         byId("pause-metrics-replay").addEventListener("click", toggleMetricsReplayPause);
-        byId("purchase-entry").addEventListener("click", function () {
-            if (!state.lastResponse || !state.profile) {
-                showToast("请先完成一次真实材料查询。", "danger");
-                return;
-            }
-            window.location.href = "/purchase-lab?material=" + encodeURIComponent(state.profile.code);
-        });
+        byId("purchase-entry").addEventListener("click", enterPurchaseLab);
     }
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -1134,6 +1458,8 @@
         var entry = incomingEntry();
         state.entry = entry;
         state.pendingRun = entry === "crowd" ? experimentResults.pending() : null;
+        state.loadtestTaskId = entry === "crowd" ? (incomingLoadtestTaskID() ||
+            (state.pendingRun && state.pendingRun.taskId) || "") : "";
         document.body.dataset.entryMode = entry;
         renderExperimentState(currentExperiment());
         experimentState.subscribe(renderExperimentState);
@@ -1145,6 +1471,9 @@
         if (entry === "crowd") {
             byId("request-status").textContent = "已从室外跟随压测请求进入";
             byId("replay-status").textContent = "等待 SSE 捕获后续请求";
+            if (state.loadtestTaskId) {
+                connectLoadtestTask(state.loadtestTaskId);
+            }
         }
         fetchSnapshot();
         connectMetrics();
@@ -1158,6 +1487,7 @@
         if (state.pollTimer) {
             window.clearInterval(state.pollTimer);
         }
+        stopLoadtestConnections();
         clearMetricsReplayTimer();
     });
 }());

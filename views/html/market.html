@@ -8,7 +8,7 @@
     <meta name="description" content="在阳光下的 Silas 炼金市选择材料档案片，再进入 Cache-Aside 技术实验室。" />
     <title>Silas 炼金市 · 材料情报店</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260720-clear-comparison" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260722-loadtest-inside" />
 </head>
 
 <body class="market-page" data-event-state="arrival">
@@ -176,7 +176,7 @@
                                 <strong>单人购买</strong><small>先投递一次只读资料校验</small>
                             </button>
                             <button id="crowd-test" type="button">
-                                <strong>召集人潮</strong><small>调整 100～1000 req/s，准备批量投递</small>
+                                <strong>召集人潮</strong><small>选择固定人潮挡位，准备批量投递</small>
                             </button>
                         </div>
                         <small class="purchase-boundary">此处不会直接扣减库存；购买时会重新校验价格与库存。</small>
@@ -187,17 +187,47 @@
                             <div><small>MULTI-VISITOR LOAD</small><strong>召集人潮</strong></div>
                             <button id="leave-crowd-mode" type="button">返回方式选择</button>
                         </header>
-                        <label class="crowd-size-control" for="crowd-size-range">
-                            <span><strong>目标速率</strong><output id="crowd-size-value" for="crowd-size-range">300 / 1000 req/s</output></span>
-                            <input id="crowd-size-range" type="range" min="100" max="1000" step="100" value="300" aria-describedby="crowd-size-note" />
-                            <small id="crowd-size-note">队伍是请求速率的故事隐喻；并发连接固定为 96，不等于访客数字。</small>
-                        </label>
-                        <code id="market-load-command">正在生成压测命令…</code>
-                        <button id="copy-market-command" class="event-primary" type="button">复制压测命令</button>
+                        <fieldset class="crowd-tier-control" aria-describedby="crowd-size-note">
+                            <legend>选择人潮挡位</legend>
+                            <div class="crowd-tier-options" role="group" aria-label="固定人潮挡位">
+                                <button type="button" data-crowd-tier="visitors" aria-pressed="false">
+                                    <span>零星访客</span><strong>100 req/s</strong><small>16 条连接</small>
+                                </button>
+                                <button class="is-active" type="button" data-crowd-tier="tide_eve" aria-pressed="true">
+                                    <span>潮汐前夜</span><strong>500 req/s</strong><small>32 条连接</small>
+                                </button>
+                                <button type="button" data-crowd-tier="crowd" aria-pressed="false">
+                                    <span>人潮涌入</span><strong>1500 req/s</strong><small>64 条连接</small>
+                                </button>
+                                <button type="button" data-crowd-tier="boiling_city" aria-pressed="false">
+                                    <span>王城沸腾</span><strong>3000 req/s</strong><small>96 条连接</small>
+                                </button>
+                            </div>
+                            <div class="crowd-tier-selection"><small>当前挡位</small><output id="crowd-size-value">潮汐前夜 · 500 req/s · 32 连接</output></div>
+                            <small id="crowd-size-note">固定运行 20 秒。批量实验会先重置数据；所有参数由 Runner 白名单决定。</small>
+                        </fieldset>
+                        <div class="crowd-run-actions">
+                            <button id="start-crowd-test" class="event-primary" type="button">召集人潮</button>
+                            <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入店内查看</button>
+                        </div>
                         <div class="crowd-status" role="status" aria-live="polite">
                             <i></i>
-                            <span><strong id="crowd-status-title">等待外部请求到达</strong><small id="crowd-status-copy">人群已在门口排队，但尚未开始投递。</small></span>
+                            <span><strong id="crowd-status-title">等待召集</strong><small id="crowd-status-copy">选择挡位后，页面会直接启动本地 wrk2 实验。</small></span>
+                            <time id="crowd-clock">00:00 / 00:20</time>
                         </div>
+                        <details id="equivalent-command" class="crowd-command-details">
+                            <summary>查看等价命令</summary>
+                            <p>仅用于学习和调试；正常使用无需复制到终端。</p>
+                            <div class="crowd-command-toolbar">
+                                <small>当前终端</small>
+                                <div class="crowd-shell-options" role="group" aria-label="压测命令终端类型">
+                                    <button class="is-active" type="button" data-crowd-shell="powershell" aria-pressed="true">PowerShell 5.1+</button>
+                                    <button type="button" data-crowd-shell="bash" aria-pressed="false">Bash / WSL</button>
+                                </div>
+                            </div>
+                            <code id="market-load-command">正在生成压测命令…</code>
+                            <button id="copy-market-command" class="event-secondary" type="button">复制当前命令</button>
+                        </details>
                     </div>
 
                     <div class="record-actions">
@@ -216,7 +246,7 @@
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260720-material-detail"></script>
+    <script src="/js/market.js?v=20260722-loadtest-inside"></script>
 </body>
 
 </html>

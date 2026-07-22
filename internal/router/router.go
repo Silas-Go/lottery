@@ -24,6 +24,9 @@ type Handlers struct {
 
 	// Lab 处理本地实验室管理接口，例如重置压测数据。
 	Lab *handler.LabHandler
+
+	// Loadtest 只代理受控的本地 wrk2 任务，不接受任意命令或目标地址。
+	Loadtest *handler.LoadtestHandler
 }
 
 // New 创建 Gin HTTP 引擎并注册页面、静态资源和 API 路由。
@@ -82,4 +85,8 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/api/metrics/snapshot", handler.GetMetricsSnapshot)
 	engine.GET("/api/metrics/stream", handler.StreamMetrics)
 	engine.POST("/api/lab/reset", handlers.Lab.ResetLab)
+	engine.POST("/api/loadtests", handlers.Loadtest.Create)
+	engine.GET("/api/loadtests/:id", handlers.Loadtest.Get)
+	engine.GET("/api/loadtests/:id/events", handlers.Loadtest.Events)
+	engine.POST("/api/loadtests/:id/stop", handlers.Loadtest.Stop)
 }

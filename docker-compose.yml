@@ -10,6 +10,8 @@ services:
         condition: service_healthy
       rocketmq-init:
         condition: service_completed_successfully
+      loadtest-runner:
+        condition: service_healthy
     environment:
       COMPUTERNAME: itcheer
       LOTTERY_HTTP_ADDR: 0.0.0.0:5678
@@ -27,8 +29,35 @@ services:
       LOTTERY_MQ_CONSUMER_GROUP: lottery
       LOTTERY_COOKIE_DOMAIN: localhost
       LOTTERY_RATE_LIMIT_QPS: "800"
+      LOTTERY_LOADTEST_RUNNER_URL: http://loadtest-runner:8090
     ports:
       - "5678:5678"
+    volumes:
+      - ./views:/app/views:ro
+    restart: on-failure
+
+  loadtest-runner:
+    build:
+      context: .
+      dockerfile: docker/wrk2/Dockerfile
+      target: loadtest-runner
+    container_name: lottery-loadtest-runner
+    environment:
+      LOADTEST_RUNNER_ADDR: :8090
+      LOADTEST_APP_BASE_URL: http://app:5678
+      LOADTEST_STATE_PATH: /var/lib/loadtest-runner/tasks.json
+      LOADTEST_WRK2_PATH: /usr/local/bin/wrk2
+      LOADTEST_SCRIPT_PATH: /opt/wrk2/scripts/read.lua
+    expose:
+      - "8090"
+    volumes:
+      - loadtest-runner-data:/var/lib/loadtest-runner
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/loadtest-runner", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    stop_grace_period: 10s
     restart: on-failure
 
   mysql:
@@ -122,7 +151,9 @@ services:
 
   wrk2:
     build:
-      context: ./docker/wrk2
+      context: .
+      dockerfile: docker/wrk2/Dockerfile
+      target: wrk2
     container_name: lottery-wrk2
     profiles:
       - loadtest
@@ -143,3 +174,4 @@ volumes:
   redis-data:
   rocketmq-logs:
   rocketmq-store:
+  loadtest-runner-data:

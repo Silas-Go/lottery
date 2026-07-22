@@ -29,6 +29,12 @@ const (
 	CodePurchaseLabInvalidStrategy  = "PURCHASE_LAB_INVALID_STRATEGY"
 	CodePurchaseLabSoldOut          = "PURCHASE_LAB_SOLD_OUT"
 	CodePurchaseLabUnavailable      = "PURCHASE_LAB_UNAVAILABLE"
+	CodeLoadtestInvalidRequest      = "LOADTEST_INVALID_REQUEST"
+	CodeLoadtestAlreadyRunning      = "LOADTEST_ALREADY_RUNNING"
+	CodeLoadtestNotFound            = "LOADTEST_NOT_FOUND"
+	CodeLoadtestRunnerFailure       = "LOADTEST_RUNNER_FAILURE"
+	CodeLoadtestRunnerUnavailable   = "LOADTEST_RUNNER_UNAVAILABLE"
+	CodeLoadtestStopTimeout         = "LOADTEST_STOP_TIMEOUT"
 )
 
 // AppError 表示 service 层返回给 handler 的业务错误。

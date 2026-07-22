@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 FROM debian:bookworm-slim AS builder
 
 # BuildKit 会按 Docker Desktop 当前平台注入 TARGETARCH：Windows/Intel Mac 通常是
@@ -56,7 +54,15 @@ RUN set -eux; \
 WORKDIR /src/wrk2
 RUN make
 
-FROM debian:bookworm-slim
+FROM golang:1.25-alpine AS runner-builder
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/loadtest-runner ./cmd/loadtest-runner
+
+FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
     && apt-get install -y -o Acquire::Retries=5 --fix-missing --no-install-recommends \
@@ -66,9 +72,20 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/wrk2/wrk /usr/local/bin/wrk2
-COPY run-wrk2.sh /usr/local/bin/run-wrk2
-COPY scripts /opt/wrk2/scripts
+COPY docker/wrk2/run-wrk2.sh /usr/local/bin/run-wrk2
+COPY docker/wrk2/scripts /opt/wrk2/scripts
 
 RUN chmod +x /usr/local/bin/run-wrk2
 
+FROM runtime AS wrk2
+
 ENTRYPOINT ["run-wrk2"]
+
+FROM runtime AS loadtest-runner
+
+COPY --from=runner-builder /out/loadtest-runner /usr/local/bin/loadtest-runner
+RUN install -d -o 10001 -g 10001 /var/lib/loadtest-runner
+
+USER 10001:10001
+EXPOSE 8090
+ENTRYPOINT ["/usr/local/bin/loadtest-runner"]

@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"silas/internal/database"
 	"silas/internal/handler"
+	"silas/internal/loadtest"
 	"silas/internal/metrics"
 	"silas/internal/mq"
 	"silas/internal/router"
@@ -157,6 +158,7 @@ func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService) {
 	cacheAsideService := service.NewCacheAsideLotteryService(store)
 	archiveService := service.NewArchiveService(store)
 	purchaseLabService := service.NewPurchaseLabService(store)
+	loadtestService := service.NewLoadtestService(loadtest.NewClient(util.EnvString("LOTTERY_LOADTEST_RUNNER_URL", "http://loadtest-runner:8090")))
 	slog.Info("http dependencies initialized", "rate_limit_qps", rateLimitQPS)
 
 	engine := router.New(router.Handlers{
@@ -165,6 +167,7 @@ func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService) {
 		Gift:        handler.NewGiftHandler(lotteryService, cacheAsideService),
 		Order:       handler.NewOrderHandler(orderService),
 		Lab:         handler.NewLabHandler(store, cacheAsideService.ResetCircuitBreaker),
+		Loadtest:    handler.NewLoadtestHandler(loadtestService),
 	})
 	return engine, orderService
 }

@@ -47,6 +47,7 @@
         warnedDirty: false,
         baseline: null,
         comparisonOpen: false,
+        crowdContext: null,
         reducedMotion: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
     };
 
@@ -74,6 +75,25 @@
         } catch (_) {
             return null;
         }
+    }
+
+    function incomingCrowdContext() {
+        var query = new URLSearchParams(window.location.search);
+        var crowdSize = Number(query.get("crowd") || 0);
+        if ([100, 500, 1500, 3000].indexOf(crowdSize) < 0) {
+            return null;
+        }
+        var taskId = query.get("sourceTask") || "";
+        if (!/^lt-[a-zA-Z0-9-]+$/.test(taskId)) {
+            taskId = "";
+        }
+        var buyers = Math.round(crowdSize * .1);
+        return {
+            crowdSize: crowdSize,
+            buyers: buyers,
+            observers: crowdSize - buyers,
+            taskId: taskId
+        };
     }
 
     function rememberMaterial(profile) {
@@ -134,10 +154,34 @@
         byId("purchase-current-name").textContent = material.profile.name;
         document.body.dataset.materialKind = material.profile.kind;
         var queryURL = "/lab?material=" + encodeURIComponent(material.profile.code);
+        if (state.crowdContext && state.crowdContext.taskId) {
+            queryURL += "&entry=crowd&task=" + encodeURIComponent(state.crowdContext.taskId);
+        }
         byId("purchase-query-link").href = queryURL;
         byId("back-to-query").href = queryURL;
         byId("purchase-empty").querySelector("a").href = queryURL;
         return true;
+    }
+
+    function renderCrowdContext() {
+        var context = state.crowdContext;
+        if (!context) {
+            return;
+        }
+        state.concurrentQuery = true;
+        byId("purchase-crowd-context").hidden = false;
+        byId("purchase-crowd-title").textContent = state.profile.name + "的购买队伍已经抵达。";
+        byId("purchase-crowd-copy").textContent = context.buyers.toLocaleString("zh-CN") +
+            " 名购买者进入持续下单请求池，" + context.observers.toLocaleString("zh-CN") +
+            " 名观察者继续查询库存。";
+        byId("purchase-crowd-total").textContent = context.crowdSize.toLocaleString("zh-CN") + " 人";
+        byId("purchase-crowd-buyers").textContent = context.buyers.toLocaleString("zh-CN") + " 人";
+        byId("purchase-crowd-observers").textContent = context.observers.toLocaleString("zh-CN") + " 人";
+        byId("toggle-concurrent-query").setAttribute("aria-pressed", "true");
+        byId("concurrent-query-state").textContent = "观察者请求池已接入 · T2 固定开启";
+        byId("start-purchase-run").querySelector("small").textContent = "从请求池抽取一组真实竞态";
+        byId("t1-heading").textContent = "购买请求 · " + context.buyers.toLocaleString("zh-CN") + " 人请求池";
+        byId("t2-heading").textContent = "库存查询 · " + context.observers.toLocaleString("zh-CN") + " 人持续观察";
     }
 
     function formatStock(value) {
@@ -189,6 +233,10 @@
     }
 
     function toggleConcurrentQuery() {
+        if (state.crowdContext) {
+            showToast("观察者请求池正在持续查询，当前上下文中不能关闭 T2。", "danger");
+            return;
+        }
         if (state.requesting || state.playing || state.run) {
             showToast("请先重置当前实验，再调整并发查询。", "danger");
             return;
@@ -539,7 +587,7 @@
         document.querySelectorAll(".purchase-scheme-card").forEach(function (button) {
             button.disabled = locked;
         });
-        byId("toggle-concurrent-query").disabled = locked;
+        byId("toggle-concurrent-query").disabled = locked || Boolean(state.crowdContext);
         byId("start-purchase-run").disabled = state.requesting || Boolean(state.run);
         byId("step-purchase-run").disabled = !state.run || state.playing || state.stepIndex >= (state.run ? state.run.trace.length - 1 : -1);
         byId("autoplay-purchase-run").disabled = !state.run || state.stepIndex >= (state.run ? state.run.trace.length - 1 : -1);
@@ -578,10 +626,12 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         applyI18n();
+        state.crowdContext = incomingCrowdContext();
         if (!showContext(incomingMaterial())) {
             return;
         }
         bindEvents();
+        renderCrowdContext();
         renderStrategy();
         renderSavedResults();
         updateControls();

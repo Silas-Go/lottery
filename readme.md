@@ -32,7 +32,7 @@ docker compose up -d --build
 http://localhost:5678/
 ```
 
-### Windows / macOS 压测兼容
+### Windows / macOS / Linux 压测兼容
 
 `docker/wrk2/Dockerfile` 会读取 Docker BuildKit 提供的 `TARGETARCH`，不需要手动指定 `--platform`：
 
@@ -41,14 +41,27 @@ http://localhost:5678/
 
 仓库通过 `.gitattributes` 强制 Shell 和 Lua 脚本使用 LF，避免 Windows 的 CRLF 让 Linux 容器入口启动失败。首次构建 wrk2 需要下载编译工具链；Dockerfile 会按 CPU 架构隔离 apt 缓存，并对镜像源的临时 5xx 和中断下载自动重试。
 
+`docker compose up -d --build` 会同时启动不暴露宿主机端口的常驻
+`loadtest-runner`。页面通过主应用创建受控任务，Runner 在 Compose 网络内启动 wrk2；
+Windows、macOS 和 Linux 都只需点击“召集人潮”，不依赖宿主机终端语法。
+
 然后按页面顺序完成四件事：
 
 1. 从首页进入材料情报店（`/material-shop`），再选择一种材料。基础列表保持轻量，进入实验室后读取聚合详情。
-2. 复制“旧规矩”压测指令到项目终端，观察 SQL 查询数、QPS、P99 和连接池峰值。
+2. 选择 Direct 与固定人潮挡位，点击“召集人潮”。室外只显示受理状态并自动跟随请求进入店内；在 `/lab` 观察 SQL 查询数、QPS、P95/P99、连接池峰值、关键日志和最终比对。
 3. 唤醒 Redis 记忆水晶。第一次查询真实发生 `MISS -> 4 SQL -> SET DTO`，后续直接命中最终 JSON。
-4. 使用相同压力运行第二条指令，查看每千请求 SQL 查询数的归一化对比。
+4. 切换 Cached 并使用相同挡位再次点击，查看缓存命中和 MySQL 回源差异。
 
-推荐从页面默认的 `300 req/s` 开始，再按 `500 -> 1000 req/s` 阶梯寻找本机拐点；目标速率不是并发连接数，页面生成的命令固定使用 96 个连接。
+四个挡位由 Runner 固定映射，前端只提交挡位 ID：
+
+| 挡位 ID | 页面名称 | 目标速率 | 连接数 | 时长 |
+|---|---|---:|---:|---:|
+| `visitors` | 零星访客 | 100 req/s | 16 | 20s |
+| `tide_eve` | 潮汐前夜 | 500 req/s | 32 | 20s |
+| `crowd` | 人潮涌入 | 1500 req/s | 64 | 20s |
+| `boiling_city` | 王城沸腾 | 3000 req/s | 96 | 20s |
+
+终端命令仍保留在“查看等价命令”折叠区，只用于学习和调试，不是正常操作路径。
 
 重新讲述本章时，点击页脚的“合拢书本，重新讲述”。它只会清空：
 
@@ -110,6 +123,10 @@ Browser / wrk2 -> Go API -> Redis
 | `/api/chapters/cache-aside/reset` | POST | 清缓存并重置本章指标 |
 | `/api/metrics/snapshot` | GET | 全部服务端指标快照，含 `archiveRead` |
 | `/api/metrics/stream` | GET | SSE 实时指标流 |
+| `/api/loadtests` | POST | 创建白名单压测任务；已有活动任务时返回 `409 LOADTEST_ALREADY_RUNNING` |
+| `/api/loadtests/:id` | GET | 查询任务状态、时间、日志和最终指标 |
+| `/api/loadtests/:id/events` | GET | 任务 SSE：进度、指标、日志和终态 |
+| `/api/loadtests/:id/stop` | POST | 停止任务并回收 wrk2 子进程 |
 
 两条详情接口的响应体相同，只通过响应头解释数据来源：
 
@@ -201,8 +218,10 @@ internal/service        读取编排、抽奖、支付和取消业务流程
 internal/database       MySQL / Redis 数据访问与 Lua 原子脚本
 internal/mq             RocketMQ producer / consumer
 internal/metrics        有界内存指标、快照与 SSE 数据源
+internal/loadtest       Runner 状态机、白名单、进程控制、解析器与内部客户端
+cmd/loadtest-runner     常驻 Runner HTTP 进程入口
 views/                  故事书页面与支付页
-docker/wrk2             固定 QPS 压测工具和 Lua 请求脚本
+docker/wrk2             跨架构 wrk2、Runner 镜像目标和 Lua 请求脚本
 docs/                   状态机与可靠性边界
 ```
 

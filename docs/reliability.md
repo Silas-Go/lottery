@@ -38,6 +38,43 @@
 - TTL 只限制旧副本存活时间，不能替代写后失效。
 - `/api/chapters/cache-aside/reset` 只清空本章缓存和指标，不触碰订单、库存或 MQ。
 
+## 本地压测 Runner 边界
+
+材料情报店的“召集人潮”不再依赖用户复制终端命令。浏览器只调用主应用
+`/api/loadtests`，主应用再通过 Compose 内部地址访问常驻 `loadtest-runner:8090`：
+
+```text
+Browser -> app:5678 -> loadtest-runner:8090 -> wrk2 child process
+                                      \-> app:5678/api/archives/:id/{direct|cached}
+```
+
+前端职责也按场景拆开：`/material-shop` 只负责选择材料、模式和挡位、创建任务并携带
+`taskId` 进入店内；`/lab` 才订阅任务 SSE、轮询恢复状态、显示详细指标和日志、执行停止，
+并在完整 Task 到达后冻结本轮结果。这样室外入口保持轻量，刷新或重新入店仍能从 Runner 权威状态恢复。
+
+可靠性与安全约束：
+
+- Runner 不挂载 `/var/run/docker.sock`，也不执行 `docker compose run`；它只能管理自己的 wrk2 子进程。
+- 公开请求只有 `experiment`、`archiveId`、`mode`、`tier`。目标 URL、Lua 路径、线程、连接数、速率和时长均由服务端白名单生成。
+- `archiveId` 只允许当前材料夹具 1..4，模式只允许 `direct|cached`，实验只允许 `cache-aside-read`。
+- 四个挡位最长 20 秒，Runner 代码仍设置 30 秒配置上限和额外的整体硬超时；异常或超时必须回收进程并释放单任务锁。
+- 同一时间最多一个活动任务。互斥锁在 Runner 内而非浏览器内，所以多标签页同时点击也只有一个任务成功。
+- 创建请求的 HTTP 生命周期不拥有任务 context；页面关闭只断开 SSE，不能停止任务。停止必须显式调用 `/api/loadtests/:id/stop`。
+- 任务快照和有限事件历史写入 `loadtest-runner-data`。Runner 重启后发现 `starting/resetting/running/collecting` 遗留状态会标记为 `failed`，不会永久占锁。
+- SSE 使用事件 ID 回放，浏览器断线后同时通过状态查询恢复。日志只记录重置、启动、目标速率、异常、结束和解析，不逐请求输出。
+- wrk2 对极低延迟多线程直方图存在上游断言缺陷，因此只读实验固定一个 wrk2 线程；连接数仍按挡位提升到 96，本机可以维持 3000 req/s 目标附近的压力。
+
+任务正常状态机：
+
+```text
+starting -> resetting -> running -> collecting -> completed
+                   \-> stopped
+任意活动状态 -------> failed
+```
+
+`failed`、`stopped`、`completed` 都是终态。进程退出、指标解析失败或内部请求失败后，
+Runner 必须先冻结错误原因、清空活动任务 ID，再关闭等待通道，保证下一轮可以安全启动。
+
 ## 统一状态机
 
 ```text
