@@ -15,35 +15,36 @@
         "empty.title": "尚未选择材料",
         "empty.body": "请先在查询实验中读取一份材料档案，再进入购买实验。",
         "empty.action": "返回查询实验",
-        "intro.title": "比较 Cache-Aside 写操作的两种执行顺序",
-        "intro.body": "每轮都从相同热缓存库存开始。服务端先完成真实 Redis/MySQL 操作，再把真实步骤与耗时交给页面回放。",
+        "intro.title": "同步失效与 Outbox + MQ 异步失效",
+        "intro.body": "购买与查询共享 materials.stock 和同一个材料详情缓存。服务端完成真实事务、缓存失效与查询采样后，再把步骤交给页面回放。",
         "intro.boundaryTitle": "本店实验边界",
-        "intro.boundaryBody": "只演示材料库存缓存失效顺序；不创建订单，不接入 MQ，也不演示秒杀库存。",
-        "scheme.title": "选择写入顺序",
-        "scheme.aTitle": "先删缓存，再更新数据库",
-        "scheme.aBody": "竞态查询可能在更新前读到旧值，并在更新后把旧值写回缓存。",
-        "scheme.bTitle": "先更新数据库，再删缓存",
-        "scheme.bBody": "降低旧值长期停留在缓存中的概率，但不等于绝对强一致。",
-        "timeline.title": "购买 T1 与查询 T2 的受控交错",
+        "intro.boundaryBody": "主实验创建独立购买订单并接入 RocketMQ，但不触碰秒杀 inventory、支付或正式订单账本。",
+        "scheme.title": "选择缓存失效方案",
+        "scheme.aTitle": "同步缓存失效",
+        "scheme.aBody": "事务提交后由当前请求重试删除缓存，返回路径更长但状态直观。",
+        "scheme.bTitle": "Outbox + MQ 异步失效",
+        "scheme.bBody": "购买提交不等待 Redis；Worker 和 Consumer 负责可重试的最终失效。",
+        "timeline.title": "购买事务、查询样本与缓存失效",
         "state.title": "真实状态与结果",
-        "state.warning": "检测到缓存与权威数据不一致",
+        "state.warning": "缓存失效尚未完成",
         "controls.title": "执行与教学回放",
-        "results.title": "两种写入顺序的冻结结果"
+        "results.title": "两种缓存失效方案的冻结结果"
     };
     var strategyCopy = {
-        "delete-then-update": "先删缓存，再更新数据库",
-        "update-then-delete": "先更新数据库，再删缓存"
+        "sync-invalidate": "同步缓存失效",
+        "outbox-mq-invalidate": "Outbox + MQ 异步失效"
     };
+    var activeStatuses = ["running", "waiting_outbox", "waiting_consumer"];
     var state = {
         materialId: null,
         profile: null,
-        strategy: "delete-then-update",
-        concurrentQuery: false,
+        strategy: "sync-invalidate",
         run: null,
         stepIndex: -1,
         playing: false,
         playTimer: null,
         requesting: false,
+        polling: false,
         warnedDirty: false,
         baseline: null,
         comparisonOpen: false,
@@ -88,12 +89,7 @@
             taskId = "";
         }
         var buyers = Math.round(crowdSize * .1);
-        return {
-            crowdSize: crowdSize,
-            buyers: buyers,
-            observers: crowdSize - buyers,
-            taskId: taskId
-        };
+        return { crowdSize: crowdSize, buyers: buyers, observers: crowdSize - buyers, taskId: taskId };
     }
 
     function rememberMaterial(profile) {
@@ -106,9 +102,8 @@
 
     function applyI18n() {
         document.querySelectorAll("[data-i18n]").forEach(function (element) {
-            var value = copy[element.dataset.i18n];
-            if (value) {
-                element.textContent = value;
+            if (copy[element.dataset.i18n]) {
+                element.textContent = copy[element.dataset.i18n];
             }
         });
     }
@@ -120,7 +115,7 @@
         window.clearTimeout(showToast.timer);
         showToast.timer = window.setTimeout(function () {
             toast.classList.remove("is-visible");
-        }, 2400);
+        }, 2600);
     }
 
     async function requestJSON(url, options) {
@@ -168,20 +163,14 @@
         if (!context) {
             return;
         }
-        state.concurrentQuery = true;
         byId("purchase-crowd-context").hidden = false;
         byId("purchase-crowd-title").textContent = state.profile.name + "的购买队伍已经抵达。";
         byId("purchase-crowd-copy").textContent = context.buyers.toLocaleString("zh-CN") +
-            " 名购买者进入持续下单请求池，" + context.observers.toLocaleString("zh-CN") +
-            " 名观察者继续查询库存。";
+            " 名购买者与 " + context.observers.toLocaleString("zh-CN") +
+            " 名观察者仍是叙事背景；本阶段只执行下方选择的小批真实请求。";
         byId("purchase-crowd-total").textContent = context.crowdSize.toLocaleString("zh-CN") + " 人";
         byId("purchase-crowd-buyers").textContent = context.buyers.toLocaleString("zh-CN") + " 人";
         byId("purchase-crowd-observers").textContent = context.observers.toLocaleString("zh-CN") + " 人";
-        byId("toggle-concurrent-query").setAttribute("aria-pressed", "true");
-        byId("concurrent-query-state").textContent = "观察者请求池已接入 · T2 固定开启";
-        byId("start-purchase-run").querySelector("small").textContent = "从请求池抽取一组真实竞态";
-        byId("t1-heading").textContent = "购买请求 · " + context.buyers.toLocaleString("zh-CN") + " 人请求池";
-        byId("t2-heading").textContent = "库存查询 · " + context.observers.toLocaleString("zh-CN") + " 人持续观察";
     }
 
     function formatStock(value) {
@@ -190,6 +179,9 @@
 
     function formatLatency(value) {
         var number = Number(value || 0);
+        if (!number) {
+            return "—";
+        }
         return (number < 0.1 ? number.toFixed(3) : number.toFixed(2)) + " ms";
     }
 
@@ -200,16 +192,16 @@
         byId("stage-redis-stock").textContent = formatStock(fixture.redisStock);
         byId("state-mysql-stock").textContent = fixture.mysqlStock;
         byId("state-redis-stock").textContent = formatStock(fixture.redisStock);
-        byId("state-purchase-success").textContent = "等待";
-        byId("state-dirty-cache").textContent = "未检测";
-        byId("state-db-reads").textContent = "0";
-        byId("state-cache-counts").textContent = "0 / 0";
-        byId("state-latency").textContent = "—";
-        byId("state-query-stock").textContent = "未插入";
-        byId("consistency-title").textContent = "夹具状态已读取";
+        byId("state-purchase-counts").textContent = "0 / 0 / 0";
+        byId("state-old-reads").textContent = "0 / 0";
+        byId("state-purchase-latency").textContent = "—";
+        byId("state-invalidation-latency").textContent = "—";
+        byId("state-outbox-status").textContent = "—";
+        byId("state-retry-count").textContent = "0";
+        byId("consistency-title").textContent = "共享库存已读取";
         byId("consistency-copy").textContent = fixture.redisStock === null ?
-            "Redis 当前为 MISS；开始实验时服务端会恢复统一热缓存基线。" :
-            "Redis 与 MySQL 当前库存一致，MySQL 是权威数据源。";
+            "Redis 当前为 MISS；重置会从 materials.stock 重新组装并预热同一个 DTO。" :
+            "查询与购买共享 materials.stock，Redis 保存同一份材料详情 DTO。";
     }
 
     function renderStrategy() {
@@ -224,40 +216,49 @@
     }
 
     function selectStrategy(strategy) {
-        if (state.requesting || state.playing || state.run) {
-            showToast("请先重置当前实验，再切换写入顺序。", "danger");
+        if (state.requesting || state.polling || state.playing || state.run) {
+            showToast("请先重置当前实验，再切换缓存失效方案。", "danger");
             return;
         }
         state.strategy = strategy;
         renderStrategy();
     }
 
-    function toggleConcurrentQuery() {
-        if (state.crowdContext) {
-            showToast("观察者请求池正在持续查询，当前上下文中不能关闭 T2。", "danger");
-            return;
-        }
-        if (state.requesting || state.playing || state.run) {
-            showToast("请先重置当前实验，再调整并发查询。", "danger");
-            return;
-        }
-        state.concurrentQuery = !state.concurrentQuery;
-        var button = byId("toggle-concurrent-query");
-        button.setAttribute("aria-pressed", String(state.concurrentQuery));
-        byId("concurrent-query-state").textContent = state.concurrentQuery ? "已开启 · T2 将进入竞态窗口" : "当前关闭";
-        showToast(state.concurrentQuery ? "并发查询 T2 已加入下一轮实验。" : "并发查询 T2 已关闭。", "success");
-    }
-
-    function stepElement(sequence) {
-        return document.querySelector(".purchase-step[data-sequence='" + sequence + "']");
+    function traceWithOutbox(run) {
+        var trace = (run.trace || []).map(function (step) { return Object.assign({}, step); });
+        var sequence = trace.reduce(function (max, step) { return Math.max(max, Number(step.sequence || 0)); }, 0);
+        (run.outbox || []).forEach(function (event) {
+            if (event.publishedAt) {
+                trace.push({
+                    sequence: ++sequence, actor: "purchase", action: "publish_mq",
+                    label: "MQ PUBLISHED", detail: event.eventId + " 已发布到缓存失效 Topic",
+                    target: "redis", durationMs: new Date(event.publishedAt) - new Date(event.createdAt),
+                    mysqlStock: run.finalMySQLStock, redisStock: run.finalRedisStock
+                });
+            }
+            if (event.invalidatedAt) {
+                trace.push({
+                    sequence: ++sequence, actor: "purchase", action: "consume_invalidation",
+                    label: "CONSUMER INVALIDATED", detail: "Consumer 幂等删除材料详情缓存",
+                    target: "redis", durationMs: new Date(event.invalidatedAt) -
+                        new Date(event.publishedAt || event.createdAt),
+                    mysqlStock: run.finalMySQLStock, redisStock: null
+                });
+            }
+        });
+        return trace;
     }
 
     function renderTrace(run) {
-        ["t1", "t2"].forEach(function (actor) {
+        var trace = traceWithOutbox(run);
+        ["purchase", "query"].forEach(function (actor) {
             var list = byId(actor + "-steps");
-            var steps = run.trace.filter(function (step) { return step.actor === actor; });
+            var steps = trace.filter(function (step) {
+                return actor === "query" ? step.actor === "query" : step.actor !== "query";
+            });
             if (!steps.length) {
-                list.innerHTML = "<li class=\"is-placeholder\">" + (actor === "t2" ? "本轮未插入并发查询" : "没有返回执行步骤") + "</li>";
+                list.innerHTML = "<li class=\"is-placeholder\">" +
+                    (actor === "query" ? "本轮没有查询样本" : "没有返回执行步骤") + "</li>";
                 return;
             }
             list.innerHTML = "";
@@ -280,6 +281,7 @@
                 list.appendChild(item);
             });
         });
+        state.playTrace = trace;
     }
 
     function resetStepVisuals() {
@@ -300,11 +302,12 @@
     }
 
     function applyStep(index) {
-        if (!state.run || index < 0 || index >= state.run.trace.length) {
+        var trace = state.playTrace || [];
+        if (!state.run || index < 0 || index >= trace.length) {
             return;
         }
         state.stepIndex = index;
-        var step = state.run.trace[index];
+        var step = trace[index];
         document.querySelectorAll(".purchase-step").forEach(function (element) {
             var sequence = Number(element.dataset.sequence);
             element.classList.toggle("is-current", sequence === step.sequence);
@@ -318,11 +321,7 @@
         byId("stage-redis-action").textContent = step.target === "redis" ? step.label : "STANDBY";
         byId("purchase-mysql-node").classList.toggle("is-active", step.target === "mysql");
         byId("purchase-redis-node").classList.toggle("is-active", step.target === "redis");
-        var active = stepElement(step.sequence);
-        if (active && active.scrollIntoView && window.innerWidth < 720) {
-            active.scrollIntoView({ behavior: state.reducedMotion ? "auto" : "smooth", block: "nearest" });
-        }
-        if (index === state.run.trace.length - 1) {
+        if (index === trace.length - 1) {
             finishPlayback();
         }
         updateControls();
@@ -344,10 +343,11 @@
 
     function scheduleNextStep() {
         clearPlaybackTimer();
+        var trace = state.playTrace || [];
         if (!state.playing || !state.run) {
             return;
         }
-        if (state.stepIndex >= state.run.trace.length - 1) {
+        if (state.stepIndex >= trace.length - 1) {
             finishPlayback();
             return;
         }
@@ -358,7 +358,8 @@
     }
 
     function toggleAutoplay() {
-        if (!state.run || state.stepIndex >= state.run.trace.length - 1) {
+        var trace = state.playTrace || [];
+        if (!state.run || state.stepIndex >= trace.length - 1) {
             return;
         }
         state.playing = !state.playing;
@@ -380,65 +381,113 @@
         byId("control-status").textContent = "真实实验与路径回放均已完成";
         byId("header-status").textContent = "实验完成";
         byId("timeline-step-label").textContent = "COMPLETE";
-        byId("timeline-step-title").textContent = state.run.dirtyCache ? "实验完成 · 检测到脏缓存" : "实验完成 · 最终缓存状态安全";
+        byId("timeline-step-title").textContent = "实验完成 · 查看真实取舍";
         updateControls();
     }
 
     function renderRunSummary(run) {
         byId("state-mysql-stock").textContent = run.finalMySQLStock;
         byId("state-redis-stock").textContent = formatStock(run.finalRedisStock);
-        byId("state-purchase-success").textContent = run.purchaseSuccess ? "成功" : "失败";
-        byId("state-dirty-cache").textContent = run.dirtyCache ? "YES · DETECTED" : "NO";
-        byId("state-db-reads").textContent = run.dbReads;
-        byId("state-cache-counts").textContent = run.redisHits + " / " + run.redisMisses;
-        byId("state-latency").textContent = formatLatency(run.latencyMs);
-        byId("state-query-stock").textContent = run.queryResponseStock == null ? "未插入" : run.queryResponseStock;
-        byId("purchase-stock-summary").textContent = "MySQL " + run.finalMySQLStock + " · Redis " + formatStock(run.finalRedisStock);
+        byId("state-purchase-counts").textContent = run.purchaseSucceeded + " / " +
+            run.duplicateRequests + " / " + run.soldOutRequests;
+        byId("state-old-reads").textContent = run.oldReadCount + " / " + run.queryCompleted;
+        byId("state-purchase-latency").textContent = formatLatency(run.purchaseLatencyMs);
+        byId("state-invalidation-latency").textContent = formatLatency(run.cacheInvalidationLatencyMs);
+        byId("state-outbox-status").textContent = run.outboxStatus + " / " + run.mqStatus;
+        byId("state-retry-count").textContent = run.retryCount;
+        byId("purchase-stock-summary").textContent = "MySQL " + run.finalMySQLStock +
+            " · Redis " + formatStock(run.finalRedisStock);
+        var pending = activeStatuses.indexOf(run.status) >= 0;
+        var staleCache = run.finalRedisStock !== null && run.finalRedisStock !== undefined &&
+            Number(run.finalRedisStock) !== Number(run.finalMySQLStock);
         var warning = byId("dirty-warning");
-        warning.hidden = !run.dirtyCache;
-        if (run.dirtyCache && !state.warnedDirty) {
-            state.warnedDirty = true;
-            warning.classList.remove("is-alerting");
-            void warning.offsetWidth;
-            warning.classList.add("is-alerting");
-        }
-        if (run.dirtyCache) {
-            byId("consistency-title").textContent = "脏缓存会继续影响后续命中";
-            byId("consistency-copy").textContent = "Redis " + run.finalRedisStock + " 与 MySQL " + run.finalMySQLStock + " 不一致。";
-        } else if (run.staleQueryResponse) {
-            byId("consistency-title").textContent = "最终缓存已清除，但 T2 曾读到旧值";
-            byId("consistency-copy").textContent = "方案 B 缩短了旧值停留时间，不代表并发查询绝不会读到旧值。";
+        warning.hidden = !(pending || staleCache || run.status === "failed");
+        warning.querySelector("strong").textContent = run.status === "failed" ?
+            "缓存失效执行失败" : pending ? "缓存失效正在推进" : "检测到旧缓存";
+        warning.querySelector("span").textContent = run.errorMessage ||
+            (pending ? "Outbox Worker 或 MQ Consumer 尚未完成，查询可能短暂读到旧值。" :
+                "Redis DTO 中的库存与 materials.stock 不一致。");
+        if (run.status === "completed") {
+            byId("consistency-title").textContent = "本轮缓存失效已完成";
+            var finalCacheCopy = run.finalRedisStock === null || run.finalRedisStock === undefined ?
+                "最终旧副本已清除" : "最终缓存已回填为最新库存";
+            byId("consistency-copy").textContent = run.oldReadCount ?
+                finalCacheCopy + "，失效窗口中出现了 " + run.oldReadCount + " 次旧读。" :
+                finalCacheCopy + "，本轮查询样本未观察到旧库存。";
+        } else if (run.status === "failed") {
+            byId("consistency-title").textContent = "购买事务可能已提交";
+            byId("consistency-copy").textContent = "可用相同 request_id 重试，幂等订单不会再次扣库存。";
         } else {
-            byId("consistency-title").textContent = "最终未检测到脏缓存";
-            byId("consistency-copy").textContent = "Redis 为 MISS；下一次查询会从 MySQL 权威库存重建缓存。";
+            byId("consistency-title").textContent = "等待最终一致";
+            byId("consistency-copy").textContent = "购买已提交，后台正在推进 Outbox、MQ 与 Consumer。";
         }
     }
 
+    function createRequestID() {
+        if (window.crypto && window.crypto.randomUUID) {
+            return "purchase-" + window.crypto.randomUUID();
+        }
+        return "purchase-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+    }
+
+    function wait(ms) {
+        return new Promise(function (resolve) { window.setTimeout(resolve, ms); });
+    }
+
+    async function pollRun(run) {
+        var current = run;
+        for (var attempt = 0; attempt < 80 && activeStatuses.indexOf(current.status) >= 0; attempt++) {
+            await wait(250);
+            current = await requestJSON("/api/purchase-lab/runs/" + encodeURIComponent(current.requestId));
+            state.run = current;
+            renderRunSummary(current);
+            byId("header-status").textContent = current.status === "waiting_consumer" ?
+                "等待 Consumer" : "Outbox / MQ 推进中";
+            byId("control-status").textContent = current.outboxStatus + " · " + current.mqStatus;
+        }
+        return current;
+    }
+
     async function startRun() {
-        if (state.requesting || state.run) {
+        if (state.requesting || state.polling || state.run) {
             return;
         }
         state.requesting = true;
         byId("header-status").textContent = "服务端执行中";
-        byId("control-status").textContent = "正在执行真实 Redis / MySQL 操作";
+        byId("control-status").textContent = "正在提交真实 MySQL 事务";
         document.body.dataset.purchaseStatus = "running";
         updateControls();
         try {
             var run = await requestJSON("/api/purchase-lab/" + state.materialId + "/run", {
                 method: "POST",
-                body: JSON.stringify({ strategy: state.strategy, concurrentQuery: state.concurrentQuery })
+                body: JSON.stringify({
+                    requestId: createRequestID(),
+                    strategy: state.strategy,
+                    purchaseCount: Number(byId("purchase-count").value),
+                    queryCount: Number(byId("query-count").value)
+                })
             });
             state.run = run;
+            renderRunSummary(run);
+            state.requesting = false;
+            if (activeStatuses.indexOf(run.status) >= 0) {
+                state.polling = true;
+                updateControls();
+                run = await pollRun(run);
+                state.polling = false;
+                state.run = run;
+            }
             renderTrace(run);
             resetStepVisuals();
             renderRunSummary(run);
             state.run = resultStore.save(run);
             renderSavedResults();
-            byId("header-status").textContent = "真实执行完成";
+            byId("header-status").textContent = run.status === "completed" ? "真实执行完成" : "实验需要关注";
             byId("control-status").textContent = "结果已冻结 · 可单步或自动回放";
             byId("purchase-freeze-status").textContent = strategyCopy[run.strategy] + "结果已冻结";
             document.body.dataset.purchaseStatus = "ready-to-replay";
-            showToast("真实实验完成，结果已冻结。", run.dirtyCache ? "danger" : "success");
+            showToast("真实购买、查询和缓存失效结果已冻结。",
+                run.status === "completed" ? "success" : "danger");
         } catch (error) {
             byId("header-status").textContent = "执行失败";
             byId("control-status").textContent = "实验未完成";
@@ -446,34 +495,35 @@
             showToast(error.message, "danger");
         } finally {
             state.requesting = false;
+            state.polling = false;
             updateControls();
         }
     }
 
     async function resetRun() {
-        if (state.requesting) {
+        if (state.requesting || state.polling) {
             return;
         }
         state.requesting = true;
         state.playing = false;
         clearPlaybackTimer();
         byId("header-status").textContent = "正在重置";
-        byId("control-status").textContent = "恢复当前材料真实库存基线";
+        byId("control-status").textContent = "恢复 materials.stock 并重新预热材料 DTO";
         updateControls();
         try {
             var response = await requestJSON("/api/purchase-lab/" + state.materialId + "/reset", { method: "POST" });
             state.run = null;
+            state.playTrace = [];
             state.stepIndex = -1;
-            state.warnedDirty = false;
             byId("dirty-warning").hidden = true;
-            byId("t1-steps").innerHTML = "<li class=\"is-placeholder\">真实执行后生成步骤</li>";
-            byId("t2-steps").innerHTML = "<li class=\"is-placeholder\">" + (state.concurrentQuery ? "T2 将在下一轮进入竞态窗口" : "未插入并发查询") + "</li>";
+            byId("purchase-steps").innerHTML = "<li class=\"is-placeholder\">真实执行后生成步骤</li>";
+            byId("query-steps").innerHTML = "<li class=\"is-placeholder\">等待真实查询样本</li>";
             renderFixture(response.state);
             resetStepVisuals();
             byId("header-status").textContent = "等待开始";
-            byId("control-status").textContent = "当前实验已重置 · 历史结果保留";
+            byId("control-status").textContent = "权威库存和共享 DTO 已重置 · 历史结果保留";
             document.body.dataset.purchaseStatus = "idle";
-            showToast("当前材料实验已重置，冻结结果仍然保留。", "success");
+            showToast("materials.stock 已恢复，共享材料缓存已经预热。", "success");
         } catch (error) {
             byId("header-status").textContent = "重置失败";
             showToast(error.message, "danger");
@@ -490,7 +540,7 @@
         state.run = resultStore.save(state.run);
         renderSavedResults();
         byId("purchase-freeze-status").textContent = strategyCopy[state.run.strategy] + "结果已保存";
-        showToast("本次不可变结果已保存到方案槽位。", "success");
+        showToast("本次结果已保存到当前方案槽位。", "success");
     }
 
     function renderResultCard(cardId, result) {
@@ -501,21 +551,22 @@
         }
         card.querySelector("header > span").textContent = "已冻结";
         var profile = profiles[result.materialId] || { code: "ARC-???", name: "未知材料" };
-        card.querySelector("[data-result-context]").textContent = profile.code + " · " + profile.name + " · " + (result.concurrentQuery ? "已插入 T2" : "无并发查询");
+        card.querySelector("[data-result-context]").textContent = profile.code + " · " + profile.name +
+            " · 购买 " + result.purchaseRequested + " / 查询 " + result.queryRequested;
         card.querySelector("[data-result='initial']").textContent = result.initialStock;
         card.querySelector("[data-result='mysql']").textContent = result.finalMySQLStock;
         card.querySelector("[data-result='redis']").textContent = formatStock(result.finalRedisStock);
-        card.querySelector("[data-result='dirty']").textContent = result.dirtyCache ? "YES" : "NO";
-        card.querySelector("[data-result='dirty']").className = result.dirtyCache ? "is-bad" : "is-good";
-        card.querySelector("[data-result='dbReads']").textContent = result.dbReads;
-        card.querySelector("[data-result='latency']").textContent = formatLatency(result.latencyMs);
-        card.querySelector("[data-result-time]").textContent = "冻结于 " + new Date(result.frozenAt || result.executedAt).toLocaleString("zh-CN", { hour12: false });
+        card.querySelector("[data-result='oldReads']").textContent = result.oldReadCount + " / " + result.queryCompleted;
+        card.querySelector("[data-result='purchaseLatency']").textContent = formatLatency(result.purchaseLatencyMs);
+        card.querySelector("[data-result='invalidationLatency']").textContent = formatLatency(result.cacheInvalidationLatencyMs);
+        card.querySelector("[data-result-time]").textContent = "冻结于 " +
+            new Date(result.frozenAt || result.executedAt).toLocaleString("zh-CN", { hour12: false });
     }
 
     function renderSavedResults() {
         var results = resultStore.list();
-        var a = results["delete-then-update"] || null;
-        var b = results["update-then-delete"] || null;
+        var a = results["sync-invalidate"] || null;
+        var b = results["outbox-mq-invalidate"] || null;
         renderResultCard("purchase-result-a", a);
         renderResultCard("purchase-result-b", b);
         byId("compare-purchase-results").disabled = !(a && b);
@@ -527,7 +578,8 @@
     function comparisonIsFair(a, b) {
         return a.materialId === b.materialId &&
             a.initialStock === b.initialStock &&
-            a.concurrentQuery === b.concurrentQuery;
+            a.purchaseRequested === b.purchaseRequested &&
+            a.queryRequested === b.queryRequested;
     }
 
     function setComparisonRow(id, aValue, bValue, verdict, winner) {
@@ -545,28 +597,28 @@
         }
     }
 
+    function lowerWinner(a, b) {
+        return Number(a) === Number(b) ? "tie" : (Number(a) < Number(b) ? "a" : "b");
+    }
+
     function renderComparison(a, b) {
         var fair = comparisonIsFair(a, b);
         var panel = byId("purchase-comparison");
         panel.classList.toggle("is-waiting", !fair);
-        if (!fair) {
-            byId("purchase-comparison-title").textContent = "两轮条件不同：可查看，但不判定胜负";
-            byId("purchase-overall-winner").textContent = "CONTEXT MISMATCH";
-        } else {
-            byId("purchase-comparison-title").textContent = "同材料、同库存、同并发条件的写顺序对比";
-            byId("purchase-overall-winner").textContent = "SCHEME B · RECOMMENDED";
-        }
-        var dirtyWinner = a.dirtyCache === b.dirtyCache ? "tie" : (a.dirtyCache ? "b" : "a");
-        setComparisonRow("purchase-compare-dirty", a.dirtyCache ? "DETECTED" : "NO", b.dirtyCache ? "DETECTED" : "NO",
-            fair ? (dirtyWinner === "b" ? "方案 B 更安全" : dirtyWinner === "a" ? "方案 A 本轮更好" : "本轮相同") : "条件不同", fair ? dirtyWinner : null);
-        setComparisonRow("purchase-compare-consistency", formatStock(a.finalRedisStock), formatStock(b.finalRedisStock),
-            fair ? (b.dirtyCache ? "都需关注" : "方案 B 清除旧副本") : "条件不同", fair ? (a.dirtyCache && !b.dirtyCache ? "b" : "tie") : null);
-        var dbWinner = a.dbReads === b.dbReads ? "tie" : (a.dbReads < b.dbReads ? "a" : "b");
-        setComparisonRow("purchase-compare-db", a.dbReads, b.dbReads, fair ? (dbWinner === "tie" ? "本轮相同" : "更少者胜出") : "条件不同", fair ? dbWinner : null);
-        setComparisonRow("purchase-compare-cache", a.redisHits + " / " + a.redisMisses, b.redisHits + " / " + b.redisMisses, "路径特征", null);
-        var latencyWinner = a.latencyMs === b.latencyMs ? "tie" : (a.latencyMs < b.latencyMs ? "a" : "b");
-        setComparisonRow("purchase-compare-latency", formatLatency(a.latencyMs), formatLatency(b.latencyMs),
-            fair ? (latencyWinner === "a" ? "A 本轮较低" : latencyWinner === "b" ? "B 本轮较低" : "本轮相同") : "条件不同", fair ? latencyWinner : null);
+        byId("purchase-comparison-title").textContent = fair ?
+            "同材料、同请求规模的真实 trade-off" : "两轮条件不同：可查看，但不判定指标";
+        byId("purchase-overall-winner").textContent = fair ? "TRADE-OFF" : "CONTEXT MISMATCH";
+        setComparisonRow("purchase-compare-old", a.oldReadCount, b.oldReadCount,
+            fair ? "旧读更少者占优" : "条件不同", fair ? lowerWinner(a.oldReadCount, b.oldReadCount) : null);
+        setComparisonRow("purchase-compare-purchase", formatLatency(a.purchaseLatencyMs), formatLatency(b.purchaseLatencyMs),
+            fair ? "提交路径更短者占优" : "条件不同", fair ? lowerWinner(a.purchaseLatencyMs, b.purchaseLatencyMs) : null);
+        setComparisonRow("purchase-compare-invalidation", formatLatency(a.cacheInvalidationLatencyMs), formatLatency(b.cacheInvalidationLatencyMs),
+            fair ? "最终失效更快者占优" : "条件不同",
+            fair ? lowerWinner(a.cacheInvalidationLatencyMs, b.cacheInvalidationLatencyMs) : null);
+        setComparisonRow("purchase-compare-retry", a.retryCount, b.retryCount,
+            fair ? "重试是可靠性成本" : "条件不同", fair ? lowerWinner(a.retryCount, b.retryCount) : null);
+        setComparisonRow("purchase-compare-status", a.status, b.status,
+            fair ? "不预设方案胜者" : "条件不同", null);
     }
 
     function toggleComparison() {
@@ -576,37 +628,38 @@
         }
         state.comparisonOpen = !state.comparisonOpen;
         panel.hidden = !state.comparisonOpen;
-        byId("compare-purchase-results").querySelector("strong").textContent = state.comparisonOpen ? "收起方案对比" : "对比两个方案";
-        if (state.comparisonOpen) {
-            panel.scrollIntoView({ behavior: state.reducedMotion ? "auto" : "smooth", block: "start" });
-        }
+        byId("compare-purchase-results").querySelector("strong").textContent =
+            state.comparisonOpen ? "收起方案对比" : "对比两个方案";
     }
 
     function updateControls() {
-        var locked = state.requesting || Boolean(state.run);
+        var locked = state.requesting || state.polling || Boolean(state.run);
+        var trace = state.playTrace || [];
         document.querySelectorAll(".purchase-scheme-card").forEach(function (button) {
             button.disabled = locked;
         });
-        byId("toggle-concurrent-query").disabled = locked || Boolean(state.crowdContext);
-        byId("start-purchase-run").disabled = state.requesting || Boolean(state.run);
-        byId("step-purchase-run").disabled = !state.run || state.playing || state.stepIndex >= (state.run ? state.run.trace.length - 1 : -1);
-        byId("autoplay-purchase-run").disabled = !state.run || state.stepIndex >= (state.run ? state.run.trace.length - 1 : -1);
-        byId("autoplay-purchase-run").querySelector("strong").textContent = state.playing ? "暂停回放" : (state.stepIndex >= 0 ? "继续自动播放" : "自动播放");
-        byId("save-purchase-result").disabled = !state.run || state.requesting;
-        byId("reset-purchase-run").disabled = state.requesting;
+        byId("purchase-count").disabled = locked;
+        byId("query-count").disabled = locked;
+        byId("start-purchase-run").disabled = state.requesting || state.polling || Boolean(state.run);
+        byId("step-purchase-run").disabled = !state.run || state.playing || state.stepIndex >= trace.length - 1;
+        byId("autoplay-purchase-run").disabled = !state.run || state.stepIndex >= trace.length - 1;
+        byId("autoplay-purchase-run").querySelector("strong").textContent =
+            state.playing ? "暂停回放" : (state.stepIndex >= 0 ? "继续自动播放" : "自动播放");
+        byId("save-purchase-result").disabled = !state.run || state.requesting || state.polling;
+        byId("reset-purchase-run").disabled = state.requesting || state.polling;
         byId("scheme-lock-note").classList.toggle("is-locked", locked);
     }
 
     async function loadFixture() {
-        byId("header-status").textContent = "读取真实库存";
+        byId("header-status").textContent = "读取共享库存";
         try {
             var fixture = await requestJSON("/api/purchase-lab/" + state.materialId + "/state");
             renderFixture(fixture);
             byId("header-status").textContent = "等待开始";
-            byId("control-status").textContent = "真实库存已读取";
+            byId("control-status").textContent = "materials.stock 与共享 DTO 已读取";
         } catch (error) {
             byId("header-status").textContent = "状态不可用";
-            byId("control-status").textContent = "无法读取真实夹具";
+            byId("control-status").textContent = "无法读取真实共享库存";
             showToast(error.message, "danger");
         }
     }
@@ -615,7 +668,6 @@
         document.querySelectorAll(".purchase-scheme-card").forEach(function (button) {
             button.addEventListener("click", function () { selectStrategy(button.dataset.strategy); });
         });
-        byId("toggle-concurrent-query").addEventListener("click", toggleConcurrentQuery);
         byId("start-purchase-run").addEventListener("click", startRun);
         byId("step-purchase-run").addEventListener("click", singleStep);
         byId("autoplay-purchase-run").addEventListener("click", toggleAutoplay);
@@ -637,6 +689,4 @@
         updateControls();
         loadFixture();
     });
-
-    window.addEventListener("beforeunload", clearPlaybackTimer);
 }());

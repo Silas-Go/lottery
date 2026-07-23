@@ -13,7 +13,7 @@ type Handlers struct {
 	// Archive 处理第一章《百职录》的只读 Cache-Aside 实验。
 	Archive *handler.ArchiveHandler
 
-	// PurchaseLab 处理独立材料夹具上的 Cache-Aside 写顺序实验。
+	// PurchaseLab 处理共享材料库存上的同步失效与 Outbox + MQ 购买实验。
 	PurchaseLab *handler.PurchaseLabHandler
 
 	// Gift 处理奖品列表和 /lucky 抽奖请求。
@@ -76,6 +76,8 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/api/purchase-lab/:id/state", handlers.PurchaseLab.State)
 	engine.POST("/api/purchase-lab/:id/reset", handlers.PurchaseLab.Reset)
 	engine.POST("/api/purchase-lab/:id/run", handlers.PurchaseLab.Run)
+	engine.POST("/api/purchase-lab/:id/query", handlers.PurchaseLab.Query)
+	engine.GET("/api/purchase-lab/runs/:requestId", handlers.PurchaseLab.GetRun)
 	engine.GET("/gifts", handlers.Gift.GetAllGifts)
 	engine.GET("/lucky", handlers.Gift.Lottery)
 	engine.GET("/lucky/cacheaside", handlers.Gift.LotteryCacheAside)

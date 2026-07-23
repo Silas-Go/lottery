@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// PurchaseLabHandler 暴露独立材料夹具的状态、重置和写顺序实验。
+// PurchaseLabHandler 暴露共享材料库存上的购买、查询、重置和 Outbox 状态接口。
 type PurchaseLabHandler struct {
 	purchase *service.PurchaseLabService
 }
@@ -46,8 +46,10 @@ func (h *PurchaseLabHandler) Reset(ctx *gin.Context) {
 }
 
 type purchaseLabRunRequest struct {
-	Strategy        service.PurchaseStrategy `json:"strategy" binding:"required"`
-	ConcurrentQuery bool                     `json:"concurrentQuery"`
+	RequestID     string                   `json:"requestId" binding:"required"`
+	Strategy      service.PurchaseStrategy `json:"strategy" binding:"required"`
+	PurchaseCount int                      `json:"purchaseCount" binding:"required"`
+	QueryCount    int                      `json:"queryCount"`
 }
 
 func (h *PurchaseLabHandler) Run(ctx *gin.Context) {
@@ -61,16 +63,53 @@ func (h *PurchaseLabHandler) Run(ctx *gin.Context) {
 		return
 	}
 	started := time.Now()
-	result, appErr := h.purchase.Run(id, request.Strategy, request.ConcurrentQuery)
+	result, appErr := h.purchase.RunExperiment(ctx.Request.Context(), id, service.PurchaseExperimentRequest{
+		RequestID: request.RequestID, Strategy: request.Strategy,
+		PurchaseCount: request.PurchaseCount, QueryCount: request.QueryCount,
+	})
 	if appErr != nil {
 		writeServiceError(ctx, appErr)
 		return
 	}
 	slog.Info("purchase lab run completed",
 		"material_id", id, "strategy", request.Strategy,
-		"concurrent_query", request.ConcurrentQuery, "dirty_cache", result.DirtyCache,
+		"request_id", request.RequestID, "status", result.Status,
+		"purchase_count", request.PurchaseCount, "query_count", request.QueryCount,
+		"old_reads", result.OldReadCount,
 		"duration_ms", time.Since(started).Milliseconds())
 	ctx.JSON(http.StatusOK, result)
+}
+
+func (h *PurchaseLabHandler) GetRun(ctx *gin.Context) {
+	result, appErr := h.purchase.GetRun(ctx.Param("requestId"))
+	if appErr != nil {
+		writeServiceError(ctx, appErr)
+		return
+	}
+	ctx.JSON(http.StatusOK, result)
+}
+
+type purchaseLabQueryRequest struct {
+	Count int `json:"count" binding:"required"`
+}
+
+func (h *PurchaseLabHandler) Query(ctx *gin.Context) {
+	id, ok := purchaseLabMaterialID(ctx)
+	if !ok {
+		return
+	}
+	var request purchaseLabQueryRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		writeAPIError(ctx, http.StatusBadRequest, "PURCHASE_LAB_INVALID_QUERY",
+			"购买实验查询参数无效", err, "material_id", id)
+		return
+	}
+	samples, appErr := h.purchase.Query(id, request.Count)
+	if appErr != nil {
+		writeServiceError(ctx, appErr)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"samples": samples})
 }
 
 func purchaseLabMaterialID(ctx *gin.Context) (int, bool) {

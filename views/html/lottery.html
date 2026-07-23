@@ -226,7 +226,7 @@
                         </section>
                         <p>当前只读取材料资料，不会占用或扣减真实库存。</p>
                         <button id="purchase-entry" type="button">进入购买实验</button>
-                        <small id="purchase-entry-note">购买实验会重新读取独立材料库存；不会进入秒杀、订单或 MQ 链路。</small>
+                        <small id="purchase-entry-note">购买实验会重新校验并真实扣减同一份材料库存；可比较同步失效与 Outbox + MQ 异步失效。</small>
                     </article>
                 </section>
 

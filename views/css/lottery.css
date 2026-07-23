@@ -3760,7 +3760,7 @@ select:focus-visible {
 .purchase-request-lane > header > div { display: grid; gap: 4px; }
 .purchase-request-lane > header strong { font-size: 11px; }
 .purchase-request-lane > header small { color: var(--lab-muted); font-size: 7px; font-weight: 900; }
-.t2-lane > header > span { color: var(--lab-amber); }
+.query-lane > header > span { color: var(--lab-amber); }
 
 .purchase-step-list {
     display: grid;
@@ -3834,11 +3834,12 @@ select:focus-visible {
 
 .purchase-control-grid {
     display: grid;
-    grid-template-columns: repeat(7, minmax(120px, 1fr));
+    grid-template-columns: repeat(8, minmax(105px, 1fr));
     gap: 8px;
 }
 
-.purchase-control-grid button {
+.purchase-control-grid button,
+.purchase-batch-control {
     display: grid;
     min-width: 0;
     min-height: 66px;
@@ -3852,6 +3853,19 @@ select:focus-visible {
     color: #dcebed;
     text-align: center;
 }
+
+.purchase-batch-control strong { font-size: 10px; }
+.purchase-batch-control select {
+    min-width: 84px;
+    border: 1px solid var(--lab-line-strong);
+    border-radius: 2px;
+    outline: none;
+    background: #0c1b29;
+    color: var(--lab-cyan);
+    font: 800 9px/1.2 "SFMono-Regular", Consolas, monospace;
+    text-align: center;
+}
+.purchase-batch-control select:disabled { cursor: not-allowed; opacity: .45; }
 
 .purchase-control-grid button:hover:not(:disabled) { border-color: rgba(102, 211, 208, .62); filter: brightness(1.07); }
 .purchase-control-grid button:disabled { cursor: not-allowed; opacity: .38; }

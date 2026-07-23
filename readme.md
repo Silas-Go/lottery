@@ -131,6 +131,11 @@ Browser / wrk2 -> Go API -> Redis
 | `/api/loadtests/:id` | GET | 查询任务状态、时间、日志和最终指标 |
 | `/api/loadtests/:id/events` | GET | 任务 SSE：进度、指标、日志和终态 |
 | `/api/loadtests/:id/stop` | POST | 停止任务并回收 wrk2 子进程 |
+| `/api/purchase-lab/:id/state` | GET | 读取购买实验共享的 MySQL / Redis 库存 |
+| `/api/purchase-lab/:id/reset` | POST | 重置 `materials.stock` 并重新预热材料 DTO |
+| `/api/purchase-lab/:id/run` | POST | 执行同步失效或 Outbox + MQ 小批量购买实验 |
+| `/api/purchase-lab/:id/query` | POST | 执行 1～20 次真实 Cached 查询采样 |
+| `/api/purchase-lab/runs/:requestId` | GET | 查询订单、Outbox、MQ 和缓存失效状态 |
 
 两条详情接口的响应体相同，只通过响应头解释数据来源：
 
@@ -187,12 +192,13 @@ stateDiagram-v2
 
 `/lucky/cacheaside` 会在后续章节改成语义清楚的新路径；当前保留它是为了不破坏已有调用。它不再出现在第一章页面，也不再被解释成“缓存库存方案”。
 
-## RocketMQ 在后续章节的职责
+## RocketMQ Topics
 
 | Topic | 类型 | 职责 |
 |---|---|---|
 | `CREATE_ORDER` | 普通消息 | Redis 准入后异步创建 MySQL 待支付订单，缓冲数据库写峰值 |
 | `CANCEL_ORDER` | 延迟消息 | 支付窗口到期后触发状态检查和库存释放 |
+| `PURCHASE_CACHE_INVALIDATE` | 普通消息 | 发布购买实验的材料 DTO 缓存失效事件；Consumer 幂等执行 DEL |
 
 普通消息使用的是主流 MQ 共有的异步解耦、缓冲削峰和至少一次投递语义；延迟取消才使用 RocketMQ 的延迟消息能力。
 

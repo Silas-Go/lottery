@@ -58,7 +58,8 @@ func statusForCode(code string) int {
 	switch code {
 	case service.CodeNoGiftsConfigured,
 		service.CodeArchiveNotFound,
-		service.CodePurchaseLabMaterialNotFound:
+		service.CodePurchaseLabMaterialNotFound,
+		service.CodePurchaseLabRunNotFound:
 		return http.StatusNotFound
 	case service.CodeRateLimited:
 		return http.StatusTooManyRequests
@@ -72,6 +73,7 @@ func statusForCode(code string) int {
 		service.CodeOrderAlreadyPaid,
 		service.CodeOrderStateConflict,
 		service.CodePurchaseLabSoldOut,
+		service.CodePurchaseLabRequestConflict,
 		service.CodeLoadtestAlreadyRunning:
 		return http.StatusConflict
 	case service.CodeLoadtestNotFound:

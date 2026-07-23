@@ -201,6 +201,13 @@ var defaultComponentMaterials = []MaterialCatalog{
 	{ID: 403, Code: "CMP-403", Name: "银线封印", RarityID: 1, SourceID: 4},
 }
 
+// 材料库存进入购买实验后是可变业务数据，应用重启时不能被夹具重新覆盖。
+// 其他目录字段仍允许随代码升级更新；显式排除 stock 是为了让订单账本和权威库存保持一致。
+var materialCatalogSeedUpdateColumns = []string{
+	"code", "name", "is_primary", "title", "sigil", "accent", "summary", "oath",
+	"price", "rarity_id", "source_id", "attribute", "usage", "risk",
+}
+
 var defaultMaterialComponents = []MaterialComponent{
 	{ID: 101, MaterialID: 1, ComponentMaterialID: 101, Quantity: 6, Unit: "g", SortOrder: 1},
 	{ID: 102, MaterialID: 1, ComponentMaterialID: 102, Quantity: 12, Unit: "ml", SortOrder: 2},
@@ -239,13 +246,19 @@ func (s *Store) EnsureMaterialReadModelSchema() error {
 	}
 	for i := range defaultMaterialCatalog {
 		row := defaultMaterialCatalog[i]
-		if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&row).Error; err != nil {
+		if err := s.db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns(materialCatalogSeedUpdateColumns),
+		}).Create(&row).Error; err != nil {
 			return fmt.Errorf("seed material catalog %d: %w", row.ID, err)
 		}
 	}
 	for i := range defaultComponentMaterials {
 		row := defaultComponentMaterials[i]
-		if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&row).Error; err != nil {
+		if err := s.db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns(materialCatalogSeedUpdateColumns),
+		}).Create(&row).Error; err != nil {
 			return fmt.Errorf("seed component material %d: %w", row.ID, err)
 		}
 	}
@@ -391,6 +404,19 @@ func (s *Store) GetMaterialDetail(id int) (*MaterialDetailDTO, int, error) {
 
 func materialDetailCacheKey(id int) string {
 	return fmt.Sprintf("%s%d", materialDetailCachePrefix, id)
+}
+
+// DeleteMaterialDetailCache 删除材料详情的最终 DTO 缓存。
+// 购买写路径只删除副本，不直接修改缓存内容，避免并发写把较旧的 DTO 覆盖到新库存上。
+// DEL 天然幂等，因此 RocketMQ 重复投递时可以安全重复执行。
+func DeleteMaterialDetailCache(id int) error {
+	if GiftRedis == nil {
+		return errors.New("redis client is nil")
+	}
+	if err := GiftRedis.Del(materialDetailCacheKey(id)).Err(); err != nil {
+		return fmt.Errorf("delete material detail cache %d: %w", id, err)
+	}
+	return nil
 }
 
 // GetMaterialDetailCache 读取已经组装好的最终 DTO；hit=false 时由 service 回源四条 MySQL 查询。

@@ -4,6 +4,7 @@ log
 .understand-anything
 *.test
 *.out
+*.exe
 docker-compose.yml
 README.md
 readme.md

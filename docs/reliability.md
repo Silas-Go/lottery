@@ -25,16 +25,20 @@
      -> MISS 执行相同 4 条 SQL -> 缓存最终 DTO 300s -> 返回
 ```
 
-该链路有意与 `inventory`、`orders`、Redis admission 和 RocketMQ 隔离，因此它只证明缓存对重复读的价值，不能被用来推导库存并发正确性。
+材料详情读链路仍与秒杀 `inventory`、`orders` 和 Redis admission 隔离。购买实验只在自己的
+`purchase_lab_orders` 账本中写订单，但会条件更新同一份 `materials.stock`，因此购买成功后
+Direct 与 Cached 查询都能观察到真实库存变化。
 
 一致性边界：
 
 - MySQL 材料基础、组成、交易和评分表是权威源，Redis 只保存可丢弃的最终 DTO 副本。
+- `materials.stock` 是可变权威数据；应用启动补齐目录夹具时显式排除该列，只有购买事务或实验重置会修改它。
 - 组成关系只保存材料外键与用量，组成项名称仍来自 `materials`，避免关系表复制基础字段。
 - 缓存不可用时降级回源 MySQL，本次响应正确性不依赖 Redis。
 - 单进程按 material id 使用双检互斥合并冷缓存回源；多实例缓存击穿仍需要更完整的治理。
-- 用户购买状态不进入公共 DTO，避免 key 按 uid 膨胀；需要时应作为独立用户读模型查询或短缓存。
-- 当前材料详情没有编辑 API。未来价格、库存、组成、交易聚合或评分发生写入时，必须删除对应 DTO key；删除失败需要重试或可靠事件兜底。
+- 用户购买状态不进入公共 DTO，避免 key 按 request id 膨胀；实验订单由 `purchase_lab_orders` 独立查询。
+- 购买写入会删除对应 DTO key：同步方案在提交后由当前请求重试 DEL，异步方案由 Outbox + RocketMQ 可靠失效。
+- 除购买库存外，当前材料详情没有编辑 API。未来价格、组成、交易聚合或评分发生写入时，也必须复用相同失效边界。
 - TTL 只限制旧副本存活时间，不能替代写后失效。
 - `/api/chapters/cache-aside/reset` 只清空本章缓存和指标，不触碰订单、库存或 MQ。
 
@@ -54,7 +58,8 @@ Browser -> app:5678 -> loadtest-runner:8090 -> wrk2 child process
 
 任务完成后的购买意愿是明确的教学映射而非后端业务预测：人数取 Runner 返回的白名单挡位
 `tier.rate`，固定 10% 进入购买请求池，90% 继续作为查询观察者；`actualRequests` 只用于压测指标，
-不会被误当作独立用户数。购买实验仍在独立夹具中抽取真实 T1/T2 竞态，不触碰订单、支付或秒杀库存。
+不会被误当作独立用户数。购买实验会重新校验并真实扣减共享的 `materials.stock`，同时写入独立的
+购买实验订单账本；它不触碰秒杀订单或支付状态机。
 
 可靠性与安全约束：
 
@@ -179,6 +184,7 @@ Consumer 同时订阅：
 
 - `CREATE_ORDER`：普通异步落单。
 - `CANCEL_ORDER`：延迟超时检查。
+- `PURCHASE_CACHE_INVALIDATE`：购买实验材料 DTO 缓存失效。
 
 处理原则：
 
@@ -187,6 +193,7 @@ Consumer 同时订阅：
 - 幂等处理成功后才 Ack。
 - 重复 `CREATE_ORDER` 返回原订单，不能重复扣库存或覆盖终态。
 - 重复 `CANCEL_ORDER` 看到 `cancelled` 时结束，不能重复回补。
+- 重复 `PURCHASE_CACHE_INVALIDATE` 只会再次执行幂等 DEL；已完成或已取消事件直接结束。
 - `paid` 收到取消消息时是正常空操作。
 
 ## 并发裁决
@@ -244,17 +251,69 @@ inventory.count
 
 `cancelled` 已经回补，不再扣减；MySQL 模式使用独立 `cache_stock`，也不影响 Redis 可用库存。
 
-## 材料购买写顺序实验（独立夹具）
+## 材料购买实验：同步失效与 Outbox + MQ
 
-`/purchase-lab` 使用独立的 `purchase_lab_inventory` 表和
-`purchase-lab:material:{id}:stock` Redis key，不读取或修改秒杀 `inventory`、订单、admission 或 MQ。
+`/purchase-lab` 的主实验与材料详情查询共享：
 
-每轮从相同热缓存基线开始，服务端真实执行以下两条路径：
+- MySQL 权威库存：`materials.stock`
+- Redis DTO：`archive:material-detail:v2:{materialId}`
+- 实验订单：`purchase_lab_orders`，`request_id` 唯一
+- 可靠事件：`purchase_lab_outbox`，`event_id` 和 `request_id` 唯一
 
-- 方案 A：`DELETE CACHE -> UPDATE MYSQL`。开启 T2 后，查询会在删除后读取 MySQL 旧值，等待 T1 更新，再把旧值回填 Redis，稳定复现最终脏缓存。
-- 方案 B：`UPDATE MYSQL -> DELETE CACHE`。开启 T2 后，查询可能在删除前命中一次旧值，但 T1 最终删除旧副本，降低旧值长期留在缓存的概率。
+重置时先在 MySQL 事务中锁定材料行、恢复固定库存、取消未完成 Outbox，并删除该材料的实验订单；
+事务提交后重新组装材料 DTO 并预热同一个 Redis key。迟到的 MQ 消息读取到 `cancelled` 后不会删除
+新预热的缓存。
 
-T1/T2 使用进程内 channel 只控制实验步骤的交错时机；返回的库存、命中、MISS、DB Read 和耗时来自真实 MySQL/Redis 操作。前端单步与自动播放只回放服务端 trace，不参与耗时计算。方案 B 不是绝对强一致；本实验也不覆盖订单、支付、幂等或高并发库存裁决。
+### 同步缓存失效
+
+```text
+HTTP request
+-> MySQL transaction
+   -> UPDATE materials SET stock = stock - 1 WHERE stock >= 1
+   -> INSERT purchase_lab_orders(request_id UNIQUE)
+-> COMMIT
+-> DEL archive:material-detail:v2:{materialId}，当前请求最多重试 3 次
+-> response
+```
+
+购买延迟覆盖事务和同步 DEL。若 DEL 重试耗尽，订单与库存已经提交，接口返回失败状态；调用方可用
+相同 `request_id` 重试，唯一索引保证不再次扣库存，重试请求只负责再次失效缓存。
+
+### Outbox + MQ 异步失效
+
+```text
+HTTP request
+-> MySQL transaction
+   -> 条件扣减 materials.stock
+   -> INSERT purchase_lab_orders
+   -> INSERT purchase_lab_outbox
+-> COMMIT / response
+
+Outbox Worker
+-> claim pending/retry event
+-> publish PURCHASE_CACHE_INVALIDATE
+-> mark published
+
+Consumer
+-> validate event_id + material_id
+-> idempotent DEL archive:material-detail:v2:{materialId}
+-> mark completed
+```
+
+订单、库存和 Outbox 在同一事务中提交；Outbox 唯一键失败会回滚整笔购买。Worker 使用
+`pending -> publishing -> published`，发布失败进入 `retry` 并指数退避；进程重启会把遗留
+`publishing` 恢复为 `retry`。消息可能在数据库写回前已经被 Consumer 处理，因此 Consumer 的
+`completed` 是终态，发布者不能把它倒退为 `published`。
+
+Redis 删除失败时 Consumer 不 Ack，并记录 `retry_count/last_error`；RocketMQ 重投后再次 DEL。
+DEL 天然幂等，`completed` 事件收到重复消息时直接成功返回。
+
+主页面只允许 1～10 个购买和 0～20 个查询样本，不接受 URL、脚本、Topic 或任意并发参数。
+查询样本真实调用 ArchiveService 的 Cached 路径，并在响应后读取 MySQL 权威库存判断旧读；
+前端 trace 只回放真实结果。阶段一不模拟“300 买家 + 2700 查询者”的完整压力。
+
+旧的错误顺序竞态夹具已经完全移除。当前购买页只运行以上两条真实写链路，不再维护第二份材料库存
+或专用 Redis 库存 Key。
 
 ## 当前仍然存在的分布式边界
 

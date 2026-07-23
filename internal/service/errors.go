@@ -28,6 +28,8 @@ const (
 	CodePurchaseLabMaterialNotFound = "PURCHASE_LAB_MATERIAL_NOT_FOUND"
 	CodePurchaseLabInvalidStrategy  = "PURCHASE_LAB_INVALID_STRATEGY"
 	CodePurchaseLabSoldOut          = "PURCHASE_LAB_SOLD_OUT"
+	CodePurchaseLabRequestConflict  = "PURCHASE_LAB_REQUEST_CONFLICT"
+	CodePurchaseLabRunNotFound      = "PURCHASE_LAB_RUN_NOT_FOUND"
 	CodePurchaseLabUnavailable      = "PURCHASE_LAB_UNAVAILABLE"
 	CodeLoadtestInvalidRequest      = "LOADTEST_INVALID_REQUEST"
 	CodeLoadtestAlreadyRunning      = "LOADTEST_ALREADY_RUNNING"

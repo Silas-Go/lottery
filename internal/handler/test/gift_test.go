@@ -35,9 +35,9 @@ func TestLottery(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for {
-				t1 := time.Now()
+				requestStarted := time.Now()
 				resp, err := http.Get(url)
-				atomic.AddInt64(&totalUseTime, time.Since(t1).Milliseconds())
+				atomic.AddInt64(&totalUseTime, time.Since(requestStarted).Milliseconds())
 				atomic.AddInt64(&totalCall, 1) //调用次数加1
 				if err != nil {
 					fmt.Println(err)

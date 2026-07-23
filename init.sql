@@ -64,14 +64,41 @@ insert ignore into profession_archives (id,code,name,title,sigil,accent,summary,
 (3,'star-reader','观星者','从群星的迟信里辨认尚未发生的风暴','星','#6659a8','他们在最高的塔上记录星辰，把几百年前启程的光译成今日的预兆。观星者并不预言命运；他们只是比旁人更早看见选择的代价。','星辰从不回答，只把问题照得更清楚。'),
 (4,'raven-physician','渡鸦医师','在瘟风经过之后替名字留住体温','鸦','#48645a','渡鸦医师随黑羽穿过封闭的城门。他们携带草药、银针和一本从不公开的姓名册：治愈一人便划去一个名字，未能归来的人，则由他们亲自送回故乡。','疾病可以带走呼吸，不能带走一个人被记得的方式。');
 
--- 材料购买顺序实验的独立夹具，不参与秒杀 inventory、orders 或 MQ 链路。
-create table if not exists purchase_lab_inventory(
+-- 购买主实验订单账本。request_id 是幂等边界；它与 materials.stock 共用一个事务。
+create table if not exists purchase_lab_orders(
+    id bigint unsigned not null auto_increment,
+    batch_id varchar(96) not null,
+    request_id varchar(128) not null,
     material_id int not null,
-    initial_stock int not null,
-    stock int not null,
-    updated_at datetime not null default current_timestamp on update current_timestamp,
-    primary key (material_id)
+    quantity int not null,
+    strategy varchar(40) not null,
+    status varchar(24) not null,
+    purchase_latency_ms decimal(12,3) not null default 0,
+    created_at datetime(3) not null default current_timestamp(3),
+    primary key (id),
+    unique key uk_purchase_lab_request (request_id),
+    key idx_purchase_lab_batch (batch_id),
+    key idx_purchase_lab_material (material_id)
 )default charset=utf8mb4;
 
-insert ignore into purchase_lab_inventory (material_id, initial_stock, stock) values
-(1,64,64),(2,48,48),(3,24,24),(4,12,12);
+-- Outbox 与异步方案的订单、库存扣减同事务写入；发布和消费状态允许恢复与重试。
+create table if not exists purchase_lab_outbox(
+    id bigint unsigned not null auto_increment,
+    batch_id varchar(96) not null,
+    event_id varchar(160) not null,
+    request_id varchar(128) not null,
+    material_id int not null,
+    status varchar(24) not null,
+    retry_count int not null default 0,
+    last_error varchar(500) not null default '',
+    next_retry_at datetime(3) null,
+    created_at datetime(3) not null default current_timestamp(3),
+    published_at datetime(3) null,
+    invalidated_at datetime(3) null,
+    primary key (id),
+    unique key uk_purchase_outbox_event (event_id),
+    unique key uk_purchase_outbox_request (request_id),
+    key idx_purchase_outbox_batch (batch_id),
+    key idx_purchase_outbox_material (material_id),
+    key idx_purchase_outbox_status (status)
+)default charset=utf8mb4;

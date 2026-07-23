@@ -5,13 +5,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#07111d" />
-    <meta name="description" content="用真实 MySQL 与 Redis 操作比较 Cache-Aside 两种购买写入顺序。" />
+    <meta name="description" content="用真实 MySQL、Redis、Outbox 与 RocketMQ 比较两种材料缓存失效方案。" />
     <title>Cache-Aside 购买实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260722-crowd-conversion" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260723-outbox-purchase" />
 </head>
 
-<body class="lab-page purchase-page" data-purchase-strategy="delete-then-update" data-purchase-status="idle">
+<body class="lab-page purchase-page" data-purchase-strategy="sync-invalidate" data-purchase-status="idle">
     <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
     <header class="lab-header purchase-lab-header">
@@ -33,7 +33,7 @@
         </div>
 
         <div class="purchase-header-status" aria-label="购买实验状态">
-            <div><small>CURRENT STRATEGY</small><strong id="header-strategy">先删缓存，再更新数据库</strong></div>
+            <div><small>CURRENT STRATEGY</small><strong id="header-strategy">同步缓存失效</strong></div>
             <div><small>EXPERIMENT STATUS</small><strong id="header-status">准备中</strong></div>
         </div>
     </header>
@@ -51,11 +51,11 @@
                 <div class="panel-heading">
                     <div>
                         <span>WRITE ORDER EXPERIMENT</span>
-                        <h1 id="purchase-title" data-i18n="intro.title">比较 Cache-Aside 写操作的两种执行顺序</h1>
+                        <h1 id="purchase-title" data-i18n="intro.title">同步失效与 Outbox + MQ 异步失效</h1>
                     </div>
                     <span class="endpoint-label">POST /api/purchase-lab/:id/run</span>
                 </div>
-                <p data-i18n="intro.body">每轮都从相同热缓存库存开始。服务端先完成真实 Redis/MySQL 操作，再把真实步骤与耗时交给页面回放。</p>
+                <p data-i18n="intro.body">购买与查询现在共享 materials.stock 和同一个材料详情缓存。服务端完成真实事务、缓存失效与查询采样后，再把步骤交给页面回放。</p>
                 <section id="purchase-crowd-context" class="purchase-crowd-context" aria-labelledby="purchase-crowd-title" hidden>
                     <div>
                         <small>ARRIVING REQUEST POOL · 10% CONVERSION</small>
@@ -67,32 +67,31 @@
                         <div><dt>持续下单</dt><dd id="purchase-crowd-buyers">0</dd></div>
                         <div><dt>继续查询</dt><dd id="purchase-crowd-observers">0</dd></div>
                     </dl>
-                    <p>本页每轮从购买请求池抽取一个真实 T1，并让观察者提供 T2 查询样本，用于观察写入顺序的竞态影响。</p>
+                    <p>第一阶段不会执行整个人群压测；这里只从人群叙事中抽取 1～10 个真实购买请求和 1～20 个真实查询样本。</p>
                 </section>
                 <div class="purchase-boundary-note">
                     <strong data-i18n="intro.boundaryTitle">本店实验边界</strong>
-                    <span data-i18n="intro.boundaryBody">只演示材料库存缓存失效顺序；不创建订单，不接入 MQ，也不演示秒杀库存。</span>
+                    <span data-i18n="intro.boundaryBody">主实验会创建独立订单并接入 RocketMQ，但仍不触碰秒杀 inventory、支付或正式订单账本。</span>
                 </div>
             </section>
 
             <div class="purchase-layout">
                 <aside class="purchase-schemes lab-panel" aria-labelledby="scheme-heading">
                     <div class="panel-heading">
-                        <div><span>01 / STRATEGY</span><h2 id="scheme-heading" data-i18n="scheme.title">选择写入顺序</h2></div>
+                        <div><span>01 / STRATEGY</span><h2 id="scheme-heading" data-i18n="scheme.title">选择缓存失效方案</h2></div>
                     </div>
                     <div class="purchase-scheme-list" role="radiogroup" aria-label="购买实验方案">
-                        <button class="purchase-scheme-card is-active" type="button" role="radio" aria-checked="true" data-strategy="delete-then-update">
-                            <small>SCHEME A · RISK WINDOW</small>
-                            <strong data-i18n="scheme.aTitle">先删缓存，再更新数据库</strong>
-                            <code>DELETE CACHE → UPDATE MYSQL</code>
-                            <span data-i18n="scheme.aBody">竞态查询可能在更新前读到旧值，并在更新后把旧值写回缓存。</span>
+                        <button class="purchase-scheme-card is-active" type="button" role="radio" aria-checked="true" data-strategy="sync-invalidate">
+                            <small>SCHEME A · REQUEST PATH</small>
+                            <strong data-i18n="scheme.aTitle">同步缓存失效</strong>
+                            <code>MYSQL TX → DEL CACHE → RETURN</code>
+                            <span data-i18n="scheme.aBody">事务提交后由当前 HTTP 请求重试删除缓存，返回路径更长但状态直观。</span>
                         </button>
-                        <button class="purchase-scheme-card" type="button" role="radio" aria-checked="false" data-strategy="update-then-delete">
-                            <em>RECOMMENDED</em>
-                            <small>SCHEME B · LOWER RISK</small>
-                            <strong data-i18n="scheme.bTitle">先更新数据库，再删缓存</strong>
-                            <code>UPDATE MYSQL → DELETE CACHE</code>
-                            <span data-i18n="scheme.bBody">降低旧值长期停留在缓存中的概率，但不等于绝对强一致。</span>
+                        <button class="purchase-scheme-card" type="button" role="radio" aria-checked="false" data-strategy="outbox-mq-invalidate">
+                            <small>SCHEME B · EVENTUAL CONSISTENCY</small>
+                            <strong data-i18n="scheme.bTitle">Outbox + MQ 异步失效</strong>
+                            <code>MYSQL TX + OUTBOX → MQ → CONSUMER DEL</code>
+                            <span data-i18n="scheme.bBody">购买提交不等待 Redis；Worker 和 Consumer 负责可重试的最终失效。</span>
                         </button>
                     </div>
                     <p id="scheme-lock-note" class="scheme-lock-note">实验开始后，重置当前实验才能切换方案。</p>
@@ -100,7 +99,7 @@
 
                 <section class="purchase-stage lab-panel" aria-labelledby="timeline-heading">
                     <div class="panel-heading route-heading-row">
-                        <div><span>02 / DOUBLE REQUEST TIMELINE</span><h2 id="timeline-heading" data-i18n="timeline.title">购买 T1 与查询 T2 的受控交错</h2></div>
+                        <div><span>02 / DOUBLE REQUEST TIMELINE</span><h2 id="timeline-heading" data-i18n="timeline.title">购买事务、查询样本与缓存失效</h2></div>
                         <div class="route-result"><small id="timeline-step-label">READY</small><strong id="timeline-step-title">等待开始真实实验</strong></div>
                     </div>
 
@@ -115,13 +114,13 @@
                     </div>
 
                     <div class="purchase-timelines">
-                        <section class="purchase-request-lane t1-lane" aria-labelledby="t1-heading">
-                            <header><span>T1</span><div><strong id="t1-heading">购买请求</strong><small>WRITE REQUEST</small></div></header>
-                            <ol id="t1-steps" class="purchase-step-list"><li class="is-placeholder">真实执行后生成步骤</li></ol>
+                        <section class="purchase-request-lane purchase-lane" aria-labelledby="purchase-heading">
+                            <header><span>BUY</span><div><strong id="purchase-heading">购买请求</strong><small>WRITE REQUEST</small></div></header>
+                            <ol id="purchase-steps" class="purchase-step-list"><li class="is-placeholder">真实执行后生成步骤</li></ol>
                         </section>
-                        <section class="purchase-request-lane t2-lane" aria-labelledby="t2-heading">
-                            <header><span>T2</span><div><strong id="t2-heading">查询请求</strong><small>CONCURRENT READ</small></div></header>
-                            <ol id="t2-steps" class="purchase-step-list"><li class="is-placeholder">未插入并发查询</li></ol>
+                        <section class="purchase-request-lane query-lane" aria-labelledby="query-heading">
+                            <header><span>READ</span><div><strong id="query-heading">查询样本</strong><small>SHARED CACHE READ</small></div></header>
+                            <ol id="query-steps" class="purchase-step-list"><li class="is-placeholder">等待真实查询样本</li></ol>
                         </section>
                     </div>
 
@@ -137,16 +136,16 @@
                     <dl class="purchase-state-grid">
                         <div><dt>MySQL 当前库存</dt><dd id="state-mysql-stock">—</dd></div>
                         <div><dt>Redis 当前库存</dt><dd id="state-redis-stock">—</dd></div>
-                        <div><dt>购买是否成功</dt><dd id="state-purchase-success">等待</dd></div>
-                        <div><dt>脏缓存</dt><dd id="state-dirty-cache">未检测</dd></div>
-                        <div><dt>DB Reads</dt><dd id="state-db-reads">0</dd></div>
-                        <div><dt>Redis Hit / Miss</dt><dd id="state-cache-counts">0 / 0</dd></div>
-                        <div><dt>本次真实延迟</dt><dd id="state-latency">—</dd></div>
-                        <div><dt>T2 返回库存</dt><dd id="state-query-stock">未插入</dd></div>
+                        <div><dt>购买成功 / 重复 / 售罄</dt><dd id="state-purchase-counts">0 / 0 / 0</dd></div>
+                        <div><dt>旧读 / 查询样本</dt><dd id="state-old-reads">0 / 0</dd></div>
+                        <div><dt>平均购买延迟</dt><dd id="state-purchase-latency">—</dd></div>
+                        <div><dt>平均失效延迟</dt><dd id="state-invalidation-latency">—</dd></div>
+                        <div><dt>Outbox / MQ</dt><dd id="state-outbox-status">—</dd></div>
+                        <div><dt>重试次数</dt><dd id="state-retry-count">0</dd></div>
                     </dl>
                     <div class="purchase-consistency-note">
                         <strong id="consistency-title">尚未运行</strong>
-                        <span id="consistency-copy">MySQL 始终是本实验的权威数据源。</span>
+                        <span id="consistency-copy">materials.stock 是查询与购买共同的权威库存。</span>
                     </div>
                 </aside>
             </div>
@@ -157,8 +156,9 @@
                     <span id="control-status" class="freeze-status" role="status" aria-live="polite">等待开始</span>
                 </div>
                 <div class="purchase-control-grid">
-                    <button id="start-purchase-run" class="purchase-primary-control" type="button"><strong>开始实验</strong><small>执行真实服务端路径</small></button>
-                    <button id="toggle-concurrent-query" type="button" aria-pressed="false"><strong>插入并发查询</strong><small id="concurrent-query-state">当前关闭</small></button>
+                    <button id="start-purchase-run" class="purchase-primary-control" type="button"><strong>开始实验</strong><small>执行真实事务与缓存路径</small></button>
+                    <label class="purchase-batch-control"><strong>购买请求</strong><select id="purchase-count"><option value="1">1 次</option><option value="3">3 次</option><option value="5">5 次</option><option value="10">10 次</option></select></label>
+                    <label class="purchase-batch-control"><strong>查询样本</strong><select id="query-count"><option value="1">1 次</option><option value="5" selected>5 次</option><option value="10">10 次</option><option value="20">20 次</option></select></label>
                     <button id="step-purchase-run" type="button" disabled><strong>单步执行</strong><small>回放下一个真实步骤</small></button>
                     <button id="autoplay-purchase-run" type="button" disabled><strong>自动播放</strong><small>连续回放，可暂停</small></button>
                     <button id="reset-purchase-run" type="button"><strong>重置当前实验</strong><small>保留已保存结果</small></button>
@@ -169,35 +169,35 @@
 
             <section class="purchase-results results-panel lab-panel" aria-labelledby="purchase-results-heading">
                 <div class="panel-heading">
-                    <div><span>05 / IMMUTABLE RESULTS</span><h2 id="purchase-results-heading" data-i18n="results.title">两种写入顺序的冻结结果</h2></div>
+                    <div><span>05 / IMMUTABLE RESULTS</span><h2 id="purchase-results-heading" data-i18n="results.title">两种缓存失效方案的冻结结果</h2></div>
                     <span id="purchase-freeze-status" class="freeze-status">重置不会删除结果</span>
                 </div>
 
                 <div class="frozen-result-cards">
                     <article id="purchase-result-a" class="frozen-result-card is-empty">
-                        <header><div><small>SCHEME A</small><strong>先删缓存，再更新数据库</strong></div><span>待实验</span></header>
+                        <header><div><small>SCHEME A</small><strong>同步缓存失效</strong></div><span>待实验</span></header>
                         <p class="frozen-result-context" data-result-context>完成方案 A 后自动冻结</p>
                         <dl>
                             <div><dt>Initial</dt><dd data-result="initial">—</dd></div>
                             <div><dt>MySQL Final</dt><dd data-result="mysql">—</dd></div>
                             <div><dt>Redis Final</dt><dd data-result="redis">—</dd></div>
-                            <div><dt>Dirty Cache</dt><dd data-result="dirty">—</dd></div>
-                            <div><dt>DB Reads</dt><dd data-result="dbReads">—</dd></div>
-                            <div><dt>Latency</dt><dd data-result="latency">—</dd></div>
+                            <div><dt>Old Reads</dt><dd data-result="oldReads">—</dd></div>
+                            <div><dt>Purchase Latency</dt><dd data-result="purchaseLatency">—</dd></div>
+                            <div><dt>Invalidate Latency</dt><dd data-result="invalidationLatency">—</dd></div>
                         </dl>
                         <footer data-result-time>结果不会随下一轮变化</footer>
                     </article>
 
                     <article id="purchase-result-b" class="frozen-result-card is-empty">
-                        <header><div><small>SCHEME B · RECOMMENDED</small><strong>先更新数据库，再删缓存</strong></div><span>待实验</span></header>
+                        <header><div><small>SCHEME B</small><strong>Outbox + MQ 异步失效</strong></div><span>待实验</span></header>
                         <p class="frozen-result-context" data-result-context>完成方案 B 后自动冻结</p>
                         <dl>
                             <div><dt>Initial</dt><dd data-result="initial">—</dd></div>
                             <div><dt>MySQL Final</dt><dd data-result="mysql">—</dd></div>
                             <div><dt>Redis Final</dt><dd data-result="redis">—</dd></div>
-                            <div><dt>Dirty Cache</dt><dd data-result="dirty">—</dd></div>
-                            <div><dt>DB Reads</dt><dd data-result="dbReads">—</dd></div>
-                            <div><dt>Latency</dt><dd data-result="latency">—</dd></div>
+                            <div><dt>Old Reads</dt><dd data-result="oldReads">—</dd></div>
+                            <div><dt>Purchase Latency</dt><dd data-result="purchaseLatency">—</dd></div>
+                            <div><dt>Invalidate Latency</dt><dd data-result="invalidationLatency">—</dd></div>
                         </dl>
                         <footer data-result-time>结果不会随下一轮变化</footer>
                     </article>
@@ -208,15 +208,15 @@
                         <div><small>WRITE ORDER COMPARISON</small><strong id="purchase-comparison-title">等待两种方案结果</strong></div>
                         <span id="purchase-overall-winner">WAITING</span>
                     </header>
-                    <div class="frozen-comparison-table" role="table" aria-label="购买实验两种写入顺序对比">
+                    <div class="frozen-comparison-table" role="table" aria-label="购买实验两种缓存失效方案对比">
                         <div class="frozen-comparison-row is-head" role="row"><span>Metric</span><strong>方案 A</strong><strong>方案 B</strong><em>判断</em></div>
-                        <div id="purchase-compare-dirty" class="frozen-comparison-row" role="row"><span>Dirty Cache</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
-                        <div id="purchase-compare-consistency" class="frozen-comparison-row" role="row"><span>Final Cache State</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
-                        <div id="purchase-compare-db" class="frozen-comparison-row" role="row"><span>DB Reads</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
-                        <div id="purchase-compare-cache" class="frozen-comparison-row" role="row"><span>Redis Hit / Miss</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>路径特征</em></div>
-                        <div id="purchase-compare-latency" class="frozen-comparison-row is-context" role="row"><span>Observed Latency</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>仅本轮观测</em></div>
+                        <div id="purchase-compare-old" class="frozen-comparison-row" role="row"><span>Old Reads</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
+                        <div id="purchase-compare-purchase" class="frozen-comparison-row" role="row"><span>Purchase Latency</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
+                        <div id="purchase-compare-invalidation" class="frozen-comparison-row" role="row"><span>Invalidate Latency</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>等待</em></div>
+                        <div id="purchase-compare-retry" class="frozen-comparison-row" role="row"><span>Retry Count</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>可靠性成本</em></div>
+                        <div id="purchase-compare-status" class="frozen-comparison-row is-context" role="row"><span>Final Status</span><strong data-a>—</strong><strong data-b>—</strong><em data-verdict>真实状态</em></div>
                     </div>
-                    <p>方案 B 是更稳妥的默认顺序，因为最终会删除旧缓存；它只能降低脏缓存长期存在的概率，不提供绝对强一致保证。</p>
+                    <p>页面不预设胜者：同步方案比较返回路径成本，Outbox 方案比较异步失效窗口、重试与最终完成状态。</p>
                 </div>
             </section>
         </div>
@@ -224,7 +224,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-purchase-lab"></script>
-    <script src="/js/purchase-lab.js?v=20260722-crowd-conversion"></script>
+    <script src="/js/purchase-lab.js?v=20260723-outbox-purchase-v2"></script>
 </body>
 
 </html>

@@ -25,26 +25,36 @@ import (
 // 把 HTTP server、数据库和外部客户端收口到这里，是为了让启动和退出流程可追踪，
 // 避免资源初始化散落在 main 或 handler 里。
 type Application struct {
-	store  *database.Store
-	server *http.Server
+	store        *database.Store
+	server       *http.Server
+	workerCancel context.CancelFunc
+	workerDone   <-chan struct{}
 }
 
 // New 初始化依赖并创建 HTTP 应用。
 // 这里集中完成基础设施和路由装配，main.go 只负责启动，方便后续排查启动阶段失败点。
 func New() *Application {
 	store := initInfrastructure()
-	engine, orderService := initHTTP(store)
+	engine, orderService, purchaseLabService := initHTTP(store)
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
 	if mq.Enabled() {
-		// MQ 只负责消息传输；普通落单和超时取消都回调同一个 OrderService 状态机。
-		go mq.ReceiveOrders(orderService.CreateRedisPendingOrder, orderService.TimeoutCancel)
+		// MQ 只负责消息传输；订单状态机与材料缓存失效各自回到对应 service 做幂等裁决。
+		go mq.ReceiveOrders(orderService.CreateRedisPendingOrder, orderService.TimeoutCancel,
+			purchaseLabService.ConsumeCacheInvalidation)
+		go func() {
+			defer close(workerDone)
+			purchaseLabService.RunOutboxWorker(workerCtx)
+		}()
 	} else {
+		close(workerDone)
 		slog.Info("rocketmq disabled")
 	}
 	addr := util.EnvString("LOTTERY_HTTP_ADDR", "localhost:5678")
 	slog.Info("application initialized", "http_addr", addr)
 
 	return &Application{
-		store: store,
+		store: store, workerCancel: workerCancel, workerDone: workerDone,
 		server: &http.Server{
 			Addr:    addr,
 			Handler: engine,
@@ -98,13 +108,24 @@ func (a *Application) Shutdown(ctx context.Context) {
 		slog.Info("http server shutting down")
 		_ = a.server.Shutdown(ctx)
 	}
-
+	if a.workerCancel != nil {
+		a.workerCancel()
+	}
+	if a.workerDone != nil {
+		select {
+		case <-a.workerDone:
+		case <-ctx.Done():
+			slog.Warn("purchase outbox worker shutdown timed out", "error", ctx.Err())
+		}
+	}
+	// Consumer 可能正在执行订单状态迁移或材料缓存 DEL，必须先停消息入口，
+	// 再关闭 MySQL/Redis；否则优雅退出反而会制造一次可避免的处理中断。
+	mq.StopConsumer()
+	mq.StopProducter()
 	if a.store != nil {
 		a.store.CloseGiftDB()
 	}
 	database.CloseGiftRedis()
-	mq.StopConsumer()
-	mq.StopProducter()
 	slog.Info("application resources closed")
 }
 
@@ -130,9 +151,10 @@ func initInfrastructure() *database.Store {
 		slog.Error("ensure material read model schema failed", "error", err)
 		panic(err)
 	}
-	// 材料购买顺序实验使用独立夹具，不能复用后续秒杀店的 inventory、订单或 MQ 状态。
-	if err := store.EnsurePurchaseLabSchema(); err != nil {
-		slog.Error("ensure purchase lab schema failed", "error", err)
+	// 真实购买实验复用 materials.stock 和材料 DTO 缓存。
+	// 启动时补齐购买订单与 Outbox 表，避免老数据卷缺表导致事务失去原子边界。
+	if err := store.EnsurePurchaseExperimentSchema(); err != nil {
+		slog.Error("ensure purchase experiment schema failed", "error", err)
 		panic(err)
 	}
 	// 限制 Cache-Aside 打到 MySQL 的并发上限（模拟受限连接池），调小才能在本机压出连接等待与红灯。
@@ -147,7 +169,7 @@ func initInfrastructure() *database.Store {
 
 // initHTTP 装配 HTTP 层依赖。
 // rateLimitQPS 是本进程秒杀入口限流值，QPS 表示每秒请求数；0 表示关闭限流。
-func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService) {
+func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService, *service.PurchaseLabService) {
 	gin.DefaultWriter = io.Discard
 
 	rateLimitQPS := util.EnvInt("LOTTERY_RATE_LIMIT_QPS", 0)
@@ -157,7 +179,7 @@ func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService) {
 	orderService := service.NewOrderService(store)
 	cacheAsideService := service.NewCacheAsideLotteryService(store)
 	archiveService := service.NewArchiveService(store)
-	purchaseLabService := service.NewPurchaseLabService(store)
+	purchaseLabService := service.NewPurchaseLabService(store, archiveService)
 	loadtestService := service.NewLoadtestService(loadtest.NewClient(util.EnvString("LOTTERY_LOADTEST_RUNNER_URL", "http://loadtest-runner:8090")))
 	slog.Info("http dependencies initialized", "rate_limit_qps", rateLimitQPS)
 
@@ -169,7 +191,7 @@ func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService) {
 		Lab:         handler.NewLabHandler(store, cacheAsideService.ResetCircuitBreaker),
 		Loadtest:    handler.NewLoadtestHandler(loadtestService),
 	})
-	return engine, orderService
+	return engine, orderService, purchaseLabService
 }
 
 // initInventoryMetrics 初始化 Redis 库存并建立指标基线。

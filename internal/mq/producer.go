@@ -38,14 +38,16 @@ func GetProducer() (rmq_client.Producer, error) {
 	endpoint := Endpoint()
 	cancelTopic := CancelTopic()
 	orderTopic := OrderTopic()
-	slog.Info("rocketmq producer initializing", "endpoint", endpoint, "cancel_topic", cancelTopic, "order_topic", orderTopic)
+	purchaseInvalidationTopic := PurchaseInvalidationTopic()
+	slog.Info("rocketmq producer initializing", "endpoint", endpoint, "cancel_topic", cancelTopic,
+		"order_topic", orderTopic, "purchase_invalidation_topic", purchaseInvalidationTopic)
 	p, err := rmq_client.NewProducer(
 		&rmq_client.Config{
 			Endpoint:    endpoint,
 			Credentials: &credentials.SessionCredentials{},
 		},
 		rmq_client.WithClientFunc(newRocketClient),
-		rmq_client.WithTopics(cancelTopic, orderTopic),
+		rmq_client.WithTopics(cancelTopic, orderTopic, purchaseInvalidationTopic),
 	)
 	if err != nil {
 		slog.Error("rocketmq producer create failed", "endpoint", endpoint, "cancel_topic", cancelTopic, "order_topic", orderTopic, "error", err)
@@ -146,6 +148,32 @@ func SendCreateOrder(order database.Order) error {
 		return fmt.Errorf("send create order to rocketmq: %w", err)
 	}
 	slog.Info("send async create order success", "uid", order.UserId, "gid", order.GiftId, "topic", OrderTopic())
+	return nil
+}
+
+// SendPurchaseCacheInvalidation 发布受控的材料详情缓存失效事件。
+// 消息只包含 event_id/material_id；Consumer 自己生成 Redis key，不能被消息注入任意命令。
+func SendPurchaseCacheInvalidation(command database.PurchaseCacheInvalidation) error {
+	if !Enabled() {
+		return fmt.Errorf("rocketmq disabled: purchase cache invalidation cannot be published")
+	}
+	content, err := sonic.Marshal(command)
+	if err != nil {
+		return fmt.Errorf("marshal purchase cache invalidation: %w", err)
+	}
+	producer, err := GetProducer()
+	if err != nil {
+		return err
+	}
+	msg := &rmq_client.Message{Topic: PurchaseInvalidationTopic(), Body: content}
+	ctx, cancel := context.WithTimeout(context.Background(), producerSendTimeout)
+	defer cancel()
+	if _, err := producer.Send(ctx, msg); err != nil {
+		return fmt.Errorf("send purchase cache invalidation to rocketmq: %w", err)
+	}
+	slog.Info("send purchase cache invalidation success",
+		"event_id", command.EventID, "material_id", command.MaterialID,
+		"topic", PurchaseInvalidationTopic())
 	return nil
 }
 
