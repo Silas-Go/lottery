@@ -4,11 +4,11 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#07111d" />
+    <meta name="theme-color" content="#f0d9ad" />
     <meta name="description" content="用真实 MySQL、Redis、Outbox 与 RocketMQ 比较同步和异步缓存失效。" />
     <title>材料购买实验 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260724-purchase-replay" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260724-warm-market" />
 </head>
 
 <body class="lab-page purchase-page purchase-observatory" data-purchase-strategy="unselected" data-purchase-status="idle">
@@ -130,11 +130,19 @@
             <div class="purchase-observation-grid">
                 <section class="purchase-allegory lab-panel" aria-labelledby="allegory-heading">
                     <div class="purchase-section-heading">
-                        <div><small>02 / ALLEGORY</small><h2 id="allegory-heading">材料商店里，谁在做什么</h2></div>
+                        <div><small>MARKET FLOOR / 商店视角</small><h2 id="allegory-heading">魔法黑市里的购买实验</h2></div>
                         <span id="allegory-status" class="purchase-live-badge">等待开门</span>
                     </div>
+                    <p class="market-view-caption">从柜台上方观察真实购买过程：掌柜接单、账房改账、信使送信、门口库存牌更新。</p>
 
                     <div id="shop-allegory-stage" class="shop-allegory-stage" aria-label="与真实后端状态同步的商店寓言场景">
+                        <div class="market-lantern market-lantern-left" aria-hidden="true"></div>
+                        <div class="market-lantern market-lantern-right" aria-hidden="true"></div>
+                        <div class="magic-shelf magic-shelf-left" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                        <div class="magic-shelf magic-shelf-back" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+                        <div class="market-door" aria-hidden="true"><i></i></div>
+                        <div class="market-rug" aria-hidden="true"></div>
+                        <div class="material-crates" aria-hidden="true"><i></i><i></i><i></i></div>
                         <div id="story-buyers" class="shop-role shop-buyers" data-state="idle">
                             <div class="buyer-silhouettes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
                             <strong>150 名购买者</strong><small data-role-status>正在店外等待</small>
@@ -145,11 +153,11 @@
                         </div>
                         <div id="story-mysql" class="shop-role shop-mysql" data-state="idle">
                             <span class="ledger-stamp" aria-hidden="true">账</span>
-                            <strong>地下账房</strong><em>MySQL</em><small data-role-status>账本库存 —</small>
+                            <strong>账房先生</strong><em>MySQL</em><small data-role-status>账本库存 —</small>
                         </div>
                         <div id="story-outbox" class="shop-role shop-outbox" data-state="idle">
                             <span class="outbox-slip" aria-hidden="true"></span>
-                            <strong>待办凭证</strong><em>Outbox</em><small data-role-status>本方案不使用</small>
+                            <strong>柜台凭证</strong><em>Outbox</em><small data-role-status>本方案不使用</small>
                         </div>
                         <div id="story-mq" class="shop-role shop-mq" data-state="idle">
                             <span class="role-figure courier" aria-hidden="true"></span>
@@ -157,7 +165,7 @@
                         </div>
                         <div id="story-consumer" class="shop-role shop-consumer" data-state="idle">
                             <span class="role-figure board-worker" aria-hidden="true"></span>
-                            <strong>更新告示的伙计</strong><em>Consumer</em><small data-role-status>本方案不使用</small>
+                            <strong>库存牌助手</strong><em>Consumer</em><small data-role-status>本方案不使用</small>
                         </div>
                         <div id="story-redis" class="shop-role shop-redis" data-state="idle">
                             <span class="stock-sign" aria-hidden="true"><b id="story-redis-stock">—</b><i>件</i></span>
@@ -166,8 +174,19 @@
                         <div class="shop-counter" aria-hidden="true"></div>
                         <div class="shop-basement" aria-hidden="true"></div>
                     </div>
+                    <dl class="market-role-legend" aria-label="商店角色与技术组件映射">
+                        <div><dt>掌柜</dt><dd>Purchase Service</dd></div>
+                        <div><dt>账房</dt><dd>MySQL</dd></div>
+                        <div><dt>信使</dt><dd>MQ</dd></div>
+                        <div><dt>库存牌</dt><dd>Redis</dd></div>
+                    </dl>
                 </section>
 
+                <details class="purchase-system-view">
+                    <summary>
+                        <span><b>系统视角</b><small>展开查看 Purchase Service、MySQL、MQ、Redis 与查询探针</small></span>
+                        <i aria-hidden="true">展开</i>
+                    </summary>
                 <section class="purchase-topology lab-panel" aria-labelledby="topology-heading">
                     <div class="purchase-section-heading">
                         <div><small>03 / REAL TOPOLOGY</small><h2 id="topology-heading">真实系统拓扑</h2></div>
@@ -233,6 +252,7 @@
                         <span id="purchase-fault-copy">页面会继续展示后端返回的 retry / failed 状态。</span>
                     </div>
                 </section>
+                </details>
             </div>
 
             <section class="purchase-running-log lab-panel" aria-labelledby="running-log-heading">
