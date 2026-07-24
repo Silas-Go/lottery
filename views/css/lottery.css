@@ -6449,3 +6449,1306 @@ select:focus-visible {
     }
     .market-role-legend > div:last-child { border-bottom: 0; }
 }
+
+/* ================================================================
+   Purchase Lab · battle report settlement
+   战报只消费前端已冻结的 run / probe / trace / outbox；结算动画不承担
+   业务阶段推进，也不通过视觉定时器推断后端是否完成。
+   ================================================================ */
+.battle-report-shell {
+    position: relative;
+    min-height: 210px;
+    padding: clamp(14px, 2vw, 26px);
+    overflow: hidden;
+    border-color: rgba(116, 69, 34, .25) !important;
+    background:
+        radial-gradient(circle at 12% 4%, rgba(255, 221, 139, .3), transparent 18rem),
+        linear-gradient(135deg, rgba(91, 49, 27, .95), rgba(128, 71, 34, .94)) !important;
+    box-shadow:
+        inset 0 0 0 5px rgba(255, 220, 141, .08),
+        0 18px 42px rgba(82, 44, 22, .17) !important;
+}
+
+.battle-report-placeholder {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 5px 18px;
+    min-height: 160px;
+    padding: 22px clamp(18px, 4vw, 52px);
+    border: 1px dashed rgba(255, 220, 147, .38);
+    border-radius: 12px;
+    background:
+        linear-gradient(100deg, rgba(255, 240, 194, .08), transparent),
+        rgba(50, 26, 18, .18);
+    color: #f7dfad;
+}
+
+.battle-report-placeholder[hidden] { display: none; }
+
+.battle-report-placeholder > div {
+    display: grid;
+    gap: 6px;
+}
+
+.battle-report-placeholder small,
+.battle-settlement header small,
+.battle-report-header small,
+.battle-report-section-title small,
+.shopkeeper-verdict small,
+.battle-duel-header small,
+.battle-dimension header small,
+.chief-alchemist-verdict small,
+.battle-technical-details summary small {
+    color: #b86638;
+    font: 900 8px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .14em;
+}
+
+.battle-report-placeholder small,
+.battle-settlement header small {
+    color: #e5b772;
+}
+
+.battle-report-placeholder h2 {
+    margin: 0;
+    color: #fff2cd;
+    font: 700 clamp(19px, 2vw, 27px)/1.25 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-report-placeholder p {
+    grid-column: 2;
+    max-width: 760px;
+    margin: 0;
+    color: #d8bd91;
+    font-size: 10px;
+    line-height: 1.7;
+}
+
+.battle-placeholder-seal {
+    grid-row: 1 / span 2;
+    display: grid;
+    width: 68px;
+    height: 68px;
+    place-items: center;
+    border: 3px double #dda35c;
+    border-radius: 50%;
+    color: #f1c379;
+    font: 700 25px/1 Georgia, "Noto Serif SC", serif;
+    box-shadow: inset 0 0 0 5px rgba(235, 181, 98, .12);
+    transform: rotate(-8deg);
+}
+
+.battle-settlement {
+    display: grid;
+    min-height: 250px;
+    align-content: center;
+    gap: 24px;
+    padding: 26px;
+    color: #fff1ce;
+}
+
+.battle-settlement[hidden] { display: none; }
+
+.battle-settlement header {
+    display: grid;
+    justify-items: center;
+    gap: 7px;
+    text-align: center;
+}
+
+.battle-settlement header strong {
+    font: 700 clamp(17px, 2vw, 24px)/1.3 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-settlement ol {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.battle-settlement li {
+    display: grid;
+    min-width: 0;
+    min-height: 120px;
+    align-content: center;
+    justify-items: center;
+    gap: 7px;
+    padding: 14px 10px;
+    border: 1px solid rgba(246, 205, 135, .2);
+    border-radius: 10px;
+    background: rgba(255, 240, 202, .06);
+    opacity: .22;
+    text-align: center;
+    transform: translateY(8px);
+}
+
+.battle-settlement li > span {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid rgba(245, 201, 123, .34);
+    border-radius: 50%;
+    background: rgba(255,255,255,.06);
+    font-size: 20px;
+}
+
+.battle-settlement li b {
+    color: #ffe7b7;
+    font: 700 12px/1.3 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-settlement li small {
+    color: #cdb388;
+    font-size: 8px;
+    line-height: 1.5;
+}
+
+.battle-report-shell[data-report-state="settling"] .battle-settlement li {
+    animation: battleSettlementStep .6s ease both;
+}
+
+.battle-report-shell[data-report-state="settling"] .battle-settlement li:nth-child(1) { animation-delay: .08s; }
+.battle-report-shell[data-report-state="settling"] .battle-settlement li:nth-child(2) { animation-delay: .62s; }
+.battle-report-shell[data-report-state="settling"] .battle-settlement li:nth-child(3) { animation-delay: 1.18s; }
+.battle-report-shell[data-report-state="settling"] .battle-settlement li:nth-child(4) { animation-delay: 1.76s; }
+
+@keyframes battleSettlementStep {
+    0% { opacity: .2; transform: translateY(8px); }
+    55% { opacity: 1; border-color: rgba(244, 194, 105, .68); box-shadow: 0 0 28px rgba(225, 148, 63, .22); }
+    100% { opacity: .7; transform: translateY(0); }
+}
+
+.battle-report-scroll {
+    position: relative;
+    margin: 15px 0;
+    padding: clamp(42px, 5vw, 70px) clamp(18px, 5vw, 74px);
+    border: 2px solid #bc813e;
+    border-radius: 5px 22px 5px 22px;
+    background:
+        radial-gradient(circle at 12% 14%, rgba(179, 104, 43, .09), transparent 18rem),
+        radial-gradient(circle at 90% 80%, rgba(145, 78, 35, .08), transparent 20rem),
+        repeating-linear-gradient(0deg, rgba(105, 66, 37, .025) 0 1px, transparent 1px 8px),
+        #fff0c8;
+    box-shadow:
+        inset 0 0 52px rgba(126, 72, 33, .14),
+        inset 0 0 0 7px rgba(255, 249, 221, .38),
+        0 22px 50px rgba(47, 23, 13, .28);
+    color: #422b20;
+}
+
+.battle-report-scroll[aria-hidden="true"] { display: none; }
+
+.battle-report-shell[data-report-state="revealed"] .battle-report-scroll {
+    animation: battleScrollUnfurl .7s cubic-bezier(.2, .75, .25, 1) both;
+}
+
+@keyframes battleScrollUnfurl {
+    0% { opacity: 0; transform: scaleY(.1) translateY(-24px); transform-origin: center top; }
+    60% { opacity: 1; }
+    100% { transform: scaleY(1) translateY(0); transform-origin: center top; }
+}
+
+.battle-scroll-roller {
+    position: absolute;
+    right: -14px;
+    left: -14px;
+    z-index: 2;
+    height: 24px;
+    border: 3px solid #74421f;
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg, #6d3b1e, #d09a4f 8%, #8b5328 50%, #d09a4f 92%, #6d3b1e);
+    box-shadow: 0 6px 10px rgba(69, 35, 18, .25);
+}
+
+.battle-scroll-roller::before,
+.battle-scroll-roller::after {
+    position: absolute;
+    top: 4px;
+    width: 31px;
+    height: 10px;
+    border: 3px solid #6d3b1e;
+    border-radius: 999px;
+    background: #c98b42;
+    content: "";
+}
+
+.battle-scroll-roller::before { left: -23px; }
+.battle-scroll-roller::after { right: -23px; }
+.battle-scroll-roller-top { top: -13px; }
+.battle-scroll-roller-bottom { bottom: -13px; transform: rotate(180deg); }
+
+.battle-report-header {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    padding: 0 0 25px;
+    border-bottom: 1px solid rgba(125, 72, 34, .24);
+}
+
+.battle-report-header > div:first-child {
+    display: grid;
+    gap: 6px;
+}
+
+.battle-report-header h2 {
+    margin: 0;
+    color: #472c1f;
+    font: 700 clamp(27px, 4vw, 48px)/1.12 Georgia, "Noto Serif SC", serif;
+    letter-spacing: .01em;
+}
+
+.battle-report-header h2 span { color: #9d4e2d; }
+
+.battle-report-header p {
+    margin: 0;
+    color: #80624c;
+    font-size: 11px;
+}
+
+.battle-report-status {
+    grid-column: 1 / -1;
+    justify-self: start;
+    padding: 6px 10px;
+    border: 1px solid rgba(148, 76, 42, .28);
+    border-radius: 999px;
+    background: rgba(255,255,255,.28);
+    color: #915034;
+    font: 900 8px/1 "SFMono-Regular", Consolas, monospace;
+}
+
+.battle-report-seal {
+    display: grid;
+    width: 88px;
+    height: 88px;
+    place-content: center;
+    border: 4px double #a34e34;
+    border-radius: 50%;
+    background: rgba(154, 63, 46, .07);
+    box-shadow: inset 0 0 0 6px rgba(161, 68, 44, .08);
+    color: #a04733;
+    text-align: center;
+    transform: rotate(8deg);
+}
+
+.battle-report-seal span {
+    font: 700 30px/1 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-report-seal small {
+    margin-top: 4px;
+    color: #a04733;
+    font-size: 7px;
+    letter-spacing: .12em;
+}
+
+.battle-report-section {
+    display: grid;
+    gap: 14px;
+    padding: 25px 0;
+    border-bottom: 1px solid rgba(125, 72, 34, .2);
+}
+
+.battle-report-section-title {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+}
+
+.battle-report-section-title > span {
+    display: grid;
+    width: 39px;
+    height: 39px;
+    place-items: center;
+    border: 1px solid #ba7c3b;
+    border-radius: 50%;
+    background: rgba(255,255,255,.22);
+    color: #9a512f;
+    font-size: 17px;
+}
+
+.battle-report-section-title > div {
+    display: grid;
+    gap: 3px;
+}
+
+.battle-report-section-title h3,
+.shopkeeper-verdict h3,
+.chief-alchemist-verdict h3 {
+    margin: 0;
+    color: #493022;
+    font: 700 17px/1.25 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid rgba(123, 74, 38, .22);
+    border-radius: 9px;
+    background: rgba(255, 251, 231, .4);
+}
+
+.battle-overview-grid > div {
+    min-width: 0;
+    padding: 13px 15px;
+    border-right: 1px solid rgba(123, 74, 38, .16);
+    border-bottom: 1px solid rgba(123, 74, 38, .16);
+}
+
+.battle-overview-grid > div:nth-child(4n) { border-right: 0; }
+.battle-overview-grid > div:nth-child(n + 5) { border-bottom: 0; }
+.battle-overview-grid .battle-overview-time {
+    grid-column: span 2;
+    border-right: 0;
+}
+
+.battle-overview-grid dt {
+    color: #896d56;
+    font-size: 8px;
+}
+
+.battle-overview-grid dd {
+    margin: 6px 0 0;
+    overflow-wrap: anywhere;
+    color: #4a3022;
+    font: 800 11px/1.35 "SFMono-Regular", Consolas, monospace;
+}
+
+.battle-performance-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.battle-performance-grid article {
+    position: relative;
+    display: grid;
+    min-height: 166px;
+    align-content: center;
+    justify-items: center;
+    gap: 7px;
+    padding: 17px 12px;
+    overflow: hidden;
+    border: 2px solid #c9944e;
+    border-radius: 12px 3px 12px 3px;
+    background:
+        linear-gradient(145deg, rgba(255,255,255,.45), transparent 60%),
+        #f5dcaa;
+    box-shadow:
+        inset 0 0 0 4px rgba(255, 249, 222, .4),
+        0 8px 18px rgba(100, 57, 29, .1);
+    text-align: center;
+}
+
+.battle-performance-grid article::before,
+.battle-medal-grid article::before {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    bottom: 6px;
+    left: 6px;
+    border: 1px solid rgba(141, 82, 38, .16);
+    border-radius: inherit;
+    content: "";
+    pointer-events: none;
+}
+
+.battle-performance-grid small {
+    color: #83644d;
+    font-size: 8px;
+    font-weight: 800;
+}
+
+.battle-performance-grid strong {
+    color: #713d29;
+    font: 900 clamp(17px, 2vw, 25px)/1.1 "SFMono-Regular", Consolas, monospace;
+}
+
+.battle-performance-grid strong.is-good { color: #427756; }
+.battle-performance-grid strong.is-bad { color: #a4453e; }
+
+.battle-performance-grid p {
+    margin: 0;
+    color: #8b705a;
+    font-size: 8px;
+    line-height: 1.45;
+}
+
+.battle-metric-icon {
+    display: grid;
+    width: 43px;
+    height: 43px;
+    place-items: center;
+    border: 2px solid #b97738;
+    border-radius: 50%;
+    background: #fff1c7;
+    color: #9b4e2d;
+    box-shadow: 0 4px 10px rgba(104, 58, 27, .12);
+    font-size: 19px;
+}
+
+.shopkeeper-verdict {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 20px;
+    margin: 25px 0 0;
+    padding: 20px;
+    overflow: hidden;
+    border: 1px solid rgba(129, 72, 36, .24);
+    border-left: 5px solid #a65432;
+    border-radius: 4px 13px 13px 4px;
+    background:
+        radial-gradient(circle at 0 50%, rgba(190, 112, 51, .13), transparent 14rem),
+        rgba(255, 249, 221, .5);
+}
+
+.shopkeeper-verdict > div:last-child {
+    display: grid;
+    gap: 6px;
+}
+
+.shopkeeper-verdict p {
+    margin: 3px 0 0;
+    color: #5e4536;
+    font: 500 11px/1.85 Georgia, "Noto Serif SC", serif;
+}
+
+.shopkeeper-portrait {
+    position: relative;
+    display: grid;
+    width: 72px;
+    height: 72px;
+    place-items: end center;
+    border: 2px solid #b7783d;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, #f7d6a1, #c17b43);
+    box-shadow: inset 0 0 0 5px rgba(255,255,255,.2);
+}
+
+.shopkeeper-portrait span {
+    position: relative;
+    display: block;
+    width: 27px;
+    height: 36px;
+    margin-bottom: 8px;
+    border-radius: 10px 10px 5px 5px;
+    background: #8f4630;
+}
+
+.shopkeeper-portrait span::before {
+    position: absolute;
+    top: -18px;
+    left: 5px;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: #d99d69;
+    content: "";
+}
+
+.shopkeeper-portrait span::after {
+    position: absolute;
+    top: -22px;
+    left: -2px;
+    width: 31px;
+    height: 7px;
+    border-radius: 50% 50% 2px 2px;
+    background: #573122;
+    content: "";
+}
+
+.battle-evidence-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.battle-evidence-chips span {
+    padding: 5px 7px;
+    border: 1px solid rgba(136, 78, 41, .2);
+    border-radius: 999px;
+    background: rgba(255,255,255,.25);
+    color: #80553d;
+    font: 800 7px/1 "SFMono-Regular", Consolas, monospace;
+}
+
+.battle-report-actions {
+    margin-top: 22px;
+    border-top-color: rgba(123, 74, 38, .19);
+}
+
+.battle-report-actions .purchase-details-link {
+    margin: 0;
+}
+
+.battle-technical-details {
+    margin-top: 14px;
+    border: 1px solid rgba(119, 71, 36, .22);
+    border-radius: 10px;
+    background: rgba(255, 248, 220, .48);
+}
+
+.battle-technical-details > summary {
+    display: flex;
+    min-height: 60px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 0 16px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.battle-technical-details > summary::-webkit-details-marker { display: none; }
+
+.battle-technical-details > summary > span {
+    display: grid;
+    gap: 4px;
+}
+
+.battle-technical-details > summary b {
+    color: #513528;
+    font: 700 11px/1.3 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-technical-details > summary i {
+    padding: 6px 9px;
+    border: 1px solid rgba(137, 75, 40, .24);
+    border-radius: 999px;
+    color: #945032;
+    font: normal 800 8px/1 "SFMono-Regular", Consolas, monospace;
+}
+
+.battle-technical-details[open] > summary i {
+    font-size: 0;
+}
+
+.battle-technical-details[open] > summary i::after {
+    font-size: 8px;
+    content: "收起";
+}
+
+.battle-technical-body {
+    padding: 0 16px 18px;
+    border-top: 1px solid rgba(119, 71, 36, .16);
+}
+
+.battle-technical-body > p {
+    margin: 14px 0 0;
+    color: #816a57;
+    font-size: 8px;
+    line-height: 1.6;
+}
+
+.battle-technical-details .purchase-technical-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-color: rgba(119, 71, 36, .18);
+    background: rgba(255,255,255,.2);
+}
+
+.battle-technical-details .purchase-technical-grid > div {
+    border-color: rgba(119, 71, 36, .15);
+}
+
+.battle-technical-details .purchase-technical-grid dt {
+    color: #806852;
+}
+
+.battle-technical-details .purchase-technical-grid dd {
+    color: #50362a;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.battle-technical-body section h3 {
+    color: #52362a;
+    font: 700 12px/1.3 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-technical-details .technical-trace {
+    max-height: 290px;
+    padding: 12px 12px 12px 30px;
+    overflow: auto;
+    border: 1px solid rgba(119, 71, 36, .16);
+    border-radius: 7px;
+    background: rgba(91, 54, 31, .06);
+    color: #705746;
+    font-size: 8px;
+}
+
+.shop-allegory-stage.is-settling .shop-role {
+    animation: shopQuietAfterBattle .8s ease both;
+}
+
+.shop-allegory-stage.is-settling .shop-service {
+    animation: shopkeeperPresentsLedger 1.15s .45s ease both;
+}
+
+.shop-allegory-stage.is-settling .shop-mq {
+    animation: courierReturns 1.05s 1.15s ease both;
+}
+
+@keyframes shopQuietAfterBattle {
+    to { filter: saturate(.72); box-shadow: 0 8px 17px rgba(73, 40, 22, .12); }
+}
+
+@keyframes shopkeeperPresentsLedger {
+    45% { transform: translateX(-50%) translateY(-7px) rotate(-1deg); box-shadow: 0 0 0 5px rgba(234, 168, 79, .2), 0 17px 30px rgba(83, 44, 23, .2); }
+}
+
+@keyframes courierReturns {
+    0% { transform: translateX(16px) rotate(4deg); opacity: .5; }
+    65% { transform: translateX(-5px) rotate(-1deg); opacity: 1; }
+    100% { transform: rotate(2deg); }
+}
+
+.battle-archive {
+    padding: clamp(18px, 2.5vw, 30px);
+    background:
+        radial-gradient(circle at 90% 0, rgba(226, 167, 82, .14), transparent 22rem),
+        linear-gradient(135deg, rgba(255, 252, 239, .96), rgba(248, 228, 191, .92)) !important;
+}
+
+.battle-saved-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr));
+    gap: 11px;
+}
+
+.battle-saved-card {
+    position: relative;
+    display: grid;
+    gap: 7px;
+    padding: 17px;
+    cursor: default !important;
+    border: 1px solid rgba(133, 76, 39, .22) !important;
+    border-radius: 11px !important;
+    background:
+        linear-gradient(145deg, rgba(255,255,255,.5), transparent),
+        #f8e5bc !important;
+    box-shadow: 0 8px 18px rgba(91, 52, 28, .08);
+    text-align: left;
+}
+
+.battle-saved-card::after {
+    position: absolute;
+    top: 12px;
+    right: 13px;
+    width: 28px;
+    height: 28px;
+    border: 2px double #a85735;
+    border-radius: 50%;
+    color: #a85735;
+    content: "存";
+    display: grid;
+    place-items: center;
+    font: 700 10px/1 Georgia, "Noto Serif SC", serif;
+    transform: rotate(8deg);
+}
+
+.battle-saved-card > small {
+    padding-right: 42px;
+    color: #9d5735;
+}
+
+.battle-saved-card > strong {
+    padding-right: 42px;
+    color: #4c3124;
+    font-family: Georgia, "Noto Serif SC", serif;
+}
+
+.battle-saved-card > span {
+    color: #7b6452;
+}
+
+.battle-saved-card > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 4px;
+}
+
+.battle-saved-card > .battle-saved-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0;
+    padding-right: 42px;
+}
+
+.battle-saved-meta strong {
+    color: #4c3124;
+    font: 800 13px/1.25 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-saved-meta time {
+    color: #92745e;
+    font-size: 7px;
+    line-height: 1.4;
+    text-align: right;
+}
+
+.battle-saved-strategy {
+    width: max-content;
+    padding: 4px 8px !important;
+    border: 1px solid rgba(154, 83, 47, .2);
+    border-radius: 999px;
+    background: rgba(255, 249, 226, .58);
+    font-weight: 900;
+}
+
+.battle-saved-card h3 {
+    margin: 0;
+    padding-right: 42px;
+    color: #4c3124;
+    font: 700 15px/1.3 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-saved-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    margin: 3px 0 0;
+    overflow: hidden;
+    border: 1px solid rgba(128, 76, 41, .16);
+    border-radius: 8px;
+    background: rgba(125, 76, 40, .12);
+}
+
+.battle-saved-metrics > div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    padding: 9px;
+    background: rgba(255, 249, 226, .78);
+}
+
+.battle-saved-metrics > div:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+}
+
+.battle-saved-metrics dt {
+    color: #8f7057;
+    font-size: 7px;
+}
+
+.battle-saved-metrics dd {
+    margin: 0;
+    color: #5a3727;
+    font: 800 10px/1.35 "SFMono-Regular", Consolas, monospace;
+    overflow-wrap: anywhere;
+}
+
+.battle-saved-conclusion {
+    margin: 0;
+    color: #715643;
+    font: 500 9px/1.65 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-saved-card > .battle-saved-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: auto;
+    padding-top: 5px;
+}
+
+.battle-saved-card button {
+    min-height: 34px;
+    padding: 0 11px;
+    cursor: pointer;
+    border: 1px solid rgba(130, 73, 39, .25);
+    border-radius: 6px;
+    background: rgba(255, 250, 231, .72);
+    color: #724732;
+    font-size: 8px;
+    font-weight: 800;
+}
+
+.battle-saved-card button:first-child {
+    border-color: #a65a36;
+    background: linear-gradient(135deg, #c77b43, #9e5032);
+    color: #fff7df;
+}
+
+.battle-saved-card button:disabled {
+    cursor: not-allowed;
+    opacity: .5;
+}
+
+.battle-saved-card.is-selected-for-comparison {
+    border-color: #a85735 !important;
+    box-shadow: inset 0 0 0 2px rgba(168, 87, 53, .12), 0 9px 20px rgba(91, 52, 28, .12);
+}
+
+.battle-saved-card .battle-select-report[aria-pressed="true"] {
+    border-color: #a85735;
+    background: #f0c879;
+    color: #623a28;
+}
+
+.purchase-saved-grid .battle-saved-card:hover {
+    transform: none;
+    border-color: rgba(133, 76, 39, .3) !important;
+    background:
+        linear-gradient(145deg, rgba(255,255,255,.5), transparent),
+        #f8e5bc !important;
+}
+
+.battle-comparison-gate {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    margin-top: 18px;
+    padding: 17px;
+    border: 1px dashed rgba(132, 76, 40, .3);
+    border-radius: 11px;
+    background: rgba(255, 247, 220, .58);
+}
+
+.battle-comparison-gate > div {
+    display: grid;
+    gap: 4px;
+}
+
+.battle-comparison-gate small {
+    color: #9d5735;
+    font-size: 7px;
+    font-weight: 900;
+    letter-spacing: .12em;
+}
+
+.battle-comparison-gate strong {
+    color: #4d3023;
+    font: 700 16px/1.2 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-comparison-gate p {
+    margin: 0;
+    color: #7a614e;
+    font-size: 8px;
+    line-height: 1.55;
+}
+
+#generate-comparison-report {
+    min-height: 43px;
+    padding: 0 18px;
+    cursor: pointer;
+    border: 1px solid #8e492f;
+    border-radius: 7px;
+    background: linear-gradient(135deg, #c47a43, #91472f);
+    box-shadow: 0 7px 14px rgba(95, 50, 29, .14);
+    color: #fff7df;
+    font-size: 9px;
+    font-weight: 900;
+}
+
+#generate-comparison-report:disabled {
+    cursor: not-allowed;
+    border-color: rgba(126, 93, 67, .25);
+    background: rgba(130, 105, 83, .16);
+    box-shadow: none;
+    color: #9b826f;
+}
+
+.battle-comparison-dialog {
+    width: min(1180px, calc(100vw - 24px));
+    max-width: none;
+    max-height: calc(100dvh - 24px);
+    padding: 0;
+    overflow: auto;
+    border: 0;
+    border-radius: 16px 5px 16px 5px;
+    background: transparent;
+    box-shadow: 0 26px 70px rgba(45, 24, 13, .36);
+}
+
+.battle-comparison-dialog::backdrop {
+    background: rgba(61, 38, 24, .54);
+    backdrop-filter: blur(4px);
+}
+
+.battle-dialog-close {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    display: flex;
+    height: 0;
+    justify-content: flex-end;
+    padding-right: 12px;
+}
+
+.battle-dialog-close button {
+    min-height: 34px;
+    margin-top: 12px;
+    padding: 0 11px;
+    cursor: pointer;
+    border: 1px solid rgba(105, 58, 35, .28);
+    border-radius: 999px;
+    background: rgba(255, 247, 218, .94);
+    color: #6b3e2b;
+    font-size: 8px;
+    font-weight: 900;
+    box-shadow: 0 5px 14px rgba(70, 38, 22, .16);
+}
+
+.battle-comparison-dialog .battle-duel {
+    margin: 0;
+}
+
+.battle-comparison-dialog .battle-duel-header {
+    padding-right: 118px;
+}
+
+.battle-duel {
+    position: relative;
+    display: grid;
+    gap: 20px;
+    margin-top: 22px;
+    padding: clamp(20px, 3vw, 34px);
+    border: 2px solid #c28a43;
+    border-radius: 15px 4px 15px 4px;
+    background:
+        radial-gradient(circle at 50% 0, rgba(245, 202, 114, .28), transparent 25rem),
+        repeating-linear-gradient(0deg, rgba(103, 64, 38, .025) 0 1px, transparent 1px 9px),
+        #fff1cb;
+    box-shadow:
+        inset 0 0 0 6px rgba(255, 251, 230, .55),
+        0 16px 34px rgba(88, 49, 25, .13);
+}
+
+.battle-duel[hidden] { display: none; }
+
+.battle-duel-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px 20px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(126, 74, 37, .22);
+}
+
+.battle-duel-header > div {
+    display: grid;
+    gap: 5px;
+}
+
+.battle-duel-header h2 {
+    margin: 0;
+    color: #492e22;
+    font: 700 clamp(22px, 3vw, 34px)/1.15 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-duel-header p {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #806751;
+    font-size: 9px;
+}
+
+.battle-duel-mark {
+    display: grid;
+    width: 61px;
+    height: 61px;
+    place-items: center;
+    border: 3px double #a45434;
+    border-radius: 50%;
+    color: #9b4a31;
+    font: 900 17px/1 Georgia, serif;
+    transform: rotate(-5deg);
+}
+
+.battle-medal-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.battle-medal-grid article {
+    position: relative;
+    display: grid;
+    min-height: 154px;
+    align-content: center;
+    justify-items: center;
+    gap: 7px;
+    padding: 16px 12px;
+    overflow: hidden;
+    border: 2px solid #c89145;
+    border-radius: 50% 50% 12px 12px / 23% 23% 12px 12px;
+    background: linear-gradient(155deg, #fff7da, #e9c57e);
+    box-shadow: 0 9px 18px rgba(89, 50, 26, .11);
+    text-align: center;
+}
+
+.battle-medal-grid article > span {
+    font-size: 28px;
+    filter: drop-shadow(0 3px 3px rgba(96, 54, 24, .16));
+}
+
+.battle-medal-grid small {
+    color: #8a6749;
+    font-size: 8px;
+    font-weight: 900;
+}
+
+.battle-medal-grid strong {
+    color: #5a3525;
+    font: 800 12px/1.3 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-medal-grid p {
+    margin: 0;
+    color: #80674f;
+    font-size: 7px;
+    line-height: 1.4;
+}
+
+.battle-dimension-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.battle-dimension {
+    display: grid;
+    align-content: start;
+    gap: 13px;
+    padding: 16px;
+    border: 1px solid rgba(121, 70, 36, .22);
+    border-radius: 11px;
+    background: rgba(255, 250, 226, .58);
+    box-shadow: 0 6px 14px rgba(85, 48, 25, .06);
+}
+
+.battle-dimension > header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+}
+
+.battle-dimension > header > span {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border: 1px solid #b77439;
+    border-radius: 50%;
+    color: #9c4f30;
+    font-size: 16px;
+}
+
+.battle-dimension > header > div {
+    display: grid;
+    gap: 2px;
+}
+
+.battle-dimension h3 {
+    margin: 0;
+    color: #4d3225;
+    font: 700 13px/1.25 Georgia, "Noto Serif SC", serif;
+}
+
+.battle-dimension > header > b {
+    max-width: 110px;
+    padding: 6px 8px;
+    border: 1px solid rgba(157, 79, 47, .22);
+    border-radius: 999px;
+    color: #944b30;
+    font-size: 8px;
+    line-height: 1.25;
+    text-align: center;
+}
+
+.battle-contenders {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: stretch;
+    gap: 8px;
+}
+
+.battle-contenders section {
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    min-width: 0;
+    min-height: 92px;
+    padding: 11px;
+    border: 1px solid rgba(118, 70, 39, .16);
+    border-radius: 8px;
+    background: rgba(255,255,255,.25);
+}
+
+.battle-contenders section small {
+    color: #8b6d55;
+    font-size: 7px;
+}
+
+.battle-contenders section strong {
+    color: #613a29;
+    font: 900 14px/1.2 "SFMono-Regular", Consolas, monospace;
+    overflow-wrap: anywhere;
+}
+
+.battle-contenders section p {
+    margin: 0;
+    color: #866e5b;
+    font-size: 7px;
+    line-height: 1.4;
+}
+
+.battle-contenders > i {
+    align-self: center;
+    color: #a85a36;
+    font: normal 900 8px/1 "SFMono-Regular", Consolas, monospace;
+}
+
+.battle-dimension-note {
+    margin: 0;
+    color: #725744;
+    font-size: 8px;
+    line-height: 1.6;
+}
+
+.chief-alchemist-verdict {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 18px;
+    margin: 0;
+    padding: 20px;
+    border: 1px solid rgba(126, 72, 38, .23);
+    border-left: 5px solid #844830;
+    border-radius: 4px 12px 12px 4px;
+    background:
+        linear-gradient(100deg, rgba(126, 68, 37, .12), transparent 48%),
+        rgba(255,255,255,.24);
+}
+
+.chief-alchemist-verdict > div {
+    display: grid;
+    gap: 6px;
+}
+
+.chief-alchemist-verdict p {
+    margin: 0;
+    color: #5f4738;
+    font: 500 11px/1.8 Georgia, "Noto Serif SC", serif;
+}
+
+.alchemist-medallion {
+    display: grid;
+    width: 69px;
+    height: 69px;
+    place-items: center;
+    border: 4px double #8b4a31;
+    border-radius: 50%;
+    background: #e9c485;
+    color: #74402d;
+    font: 700 21px/1 Georgia, "Noto Serif SC", serif;
+    box-shadow: inset 0 0 0 5px rgba(255, 246, 208, .3);
+}
+
+@media (max-width: 980px) {
+    .battle-overview-grid,
+    .battle-performance-grid,
+    .battle-medal-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .battle-overview-grid > div:nth-child(2n) { border-right: 0; }
+    .battle-overview-grid > div:nth-child(n + 5) { border-bottom: 1px solid rgba(123, 74, 38, .16); }
+    .battle-overview-grid > div:nth-last-child(-n + 2) { border-bottom: 0; }
+    .battle-overview-grid .battle-overview-time { grid-column: auto; }
+    .battle-dimension-list { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+    .battle-report-placeholder {
+        grid-template-columns: 1fr;
+        justify-items: center;
+        text-align: center;
+    }
+
+    .battle-report-placeholder p { grid-column: 1; }
+    .battle-placeholder-seal { grid-row: auto; }
+    .battle-settlement ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .battle-report-scroll { padding: 46px 18px; }
+    .battle-report-header { grid-template-columns: 1fr; text-align: center; }
+    .battle-report-seal { justify-self: center; }
+    .battle-report-status { justify-self: center; }
+    .shopkeeper-verdict,
+    .chief-alchemist-verdict { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+    .battle-evidence-chips { justify-content: center; }
+    .battle-saved-grid { grid-template-columns: 1fr; }
+    .battle-comparison-gate { grid-template-columns: 1fr; }
+    #generate-comparison-report { width: 100%; }
+    .battle-comparison-dialog .battle-duel-header {
+        padding-top: 32px;
+        padding-right: 0;
+    }
+    .battle-duel-header { grid-template-columns: 1fr; text-align: center; }
+    .battle-duel-mark { justify-self: center; }
+    .battle-duel-header p { grid-column: 1; }
+    .shop-allegory-stage.is-settling .shop-service,
+    .shop-allegory-stage.is-settling .shop-mq {
+        animation: shopQuietAfterBattle .8s ease both;
+    }
+}
+
+@media (max-width: 520px) {
+    .battle-settlement ol,
+    .battle-overview-grid,
+    .battle-performance-grid,
+    .battle-medal-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .battle-overview-grid > div,
+    .battle-overview-grid > div:nth-child(2n),
+    .battle-overview-grid > div:nth-last-child(-n + 2) {
+        border-right: 0;
+        border-bottom: 1px solid rgba(123, 74, 38, .16);
+    }
+
+    .battle-overview-grid > div:last-child { border-bottom: 0; }
+    .battle-saved-meta { align-items: flex-start !important; flex-direction: column; }
+    .battle-saved-meta time { text-align: left; }
+    .battle-saved-metrics { grid-template-columns: 1fr; }
+    .battle-saved-metrics > div:last-child:nth-child(odd) { grid-column: auto; }
+    .battle-contenders { grid-template-columns: 1fr; }
+    .battle-contenders > i { justify-self: center; }
+    .battle-dimension > header { grid-template-columns: auto minmax(0, 1fr); }
+    .battle-dimension > header > b { grid-column: 1 / -1; justify-self: start; }
+    .battle-technical-details .purchase-technical-grid { grid-template-columns: 1fr; }
+    .battle-technical-details .purchase-technical-grid > div {
+        border-right: 0;
+        border-bottom: 1px solid rgba(119, 71, 36, .15);
+    }
+    .battle-technical-details .purchase-technical-grid > div:last-child { border-bottom: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .battle-report-shell[data-report-state="settling"] .battle-settlement li,
+    .battle-report-shell[data-report-state="revealed"] .battle-report-scroll,
+    .shop-allegory-stage.is-settling .shop-role,
+    .shop-allegory-stage.is-settling .shop-service,
+    .shop-allegory-stage.is-settling .shop-mq {
+        animation: none;
+        opacity: 1;
+    }
+}
