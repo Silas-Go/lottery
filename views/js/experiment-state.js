@@ -5,7 +5,9 @@
     // v2 使用“最终 DTO + 实际 SQL 条数”口径，不能与旧版单表 DB Read 结果混合比较。
     var RESULTS_KEY = "silas.cache-aside.experiment-results.v2";
     var PENDING_RUN_KEY = "silas.cache-aside.pending-run.v2";
-    var PURCHASE_RESULTS_KEY = "silas.cache-aside.purchase-results.v1";
+    // v2 为每个购买方案保存完整 run trace、Outbox 证据和查询探针快照；
+    // 旧版只含最终指标，不能满足逐步回看，因此不与新结构混读。
+    var PURCHASE_RESULTS_KEY = "silas.cache-aside.purchase-results.v2";
     var EVENT_NAME = "silas:experiment-state-change";
     var RESULTS_EVENT_NAME = "silas:experiment-results-change";
     var DEFAULT_STATE = {

@@ -8,10 +8,10 @@
     <meta name="description" content="用真实 MySQL、Redis、Outbox 与 RocketMQ 比较同步和异步缓存失效。" />
     <title>材料购买实验 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260724-purchase-observatory" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260724-purchase-replay" />
 </head>
 
-<body class="lab-page purchase-page purchase-observatory" data-purchase-strategy="sync-invalidate" data-purchase-status="idle">
+<body class="lab-page purchase-page purchase-observatory" data-purchase-strategy="unselected" data-purchase-status="idle">
     <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
     <header class="lab-header purchase-lab-header">
@@ -48,29 +48,21 @@
             <section class="purchase-story-brief lab-panel" aria-labelledby="purchase-title">
                 <div>
                     <small>FROM SURVEY TO PURCHASE</small>
-                    <h1 id="purchase-title"><span>1500</span> 名法师完成了<span id="story-material-name">月盐</span>资料查询，其中 <span>150</span> 人决定购买。</h1>
-                    <p>现在让这 150 人同时提交唯一购买请求，观察购买延迟、旧库存窗口，以及 MySQL 与 Redis 最终是否一致。</p>
+                    <h1 id="purchase-title"><span>1500</span> 名法师完成调查，其中 <span>150</span> 人准备购买<span id="story-material-name">月盐</span>。</h1>
                 </div>
                 <dl aria-label="实验固定负载">
-                    <div><dt>购买请求</dt><dd>150 × 1 件</dd></div>
+                    <div><dt>购买者</dt><dd>150</dd></div>
                     <div><dt>初始库存</dt><dd>300</dd></div>
-                    <div><dt>库存探针</dt><dd>20 QPS</dd></div>
+                    <div><dt>查询探针</dt><dd>20 QPS</dd></div>
                 </dl>
-            </section>
-
-            <section class="purchase-three-steps" aria-label="实验步骤">
-                <span class="is-active" data-workflow-step="choose"><b>1</b>选择方案</span>
-                <span data-workflow-step="run"><b>2</b>开始 150 人购买</span>
-                <span data-workflow-step="observe"><b>3</b>观察过程与结果</span>
             </section>
 
             <section class="purchase-strategy-picker lab-panel" aria-labelledby="strategy-heading">
                 <div class="purchase-section-heading">
-                    <div><small>01 / STRATEGY</small><h2 id="strategy-heading">选择缓存失效方案</h2></div>
-                    <p>两种方案使用同一份 <code>materials.stock</code> 和同一个材料详情缓存。</p>
+                    <div><small>CHOOSE A STRATEGY</small><h2 id="strategy-heading">选择缓存失效方案</h2></div>
                 </div>
                 <div class="purchase-strategy-grid" role="radiogroup" aria-label="缓存失效方案">
-                    <button class="purchase-strategy-card is-active" type="button" role="radio" aria-checked="true" data-strategy="sync-invalidate">
+                    <button class="purchase-strategy-card" type="button" role="radio" aria-checked="false" data-strategy="sync-invalidate">
                         <span>A</span>
                         <div><strong>同步缓存失效</strong><p>库存牌更新更及时，但顾客需要等待 Redis。</p><code>MySQL COMMIT → Redis DEL → Response</code></div>
                     </button>
@@ -78,6 +70,60 @@
                         <span>B</span>
                         <div><strong>Outbox + MQ 异步失效</strong><p>顾客更早离开，但库存牌可能短暂过时。</p><code>TX + Outbox → Response · Worker → MQ → Consumer → DEL</code></div>
                     </button>
+                </div>
+                <div class="purchase-prepare-action">
+                    <button id="start-purchase-run" class="purchase-hero-button" type="button" disabled>开始 150 人购买实验</button>
+                    <p id="prepare-action-hint">请先选择一种缓存失效方案。</p>
+                </div>
+            </section>
+
+            <section id="purchase-running-bar" class="purchase-running-bar" aria-label="实验执行与回放控制">
+                <div class="purchase-running-summary">
+                    <span id="running-phase">准备实验</span>
+                    <strong><span id="running-material">月盐</span> · <span id="running-strategy">—</span></strong>
+                    <small id="execution-boundary-copy">真实执行完成后才会开始回放；回放不会再次修改库存。</small>
+                </div>
+                <div class="purchase-running-progress">
+                    <small>回放位置</small>
+                    <strong id="replay-position">— / 6</strong>
+                </div>
+                <div class="purchase-replay-controls" aria-label="回放控制">
+                    <button id="replay-previous" type="button" disabled aria-label="回放上一步">上一步</button>
+                    <button id="replay-toggle" class="purchase-replay-primary" type="button" disabled aria-label="播放回放">播放</button>
+                    <button id="replay-next" type="button" disabled aria-label="回放下一步">下一步</button>
+                    <button id="replay-restart" type="button" disabled>重新播放</button>
+                    <button id="replay-result" type="button" disabled>跳到结果</button>
+                    <div class="purchase-speed-control" role="group" aria-label="播放速度">
+                        <span>速度</span>
+                        <button type="button" data-replay-speed="0.5" disabled>0.5x</button>
+                        <button type="button" data-replay-speed="1" class="is-active" disabled>1x</button>
+                        <button type="button" data-replay-speed="2" disabled>2x</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="purchase-timeline-panel" class="purchase-timeline-panel lab-panel" aria-labelledby="timeline-heading">
+                <div class="purchase-section-heading">
+                    <div><small>01 / SAVED TRACE</small><h2 id="timeline-heading">本轮实验时间线</h2></div>
+                    <span id="timeline-mode" class="purchase-live-badge">等待真实执行</span>
+                </div>
+                <ol id="purchase-timeline" class="purchase-timeline" aria-label="六步实验时间线">
+                    <li><button type="button" data-replay-step="0" data-status="waiting" disabled><span>01</span><strong>购买请求进入</strong><small data-step-status>waiting</small></button></li>
+                    <li><button type="button" data-replay-step="1" data-status="waiting" disabled><span>02</span><strong>MySQL 事务提交</strong><small data-step-status>waiting</small></button></li>
+                    <li><button type="button" data-replay-step="2" data-status="waiting" disabled><span>03</span><strong>购买响应返回</strong><small data-step-status>waiting</small></button></li>
+                    <li><button type="button" data-replay-step="3" data-status="waiting" disabled><span>04</span><strong>缓存失效执行</strong><small data-step-status>waiting</small></button></li>
+                    <li><button type="button" data-replay-step="4" data-status="waiting" disabled><span>05</span><strong>查询探针验证</strong><small data-step-status>waiting</small></button></li>
+                    <li><button type="button" data-replay-step="5" data-status="waiting" disabled><span>06</span><strong>实验完成</strong><small data-step-status>waiting</small></button></li>
+                </ol>
+                <div class="purchase-stage-readout" aria-live="polite">
+                    <div><small id="stage-kicker">NOT STARTED</small><h3 id="stage-title">选择方案并开始真实实验</h3></div>
+                    <p id="stage-summary">页面会先等待后端完整执行；拿到本轮 trace 后，六个阶段才按保存证据逐步回放。</p>
+                    <dl>
+                        <div><dt>MySQL 库存</dt><dd id="stage-mysql-stock">—</dd></div>
+                        <div><dt>Redis 库存</dt><dd id="stage-redis-stock">—</dd></div>
+                        <div><dt>Outbox / MQ</dt><dd id="stage-message-state">—</dd></div>
+                        <div><dt>阶段耗时</dt><dd id="stage-duration">—</dd></div>
+                    </dl>
                 </div>
             </section>
 
@@ -120,10 +166,6 @@
                         <div class="shop-counter" aria-hidden="true"></div>
                         <div class="shop-basement" aria-hidden="true"></div>
                     </div>
-
-                    <ol id="story-event-log" class="story-event-log" aria-label="真实事件记录">
-                        <li><time>READY</time><span>选择方案后开始实验；这里不会用假动画补齐事件。</span></li>
-                    </ol>
                 </section>
 
                 <section class="purchase-topology lab-panel" aria-labelledby="topology-heading">
@@ -193,19 +235,19 @@
                 </section>
             </div>
 
-            <section class="purchase-action-bar lab-panel" aria-labelledby="controls-heading">
-                <div><small>04 / CONTROLS</small><h2 id="controls-heading">开始真实实验</h2><p id="control-status">150 个唯一购买请求尚未发出。</p></div>
-                <div class="purchase-action-buttons">
-                    <button id="start-purchase-run" class="purchase-primary-control" type="button">开始实验</button>
-                    <button id="pause-observation" type="button" disabled>暂停观察</button>
-                    <button id="reset-purchase-run" type="button">重置</button>
-                    <button id="open-technical-details" type="button">查看技术详情</button>
+            <section class="purchase-running-log lab-panel" aria-labelledby="running-log-heading">
+                <div class="purchase-section-heading">
+                    <div><small>RECENT REAL EVENTS</small><h2 id="running-log-heading">最近关键日志</h2></div>
+                    <span id="control-status" class="purchase-log-status">等待真实事件</span>
                 </div>
+                <ol id="story-event-log" class="story-event-log" aria-label="真实事件记录">
+                    <li><time>READY</time><span>等待后端返回真实执行证据。</span></li>
+                </ol>
             </section>
 
             <section id="purchase-main-results" class="purchase-main-results lab-panel" aria-labelledby="results-heading">
                 <div class="purchase-section-heading">
-                    <div><small>05 / RESULT</small><h2 id="results-heading">这次真实运行说明了什么</h2></div>
+                    <div><small>EXPERIMENT RESULT</small><h2 id="results-heading">这次真实运行说明了什么</h2></div>
                     <span id="result-status" class="purchase-live-badge">等待实验</span>
                 </div>
                 <div class="purchase-result-grid">
@@ -215,13 +257,23 @@
                     <article><small>最终一致</small><strong id="result-consistency">—</strong><span id="result-stock-pair">MySQL — / Redis —</span></article>
                 </div>
                 <p id="purchase-conclusion" class="purchase-conclusion">运行两种方案后，页面会依据真实购买 P99、旧读与最终状态说明取舍，不预设胜者。</p>
+                <div class="purchase-completion-actions">
+                    <button id="view-full-process" class="purchase-completion-primary" type="button" disabled>查看完整过程</button>
+                    <button id="run-other-strategy" type="button" disabled>使用另一方案运行</button>
+                    <button id="rerun-current-strategy" type="button" disabled>重新运行当前方案</button>
+                </div>
+                <button id="open-technical-details" class="purchase-details-link" type="button" disabled>查看完整技术证据</button>
             </section>
 
-            <section class="purchase-saved-results lab-panel" aria-labelledby="saved-heading">
-                <div class="purchase-section-heading"><div><small>06 / SIDE BY SIDE</small><h2 id="saved-heading">已完成方案</h2></div><p>每次完成会自动冻结到对应方案。</p></div>
-                <div class="purchase-saved-grid">
-                    <article id="saved-sync" class="purchase-saved-card is-empty"><small>同步缓存失效</small><strong>待实验</strong><span>尚无真实结果</span></article>
-                    <article id="saved-async" class="purchase-saved-card is-empty"><small>Outbox + MQ 异步失效</small><strong>待实验</strong><span>尚无真实结果</span></article>
+            <section id="purchase-saved-results" class="purchase-saved-results lab-panel" aria-labelledby="saved-heading" hidden>
+                <div class="purchase-section-heading"><div><small>COMPLETED RUNS</small><h2 id="saved-heading">分别回看已完成方案</h2></div></div>
+                <div id="purchase-saved-grid" class="purchase-saved-grid"></div>
+                <div id="purchase-side-by-side" class="purchase-side-by-side" hidden>
+                    <div><span>指标</span><strong>同步失效</strong><strong>Outbox + MQ</strong></div>
+                    <div><span>购买 P99</span><strong id="compare-sync-p99">—</strong><strong id="compare-async-p99">—</strong></div>
+                    <div><span>旧库存读取</span><strong id="compare-sync-old">—</strong><strong id="compare-async-old">—</strong></div>
+                    <div><span>最大不一致</span><strong id="compare-sync-window">—</strong><strong id="compare-async-window">—</strong></div>
+                    <div><span>最终一致</span><strong id="compare-sync-consistency">—</strong><strong id="compare-async-consistency">—</strong></div>
                 </div>
             </section>
         </div>
@@ -246,8 +298,8 @@
     </dialog>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/experiment-state.js?v=20260720-purchase-lab"></script>
-    <script src="/js/purchase-lab.js?v=20260724-purchase-observatory"></script>
+    <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
+    <script src="/js/purchase-lab.js?v=20260724-purchase-replay"></script>
 </body>
 
 </html>
