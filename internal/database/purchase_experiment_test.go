@@ -195,6 +195,48 @@ func TestPurchaseExperimentOutboxConflictRollsBackStock(t *testing.T) {
 	}
 }
 
+// TestPurchaseExperimentRuns150UniquePurchases 验证页面固定的 150 人购买不是前端动画：
+// 服务端会并发释放 150 个唯一 request_id，并复用单次事务语义完成真实扣库和订单写入。
+func TestPurchaseExperimentRuns150UniquePurchases(t *testing.T) {
+	if store == nil {
+		t.Skip("store not initialized (needs MySQL and Redis)")
+	}
+	ensurePurchaseExperimentFixtures(t)
+	lab := service.NewPurchaseLabService(store)
+	t.Cleanup(func() {
+		_, _ = lab.Reset(1)
+	})
+	baseline, appErr := lab.Reset(1)
+	if appErr != nil {
+		t.Fatalf("reset 150 purchase fixture: %v", appErr)
+	}
+
+	requestID := purchaseIntegrationID("buyers-150")
+	run, appErr := lab.RunExperiment(context.Background(), 1, service.PurchaseExperimentRequest{
+		RequestID: requestID, Strategy: service.PurchaseSyncInvalidate,
+		PurchaseCount: 150, QueryCount: 0,
+	})
+	if appErr != nil {
+		t.Fatalf("run 150 concurrent purchases: %v", appErr)
+	}
+	if run.Status != service.PurchaseRunCompleted ||
+		run.PurchaseSucceeded != 150 ||
+		run.SoldOutRequests != 0 ||
+		run.DuplicateRequests != 0 {
+		t.Fatalf("unexpected 150 purchase result: %+v", run)
+	}
+	if run.FinalMySQLStock != baseline.InitialStock-150 || run.PurchaseP99MS <= 0 {
+		t.Fatalf("150 purchases did not produce real stock and latency evidence: %+v", run)
+	}
+	orders, _, err := store.PurchaseBatchRecords(requestID)
+	if err != nil {
+		t.Fatalf("read 150 purchase orders: %v", err)
+	}
+	if len(orders) != 150 {
+		t.Fatalf("expected 150 persisted unique orders, got %d", len(orders))
+	}
+}
+
 // TestPurchaseExperimentConcurrentStockNeverNegative 用超过库存的并发请求验证条件更新：
 // 只有基线库存数量的请求能成功，其余请求明确 sold_out，materials.stock 保持为 0。
 func TestPurchaseExperimentConcurrentStockNeverNegative(t *testing.T) {

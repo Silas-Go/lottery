@@ -9,6 +9,7 @@ import (
 	"silas/internal/database"
 	"silas/internal/metrics"
 	"silas/internal/mq"
+	"sort"
 	"sync"
 	"time"
 )
@@ -23,7 +24,7 @@ const (
 	PurchaseRunCompleted       = "completed"
 	PurchaseRunFailed          = "failed"
 
-	maxPurchaseBatch = 10
+	maxPurchaseBatch = 150
 	maxQueryBatch    = 20
 )
 
@@ -75,7 +76,8 @@ func NewPurchaseLabService(store *database.Store, archives ...*ArchiveService) *
 }
 
 // PurchaseExperimentRequest 是主购买实验允许的白名单输入。
-// purchaseCount/queryCount 都是小批量教学采样，不接受任意并发或脚本参数。
+// purchaseCount 最大 150，用于固定购买者场景；queryCount 只保留兼容性，主页面改由 20 QPS
+// 的真实 Cached 探针采样。接口仍不接受任意 URL、脚本、Topic 或命令。
 type PurchaseExperimentRequest struct {
 	RequestID     string           `json:"requestId"`
 	Strategy      PurchaseStrategy `json:"strategy"`
@@ -118,6 +120,7 @@ type PurchaseExperimentRun struct {
 	QueryCompleted             int                   `json:"queryCompleted"`
 	OldReadCount               int                   `json:"oldReadCount"`
 	PurchaseLatencyMS          float64               `json:"purchaseLatencyMs"`
+	PurchaseP99MS              float64               `json:"purchaseP99Ms"`
 	CacheInvalidationLatencyMS float64               `json:"cacheInvalidationLatencyMs"`
 	OutboxStatus               string                `json:"outboxStatus"`
 	MQStatus                   string                `json:"mqStatus"`
@@ -132,6 +135,16 @@ type PurchaseExperimentRun struct {
 type purchaseQueryBatchResult struct {
 	samples []PurchaseQuerySample
 	err     error
+}
+
+type purchaseExecutionResult struct {
+	childRequestID      string
+	commit              *database.PurchaseCommitResult
+	transactionElapsed  time.Duration
+	requestLatency      time.Duration
+	invalidationElapsed time.Duration
+	err                 error
+	invalidationErr     error
 }
 
 // State 返回主实验共享的 materials.stock 与材料详情 DTO 缓存状态。
@@ -160,7 +173,7 @@ func (s *PurchaseLabService) Reset(materialID int) (*database.PurchaseExperiment
 	return s.State(materialID)
 }
 
-// RunExperiment 执行一小批真实购买，并让查询样本与缓存失效窗口竞争。
+// RunExperiment 并发释放最多 150 个真实购买，并让可选查询样本与缓存失效窗口竞争。
 // 每个购买请求使用独立 request_id；重复提交同一批次不会再次扣库存。
 func (s *PurchaseLabService) RunExperiment(
 	ctx context.Context,
@@ -195,116 +208,79 @@ func (s *PurchaseLabService) RunExperiment(
 		QuerySamples: make([]PurchaseQuerySample, 0, request.QueryCount),
 	}
 
-	queryStart := make(chan struct{})
-	var queryStartOnce sync.Once
+	startGate := make(chan struct{})
 	queryResult := make(chan purchaseQueryBatchResult, 1)
 	go func() {
-		<-queryStart
+		<-startGate
 		samples, err := s.executeQueryBatch(materialID, request.QueryCount)
 		queryResult <- purchaseQueryBatchResult{samples: samples, err: err}
 	}()
 
+	withOutbox := request.Strategy == PurchaseOutboxMQInvalidate
+	purchaseResults := make(chan purchaseExecutionResult, request.PurchaseCount)
+	var purchaseWait sync.WaitGroup
+	for index := 0; index < request.PurchaseCount; index++ {
+		purchaseWait.Add(1)
+		go func(purchaseIndex int) {
+			defer purchaseWait.Done()
+			<-startGate
+			purchaseResults <- s.executePurchase(
+				ctx, request, materialID, purchaseIndex, withOutbox,
+			)
+		}(index)
+	}
+	recorder.add("purchase", "transaction_started", "PURCHASES RELEASED",
+		fmt.Sprintf("%d 个唯一 request_id 已并发进入购买事务", request.PurchaseCount),
+		"mysql", 0, run.FinalMySQLStock, run.FinalRedisStock, nil)
+	close(startGate)
+	go func() {
+		purchaseWait.Wait()
+		close(purchaseResults)
+	}()
+
 	var purchaseLatency time.Duration
 	var invalidationLatency time.Duration
+	var maxTransactionLatency time.Duration
 	var processedPurchases int
 	var successfulInvalidations int
-	withOutbox := request.Strategy == PurchaseOutboxMQInvalidate
-	for index := 0; index < request.PurchaseCount; index++ {
-		childRequestID := purchaseChildRequestID(request.RequestID, index, request.PurchaseCount)
-		eventID := "purchase-cache-" + childRequestID
-		requestStarted := time.Now()
-		transactionStarted := time.Now()
-		commit, err := s.store.CommitMaterialPurchase(
-			request.RequestID, childRequestID, eventID,
-			materialID, 1, string(request.Strategy), withOutbox,
-		)
-		elapsed := time.Since(transactionStarted)
-		if err != nil {
-			queryStartOnce.Do(func() { close(queryStart) })
-			if errors.Is(err, database.ErrPurchaseRequestConflict) {
-				return nil, NewAppError(CodePurchaseLabRequestConflict,
-					"购买请求编号已被不同参数使用", err,
-					"material_id", materialID, "request_id", childRequestID)
-			}
-			return nil, purchaseLabError("购买事务执行失败", materialID, err)
+	var firstExecutionError error
+	purchaseLatencies := make([]float64, 0, request.PurchaseCount)
+	for result := range purchaseResults {
+		if result.transactionElapsed > maxTransactionLatency {
+			maxTransactionLatency = result.transactionElapsed
 		}
-		if commit.SoldOut {
-			run.SoldOutRequests++
-			purchaseLatency += time.Since(requestStarted)
+		if result.requestLatency > 0 {
 			processedPurchases++
-			recorder.add("purchase", "sold_out", "MYSQL SOLD OUT",
-				"条件更新影响 0 行，库存没有变成负数", "mysql", elapsed,
-				run.FinalMySQLStock, run.FinalRedisStock, nil)
+			purchaseLatency += result.requestLatency
+			purchaseLatencies = append(purchaseLatencies, durationMilliseconds(result.requestLatency))
+		}
+		if result.err != nil {
+			if firstExecutionError == nil {
+				firstExecutionError = result.err
+			}
 			continue
 		}
-		if commit.Duplicate {
+		if result.commit.SoldOut {
+			run.SoldOutRequests++
+			continue
+		}
+		if result.commit.Duplicate {
 			run.DuplicateRequests++
 		} else {
 			run.PurchaseSucceeded++
 		}
-		mysqlStock, stockErr := s.store.MaterialStock(materialID)
-		if stockErr != nil {
-			queryStartOnce.Do(func() { close(queryStart) })
-			return nil, purchaseLabError("购买后读取权威库存失败", materialID, stockErr)
-		}
-		run.FinalMySQLStock = mysqlStock
-		action := "update_mysql"
-		label := "MYSQL COMMIT"
-		detail := "条件扣库存与订单已在同一事务提交"
-		if commit.Duplicate {
-			action = "idempotent_order"
-			label = "IDEMPOTENT RETRY"
-			detail = "request_id 已存在，本次没有再次扣库存"
-		}
-		recorder.add("purchase", action, label, detail, "mysql", elapsed,
-			mysqlStock, run.FinalRedisStock, nil)
-
-		// 第一笔事务提交后释放查询样本，让它们与同步 DEL 或异步 MQ 真实竞争。
-		queryStartOnce.Do(func() { close(queryStart) })
 		if request.Strategy == PurchaseSyncInvalidate {
-			invalidationStarted := time.Now()
-			deleteErr := deleteMaterialCacheWithRetry(ctx, materialID, 3)
-			deleteElapsed := time.Since(invalidationStarted)
-			invalidationLatency += deleteElapsed
-			if deleteErr != nil {
-				run.Status = PurchaseRunFailed
-				run.ErrorMessage = deleteErr.Error()
-				recorder.add("purchase", "delete_cache_failed", "CACHE DELETE FAILED",
-					"MySQL 已提交；同步删除重试耗尽，可用相同 request_id 安全重试",
-					"redis", deleteElapsed, mysqlStock, run.FinalRedisStock, nil)
-				break
+			invalidationLatency += result.invalidationElapsed
+			if result.invalidationErr != nil {
+				if firstExecutionError == nil {
+					firstExecutionError = result.invalidationErr
+				}
+				continue
 			}
 			successfulInvalidations++
-			run.FinalRedisStock = nil
-			recorder.add("purchase", "delete_cache", "SYNC CACHE INVALIDATE",
-				"当前请求同步删除 archive:material-detail:v2 DTO",
-				"redis", deleteElapsed, mysqlStock, nil, nil)
-		} else {
-			run.OutboxStatus = database.PurchaseOutboxPending
-			run.MQStatus = "waiting-publisher"
-			recorder.add("purchase", "write_outbox", "OUTBOX COMMITTED",
-				"订单与缓存失效事件已在同一事务提交，HTTP 不等待 Consumer",
-				"mysql", 0, mysqlStock, run.FinalRedisStock, nil)
-			select {
-			case s.workerWake <- struct{}{}:
-			default:
-			}
 		}
-		requestLatency := time.Since(requestStarted)
-		purchaseLatency += requestLatency
-		processedPurchases++
-		if !commit.Duplicate {
-			if err := s.store.UpdatePurchaseOrderLatency(childRequestID, durationMilliseconds(requestLatency)); err != nil {
-				slog.Warn("persist purchase lab latency failed",
-					"request_id", childRequestID, "material_id", materialID, "error", err)
-			}
-		}
-		slog.Info("purchase lab request committed",
-			"request_id", childRequestID, "material_id", materialID, "strategy", request.Strategy,
-			"duplicate", commit.Duplicate, "mysql_stock", mysqlStock,
-			"duration_ms", durationMilliseconds(requestLatency))
 	}
-	queryStartOnce.Do(func() { close(queryStart) })
+
 	queryBatch := <-queryResult
 	if queryBatch.err != nil && run.ErrorMessage == "" {
 		run.Status = PurchaseRunFailed
@@ -319,6 +295,39 @@ func (s *PurchaseLabService) RunExperiment(
 	}
 	run.FinalMySQLStock = finalState.MySQLStock
 	run.FinalRedisStock = cloneInt(finalState.RedisStock)
+	if run.PurchaseSucceeded > 0 || run.DuplicateRequests > 0 {
+		recorder.add("purchase", "transaction_committed", "MYSQL TRANSACTIONS COMMITTED",
+			fmt.Sprintf("%d 笔新订单提交，%d 笔幂等命中，库存 %d → %d",
+				run.PurchaseSucceeded, run.DuplicateRequests, run.InitialStock, run.FinalMySQLStock),
+			"mysql", maxTransactionLatency, run.FinalMySQLStock, run.FinalRedisStock, nil)
+	}
+	if run.SoldOutRequests > 0 {
+		recorder.add("purchase", "sold_out", "MYSQL SOLD OUT",
+			fmt.Sprintf("%d 个条件扣减影响 0 行，库存没有变成负数", run.SoldOutRequests),
+			"mysql", 0, run.FinalMySQLStock, run.FinalRedisStock, nil)
+	}
+	if request.Strategy == PurchaseSyncInvalidate {
+		if firstExecutionError == nil {
+			recorder.add("purchase", "cache_invalidated", "SYNC CACHE INVALIDATED",
+				fmt.Sprintf("%d 个购买响应在 Redis DEL 成功后返回", successfulInvalidations),
+				"redis", invalidationLatency, run.FinalMySQLStock, run.FinalRedisStock, nil)
+		} else {
+			recorder.add("purchase", "cache_invalidation_failed", "CACHE DELETE FAILED",
+				"MySQL 可能已经提交；同步删除重试耗尽，页面展示真实失败而不伪造完成状态",
+				"redis", invalidationLatency, run.FinalMySQLStock, run.FinalRedisStock, nil)
+		}
+	} else if run.PurchaseSucceeded > 0 {
+		run.OutboxStatus = database.PurchaseOutboxPending
+		run.MQStatus = "waiting-publisher"
+		recorder.add("purchase", "outbox_created", "OUTBOX COMMITTED",
+			fmt.Sprintf("%d 张缓存失效凭证与订单在同一事务提交，购买响应不等待 Consumer",
+				run.PurchaseSucceeded),
+			"mysql", 0, run.FinalMySQLStock, run.FinalRedisStock, nil)
+		select {
+		case s.workerWake <- struct{}{}:
+		default:
+		}
+	}
 	for index := range run.QuerySamples {
 		if run.QuerySamples[index].Old {
 			run.OldReadCount++
@@ -331,10 +340,23 @@ func (s *PurchaseLabService) RunExperiment(
 	}
 	if processedPurchases > 0 {
 		run.PurchaseLatencyMS = durationMilliseconds(purchaseLatency) / float64(processedPurchases)
+		run.PurchaseP99MS = percentile99(purchaseLatencies)
 	}
 	if successfulInvalidations > 0 {
 		run.CacheInvalidationLatencyMS = durationMilliseconds(invalidationLatency) / float64(successfulInvalidations)
 	}
+	if firstExecutionError != nil && run.ErrorMessage == "" {
+		run.Status = PurchaseRunFailed
+		if errors.Is(firstExecutionError, database.ErrPurchaseRequestConflict) {
+			run.ErrorMessage = "购买请求编号已被不同参数使用"
+		} else {
+			run.ErrorMessage = firstExecutionError.Error()
+		}
+	}
+	recorder.add("purchase", "purchase_responded", "PURCHASE RESPONSES COLLECTED",
+		fmt.Sprintf("成功 %d，售罄 %d，幂等拦截 %d",
+			run.PurchaseSucceeded, run.SoldOutRequests, run.DuplicateRequests),
+		"response", purchaseLatency, run.FinalMySQLStock, run.FinalRedisStock, nil)
 	run.Trace = recorder.steps
 	if run.Status != PurchaseRunFailed {
 		if request.Strategy == PurchaseSyncInvalidate {
@@ -345,7 +367,54 @@ func (s *PurchaseLabService) RunExperiment(
 	}
 	run.ExecutedAt = time.Now()
 	s.storeRun(run)
+	slog.Info("purchase lab batch completed",
+		"request_id", request.RequestID, "material_id", materialID, "strategy", request.Strategy,
+		"requested", request.PurchaseCount, "succeeded", run.PurchaseSucceeded,
+		"duplicate", run.DuplicateRequests, "sold_out", run.SoldOutRequests,
+		"purchase_p99_ms", run.PurchaseP99MS, "status", run.Status)
 	return s.GetRun(request.RequestID)
+}
+
+// executePurchase 只并发编排既有的单次购买语义：MySQL 条件扣减、订单幂等和 Outbox
+// 原子性仍由 Store 保证；同步方案必须等 Redis DEL 完成后才计算购买响应延迟。
+func (s *PurchaseLabService) executePurchase(
+	ctx context.Context,
+	request PurchaseExperimentRequest,
+	materialID int,
+	index int,
+	withOutbox bool,
+) purchaseExecutionResult {
+	result := purchaseExecutionResult{
+		childRequestID: purchaseChildRequestID(request.RequestID, index, request.PurchaseCount),
+	}
+	requestStarted := time.Now()
+	transactionStarted := time.Now()
+	result.commit, result.err = s.store.CommitMaterialPurchase(
+		request.RequestID,
+		result.childRequestID,
+		"purchase-cache-"+result.childRequestID,
+		materialID,
+		1,
+		string(request.Strategy),
+		withOutbox,
+	)
+	result.transactionElapsed = time.Since(transactionStarted)
+	if result.err == nil && !result.commit.SoldOut && request.Strategy == PurchaseSyncInvalidate {
+		invalidationStarted := time.Now()
+		result.invalidationErr = deleteMaterialCacheWithRetry(ctx, materialID, 3)
+		result.invalidationElapsed = time.Since(invalidationStarted)
+	}
+	result.requestLatency = time.Since(requestStarted)
+	if result.err == nil && !result.commit.SoldOut && !result.commit.Duplicate {
+		if err := s.store.UpdatePurchaseOrderLatency(
+			result.childRequestID,
+			durationMilliseconds(result.requestLatency),
+		); err != nil {
+			slog.Warn("persist purchase lab latency failed",
+				"request_id", result.childRequestID, "material_id", materialID, "error", err)
+		}
+	}
+	return result
 }
 
 // Query 执行与材料查询店完全相同的 Cached 读路径，支持小批量真实样本。
@@ -439,11 +508,14 @@ func (s *PurchaseLabService) GetRun(requestID string) (*PurchaseExperimentRun, *
 	}
 
 	var totalPurchaseLatency float64
+	purchaseLatencies := make([]float64, 0, len(orders))
 	for _, order := range orders {
 		totalPurchaseLatency += order.PurchaseLatencyMS
+		purchaseLatencies = append(purchaseLatencies, order.PurchaseLatencyMS)
 	}
 	if totalPurchaseLatency > 0 {
 		stored.PurchaseLatencyMS = totalPurchaseLatency / float64(len(orders))
+		stored.PurchaseP99MS = percentile99(purchaseLatencies)
 	}
 	refreshRunOutboxState(stored, events)
 	s.storeRun(stored)
@@ -711,6 +783,22 @@ func cloneInt(value *int) *int {
 
 func durationMilliseconds(duration time.Duration) float64 {
 	return float64(duration.Microseconds()) / 1000
+}
+
+func percentile99(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+	index := int(float64(len(sorted))*0.99+0.999999) - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(sorted) {
+		index = len(sorted) - 1
+	}
+	return sorted[index]
 }
 
 func purchaseLabError(message string, materialID int, err error) *AppError {

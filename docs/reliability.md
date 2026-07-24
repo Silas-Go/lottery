@@ -56,10 +56,10 @@ Browser -> app:5678 -> loadtest-runner:8090 -> wrk2 child process
 `taskId` 进入店内；`/lab` 才订阅任务 SSE、轮询恢复状态、显示详细指标和日志、执行停止，
 并在完整 Task 到达后冻结本轮结果。这样室外入口保持轻量，刷新或重新入店仍能从 Runner 权威状态恢复。
 
-任务完成后的购买意愿是明确的教学映射而非后端业务预测：人数取 Runner 返回的白名单挡位
-`tier.rate`，固定 10% 进入购买请求池，90% 继续作为查询观察者；`actualRequests` 只用于压测指标，
-不会被误当作独立用户数。购买实验会重新校验并真实扣减共享的 `materials.stock`，同时写入独立的
-购买实验订单账本；它不触碰秒杀订单或支付状态机。
+任务完成后的购买意愿是明确的教学叙事而非后端业务预测：购买页固定承接“1500 人完成调查，
+150 人决定购买”的案例；`actualRequests` 只用于 wrk2 压测指标，不会被误当作独立用户数。
+购买实验会真实并发释放 150 个唯一请求、扣减共享的 `materials.stock`，同时写入独立的购买实验
+订单账本；它不触碰秒杀订单或支付状态机。
 
 可靠性与安全约束：
 
@@ -71,7 +71,7 @@ Browser -> app:5678 -> loadtest-runner:8090 -> wrk2 child process
 - 创建请求的 HTTP 生命周期不拥有任务 context；页面关闭只断开 SSE，不能停止任务。停止必须显式调用 `/api/loadtests/:id/stop`。
 - 任务快照和有限事件历史写入 `loadtest-runner-data`。Runner 重启后发现 `starting/resetting/running/collecting` 遗留状态会标记为 `failed`，不会永久占锁。
 - SSE 使用事件 ID 回放，浏览器断线后同时通过状态查询恢复。日志只记录重置、启动、目标速率、异常、结束和解析，不逐请求输出。
-- 最终吞吐、实际时长和 P50/P90/P95/P99 均从 wrk2 汇总与有界直方图解析；页面不使用目标 RATE 或前端计时器伪造 Actual QPS、Duration 和延迟分位值。
+- 最终对比表只使用 wrk2 汇总与完整直方图中的 Requests、Actual QPS、实际时长、P50/P90/P95/P99、Timeouts 和 Error Rate；服务端 SQL、连接池、缓存命中率与实时 P99 只留在 SSE 观测区，不再混入最终胜负口径。
 - wrk2 对极低延迟多线程直方图存在上游断言缺陷，因此只读实验固定一个 wrk2 线程；连接数仍按挡位提升到 96，本机可以维持 3000 req/s 目标附近的压力。
 
 任务正常状态机：
@@ -260,7 +260,7 @@ inventory.count
 - 实验订单：`purchase_lab_orders`，`request_id` 唯一
 - 可靠事件：`purchase_lab_outbox`，`event_id` 和 `request_id` 唯一
 
-重置时先在 MySQL 事务中锁定材料行、恢复固定库存、取消未完成 Outbox，并删除该材料的实验订单；
+重置时先在 MySQL 事务中锁定材料行、恢复购买实验固定库存 300、取消未完成 Outbox，并删除该材料的实验订单；
 事务提交后重新组装材料 DTO 并预热同一个 Redis key。迟到的 MQ 消息读取到 `cancelled` 后不会删除
 新预热的缓存。
 
@@ -308,9 +308,11 @@ Consumer
 Redis 删除失败时 Consumer 不 Ack，并记录 `retry_count/last_error`；RocketMQ 重投后再次 DEL。
 DEL 天然幂等，`completed` 事件收到重复消息时直接成功返回。
 
-主页面只允许 1～10 个购买和 0～20 个查询样本，不接受 URL、脚本、Topic 或任意并发参数。
-查询样本真实调用 ArchiveService 的 Cached 路径，并在响应后读取 MySQL 权威库存判断旧读；
-前端 trace 只回放真实结果。阶段一不模拟“300 买家 + 2700 查询者”的完整压力。
+主页面固定提交 150 个唯一购买请求，每人购买 1 件；服务端白名单上限同样是 150，不接受 URL、
+脚本、Topic 或任意命令。请求由服务端同时释放，但每一笔仍复用原有条件扣库存、订单幂等和
+同步 DEL / 事务内 Outbox 语义。页面另以固定 20 QPS 调用真实 Cached 查询接口作为后台库存探针，
+在响应后读取 MySQL 权威库存判断旧读并记录最大观测窗口。前端寓言动作和技术节点只读取真实
+trace、HTTP 状态及 Outbox 时间字段，不用定时器伪造业务完成。
 
 旧的错误顺序竞态夹具已经完全移除。当前购买页只运行以上两条真实写链路，不再维护第二份材料库存
 或专用 Redis 库存 Key。

@@ -411,8 +411,29 @@
         return value > 0 ? value.toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + " s" : "—";
     }
 
+    function wrk2ErrorRate(result) {
+        var metrics = result && result.metrics || {};
+        if (metrics.errorRate !== undefined) {
+            return Number(metrics.errorRate || 0);
+        }
+        var requests = Number(metrics.requests || 0);
+        return requests > 0 ? Number(metrics.errors || 0) * 100 / requests : 0;
+    }
+
+    function latestWrk2Result(mode) {
+        var results = experimentResults.list();
+        for (var index = results.length - 1; index >= 0; index -= 1) {
+            if (results[index].mode === mode && results[index].entry === "crowd") {
+                return results[index];
+            }
+        }
+        return null;
+    }
+
     function renderFinalTaskMetrics(mode, result) {
         var isCrowdResult = Boolean(result && result.entry === "crowd");
+        byId(mode + "-total").textContent = isCrowdResult ?
+            formatNumber(resultMetric(result, "requests")) : "—";
         byId(mode + "-actual-qps").textContent = isCrowdResult ?
             formatResultQPS(resultMetric(result, "qps")) : "—";
         byId(mode + "-duration").textContent = isCrowdResult ?
@@ -421,9 +442,14 @@
             formatResultLatency(resultMetric(result, "p50")) : "—";
         byId(mode + "-p90").textContent = isCrowdResult ?
             formatResultLatency(resultMetric(result, "p90")) : "—";
-        if (isCrowdResult) {
-            byId(mode + "-p99").textContent = formatResultLatency(resultMetric(result, "p99"));
-        }
+        byId(mode + "-p95").textContent = isCrowdResult ?
+            formatResultLatency(resultMetric(result, "p95")) : "—";
+        byId(mode + "-p99").textContent = isCrowdResult ?
+            formatResultLatency(resultMetric(result, "p99")) : "—";
+        byId(mode + "-timeouts").textContent = isCrowdResult ?
+            formatNumber(resultMetric(result, "timeouts")) : "—";
+        byId(mode + "-error-rate").textContent = isCrowdResult ?
+            wrk2ErrorRate(result).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + "%" : "—";
     }
 
     function renderFrozenCard(mode, result) {
@@ -451,16 +477,14 @@
         Array.prototype.forEach.call(card.querySelectorAll("[data-result]"), function (node) {
             var key = node.dataset.result;
             var value = resultMetric(result, key);
-            if (["p50", "p90", "p99"].indexOf(key) >= 0) {
+            if (["p50", "p90", "p95", "p99"].indexOf(key) >= 0) {
                 node.textContent = formatResultLatency(value);
             } else if (key === "qps") {
                 node.textContent = formatResultQPS(value);
             } else if (key === "durationSeconds") {
                 node.textContent = formatResultDuration(value);
-            } else if (key === "pool") {
-                node.textContent = resultMetric(result, "poolPeak") + " / " + resultMetric(result, "poolCapacity");
-            } else if (key === "hitRate") {
-                node.textContent = result.metrics.hitRate === null ? "—" : value + "%";
+            } else if (key === "errorRate") {
+                node.textContent = wrk2ErrorRate(result).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + "%";
             } else {
                 node.textContent = formatNumber(value);
             }
@@ -504,6 +528,14 @@
             directValue, cachedValue, "lower", fair);
     }
 
+    function setContextComparisonRow(name, directText, cachedText, fair, assessment) {
+        var row = byId("compare-" + name + "-row");
+        row.classList.remove("winner-direct", "winner-cached", "is-tie");
+        byId("compare-" + name + "-direct").textContent = directText;
+        byId("compare-" + name + "-cached").textContent = cachedText;
+        byId("compare-" + name + "-winner").textContent = fair ? assessment : "条件不同";
+    }
+
     function comparisonIsFair(direct, cached) {
         if (direct.entry !== "crowd" || cached.entry !== "crowd") {
             return false;
@@ -516,16 +548,13 @@
     }
 
     function resetFrozenComparison() {
-        ["db", "qps", "p50", "p90", "p99", "pool", "error"].forEach(function (name) {
+        ["requests", "qps", "duration", "p50", "p90", "p95", "p99", "timeout", "error"].forEach(function (name) {
             var row = byId("compare-" + name + "-row");
             row.classList.remove("winner-direct", "winner-cached", "is-tie");
             byId("compare-" + name + "-direct").textContent = "—";
             byId("compare-" + name + "-cached").textContent = "—";
             byId("compare-" + name + "-winner").textContent = "等待";
         });
-        byId("compare-hit-row").classList.remove("winner-direct", "winner-cached", "is-tie");
-        byId("compare-hit-cached").textContent = "—";
-        byId("compare-hit-assessment").textContent = "Redis 专属指标";
     }
 
     function renderFrozenComparison(direct, cached) {
@@ -542,28 +571,25 @@
         var fair = comparisonIsFair(direct, cached);
         var directRequests = Math.max(1, resultMetric(direct, "requests"));
         var cachedRequests = Math.max(1, resultMetric(cached, "requests"));
-        var directDBRate = resultMetric(direct, "sqlQueries") * 1000 / directRequests;
-        var cachedDBRate = resultMetric(cached, "sqlQueries") * 1000 / cachedRequests;
-        var directErrorRate = resultMetric(direct, "errors") * 1000 / directRequests;
-        var cachedErrorRate = resultMetric(cached, "errors") * 1000 / cachedRequests;
-        var directPoolUsage = resultMetric(direct, "poolCapacity") ?
-            resultMetric(direct, "poolPeak") * 100 / resultMetric(direct, "poolCapacity") : 0;
-        var cachedPoolUsage = resultMetric(cached, "poolCapacity") ?
-            resultMetric(cached, "poolPeak") * 100 / resultMetric(cached, "poolCapacity") : 0;
+        var directTimeoutRate = resultMetric(direct, "timeouts") * 1000 / directRequests;
+        var cachedTimeoutRate = resultMetric(cached, "timeouts") * 1000 / cachedRequests;
+        var directErrorRate = wrk2ErrorRate(direct);
+        var cachedErrorRate = wrk2ErrorRate(cached);
         var qpsTieTolerance = Math.max(resultMetric(direct, "qps"), resultMetric(cached, "qps")) * .02;
+        setContextComparisonRow("requests", formatNumber(directRequests), formatNumber(cachedRequests), fair, "wrk2 汇总");
+        setContextComparisonRow("duration", formatResultDuration(resultMetric(direct, "durationSeconds")),
+            formatResultDuration(resultMetric(cached, "durationSeconds")), fair, "实际时长");
         var winners = [
-            setComparisonRow("db", directDBRate.toFixed(1), cachedDBRate.toFixed(1), directDBRate, cachedDBRate, "lower", fair),
             setComparisonRow("qps", formatResultQPS(resultMetric(direct, "qps")), formatResultQPS(resultMetric(cached, "qps")), resultMetric(direct, "qps"), resultMetric(cached, "qps"), "higher", fair, qpsTieTolerance),
             setLatencyComparisonRow("p50", direct, cached, fair),
             setLatencyComparisonRow("p90", direct, cached, fair),
+            setLatencyComparisonRow("p95", direct, cached, fair),
             setLatencyComparisonRow("p99", direct, cached, fair),
-            setComparisonRow("pool", directPoolUsage.toFixed(1) + "%", cachedPoolUsage.toFixed(1) + "%", directPoolUsage, cachedPoolUsage, "lower", fair),
-            setComparisonRow("error", directErrorRate.toFixed(1), cachedErrorRate.toFixed(1), directErrorRate, cachedErrorRate, "lower", fair)
+            setComparisonRow("timeout", directTimeoutRate.toFixed(2), cachedTimeoutRate.toFixed(2),
+                directTimeoutRate, cachedTimeoutRate, "lower", fair),
+            setComparisonRow("error", directErrorRate.toFixed(2) + "%", cachedErrorRate.toFixed(2) + "%",
+                directErrorRate, cachedErrorRate, "lower", fair)
         ];
-        var hitRate = cached.metrics.hitRate;
-        byId("compare-hit-cached").textContent = hitRate === null ? "—" : hitRate + "%";
-        byId("compare-hit-assessment").textContent = hitRate === null ? "无缓存命中样本" :
-            (hitRate >= 95 ? "命中率优秀" : (hitRate >= 80 ? "命中率健康" : "MISS 偏多"));
 
         if (!fair) {
             var onlyPathChecks = direct.entry === "single" && cached.entry === "single";
@@ -586,13 +612,16 @@
     }
 
     function renderFrozenResults() {
-        var direct = experimentResults.latest("direct");
-        var cached = experimentResults.latest("cached");
+        var direct = latestWrk2Result("direct");
+        var cached = latestWrk2Result("cached");
         renderFinalTaskMetrics("direct", direct);
         renderFinalTaskMetrics("cached", cached);
         renderFrozenCard("direct", direct);
         renderFrozenCard("cached", cached);
         renderFrozenComparison(direct, cached);
+        byId("wrk2-final-status").textContent = direct && cached ? "两条 wrk2 结果已冻结" :
+            (direct ? "Direct 已冻结 · 等待 Cache-Aside" :
+                (cached ? "Cache-Aside 已冻结 · 等待 Direct" : "等待 wrk2 完成"));
     }
 
     function completeResult(result) {
@@ -711,6 +740,7 @@
                 cacheHits: Number(metrics.redisHits || 0),
                 mysqlFallbacks: Number(metrics.mysqlFallbacks || 0),
                 timeouts: Number(metrics.timeouts || 0),
+                errorRate: Number(metrics.errorRate || 0),
                 errors: Math.round(requestCount * Number(metrics.errorRate || 0) / 100)
             }
         });
@@ -1132,22 +1162,6 @@
         byId("mysql-pool-live").textContent = "POOL " + formatNumber(path.poolPeak) + " / " + formatNumber(path.poolCapacity);
     }
 
-    function perThousand(path) {
-        return path.totalRequests ? Math.round(path.sqlQueries * 1000 / path.totalRequests) : null;
-    }
-
-    function renderComparison(direct, cached) {
-        var directRate = perThousand(direct);
-        var cachedRate = perThousand(cached);
-        if (directRate === null || cachedRate === null) {
-            byId("comparison-summary").textContent = "等待两条路径产生真实请求";
-            return;
-        }
-        var reduction = directRate > 0 ? Math.max(0, Math.round((directRate - cachedRate) * 100 / directRate)) : 0;
-        byId("comparison-summary").textContent = "每千次请求的 SQL Queries：" +
-            formatNumber(directRate) + " → " + formatNumber(cachedRate) + "，减少 " + reduction + "%";
-    }
-
     function inferExternalRoute(direct, cached) {
         var previous = state.previousRead;
         state.previousRead = { direct: direct, cached: cached };
@@ -1180,26 +1194,8 @@
         var direct = pathValues(chapter.direct);
         var cached = pathValues(chapter.cached);
         state.snapshot = { direct: direct, cached: cached };
-        setMetric("direct-total", direct.totalRequests);
-        setMetric("cached-total", cached.totalRequests);
-        setMetric("direct-db-reads", direct.sqlQueries);
-        setMetric("cached-db-reads", cached.sqlQueries);
-        var directResult = experimentResults.latest("direct");
-        var cachedResult = experimentResults.latest("cached");
-        if (!directResult || directResult.entry !== "crowd") {
-            setMetric("direct-p99", direct.p99, " ms");
-        }
-        if (!cachedResult || cachedResult.entry !== "crowd") {
-            setMetric("cached-p99", cached.p99, " ms");
-        }
-        byId("direct-pool").textContent = formatNumber(direct.poolPeak) + " / " + formatNumber(direct.poolCapacity);
-        byId("cached-pool").textContent = formatNumber(cached.poolPeak) + " / " + formatNumber(cached.poolCapacity);
-        setMetric("cached-hit-rate", cached.cacheHitRate, "%");
-        setMetric("direct-errors", direct.errors);
-        setMetric("cached-errors", cached.errors);
         byId("redis-ttl").textContent = "TTL " + formatNumber(chapter.cacheTTLSeconds || 300) + "s";
         byId("metrics-timestamp").textContent = chapter.at ? new Date(chapter.at).toLocaleTimeString("zh-CN", { hour12: false }) : "LIVE";
-        renderComparison(direct, cached);
         renderActiveMetrics();
         if (!skipRouteInference) {
             trackCrowdRun(direct, cached, chapter.at);

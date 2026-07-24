@@ -19,6 +19,10 @@ const (
 	PurchaseOutboxPublished  = "published"
 	PurchaseOutboxCompleted  = "completed"
 	PurchaseOutboxCancelled  = "cancelled"
+
+	// purchaseExperimentInitialStock 只作用于购买实验重置。目录默认库存仍用于普通材料展示，
+	// 实验库存提高到 300，确保 150 个唯一购买请求观察的是失效方案而不是售罄。
+	purchaseExperimentInitialStock = 300
 )
 
 var (
@@ -97,7 +101,7 @@ func (s *Store) EnsurePurchaseExperimentSchema() error {
 	return nil
 }
 
-// ResetPurchaseExperimentMaterial 将 materials.stock 恢复到目录夹具基线。
+// ResetPurchaseExperimentMaterial 将 materials.stock 恢复到购买实验基线 300。
 // 未完成的 Outbox 先标记 cancelled，使已经在 MQ 中的迟到消息不再删除新预热缓存。
 // Redis 预热在 service 层、事务提交后执行，因为 Redis 不属于 MySQL 事务。
 func (s *Store) ResetPurchaseExperimentMaterial(materialID int) (int, error) {
@@ -435,7 +439,7 @@ func (s *Store) PurchaseBatchRecords(batchID string) ([]PurchaseLabOrder, []Purc
 func initialMaterialStock(materialID int) (int, bool) {
 	for _, material := range defaultMaterialCatalog {
 		if material.ID == materialID {
-			return material.Stock, true
+			return purchaseExperimentInitialStock, true
 		}
 	}
 	return 0, false

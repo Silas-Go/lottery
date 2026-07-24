@@ -48,7 +48,7 @@ Windows、macOS 和 Linux 都只需点击“召集人潮”，不依赖宿主机
 然后按页面顺序完成四件事：
 
 1. 从首页进入材料情报店（`/material-shop`），再选择一种材料。基础列表保持轻量，进入实验室后读取聚合详情。
-2. 选择 Direct 与固定人潮挡位，点击“召集人潮”。室外只显示受理状态并自动跟随请求进入店内；在 `/lab` 观察 SQL 查询数、Actual QPS、实际 Duration、P50/P90/P99、连接池峰值、关键日志和最终比对。任务完成后会回填材料资料，并按人群挡位固定转化 10% 的购买意愿，再把购买者与剩余观察者作为请求池带入 `/purchase-lab`。
+2. 选择 Direct 与固定人潮挡位，点击“召集人潮”。室外只显示受理状态并自动跟随请求进入店内；在 `/lab` 上方通过 SSE 观察服务端 SQL、连接池与缓存状态，最终对比表只冻结 wrk2 的 Requests、Actual QPS、实际 Duration、P50/P90/P95/P99、Timeouts 和 Error Rate。任务完成后会回填材料资料；购买页使用固定教学案例承接“1500 人完成调查，其中 150 人决定购买”。
 3. 唤醒 Redis 记忆水晶。第一次查询真实发生 `MISS -> 4 SQL -> SET DTO`，后续直接命中最终 JSON。
 4. 切换 Cached 并使用相同挡位再次点击，查看缓存命中和 MySQL 回源差异。
 
@@ -62,8 +62,8 @@ Windows、macOS 和 Linux 都只需点击“召集人潮”，不依赖宿主机
 | `boiling_city` | 王城沸腾 | 3000 req/s | 96 | 20s |
 
 页面叙事中的“法师人数”取挡位数值 100 / 500 / 1500 / 3000；wrk2 在 20 秒内产生的
-`actualRequests` 是独立技术指标，不能直接当作人数。购买者固定为人群的 10%，其余 90%
-继续观察库存。例如王城沸腾会交接 300 名购买者与 2700 名观察者。
+`actualRequests` 是独立技术指标，不能直接当作人数。购买实验页当前固定演示 1500 人调查、
+150 人购买；剩余调查者不再包装成查询流量，库存观察由独立的 20 QPS Cached 探针完成。
 
 终端命令仍保留在“查看等价命令”折叠区，只用于学习和调试，不是正常操作路径。
 
@@ -133,7 +133,7 @@ Browser / wrk2 -> Go API -> Redis
 | `/api/loadtests/:id/stop` | POST | 停止任务并回收 wrk2 子进程 |
 | `/api/purchase-lab/:id/state` | GET | 读取购买实验共享的 MySQL / Redis 库存 |
 | `/api/purchase-lab/:id/reset` | POST | 重置 `materials.stock` 并重新预热材料 DTO |
-| `/api/purchase-lab/:id/run` | POST | 执行同步失效或 Outbox + MQ 小批量购买实验 |
+| `/api/purchase-lab/:id/run` | POST | 执行同步失效或 Outbox + MQ 购买实验，最多 150 个唯一请求 |
 | `/api/purchase-lab/:id/query` | POST | 执行 1～20 次真实 Cached 查询采样 |
 | `/api/purchase-lab/runs/:requestId` | GET | 查询订单、Outbox、MQ 和缓存失效状态 |
 
