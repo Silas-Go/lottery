@@ -4,14 +4,15 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#07111d" />
+    <meta name="theme-color" content="#f6edcf" />
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/lottery.css?v=20260724-wrk2-final-only" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260727-pixel-stage" />
 </head>
 
-<body class="lab-page" data-lab-mode="direct" data-route-state="idle">
+<body class="lab-page query-focus" data-lab-mode="direct" data-route-state="idle">
     <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
     <header class="lab-header">
@@ -23,7 +24,7 @@
         <div class="current-material" aria-label="当前实验材料">
             <small>CURRENT MATERIAL</small>
             <strong><span id="lab-current-code">—</span> · <span id="lab-current-name">尚未选择材料</span></strong>
-            <a href="/">回到室外</a>
+            <a href="/material-shop">回到材料店门口</a>
         </div>
 
         <div class="lab-status-actions">
@@ -36,16 +37,22 @@
         <section id="empty-state" class="lab-empty" hidden>
             <span>MATERIAL CONTEXT REQUIRED</span>
             <h1>尚未选择材料</h1>
-            <p>实验室只接收从炼金市插入的材料档案片。</p>
-            <a href="/">返回炼金市</a>
+            <p>实验室只接收从材料情报店门口选中的档案片。</p>
+            <a href="/material-shop">返回材料情报店</a>
         </section>
 
         <div id="lab-content" class="lab-content" hidden>
+            <section class="query-game-console" aria-label="材料查询实验中心舞台">
+                <div class="query-console-titlebar">
+                    <span aria-hidden="true"></span>
+                    <strong>ARCHIVE QUERY RUN</strong>
+                    <small>路径与数字只由真实 HTTP、响应头和 SSE 驱动</small>
+                </div>
             <section class="query-console lab-panel" aria-labelledby="query-title">
                 <div class="panel-heading">
                     <div>
                         <span>01 / REAL HTTP REQUEST</span>
-                        <h1 id="query-title">按室外统一配置，检索当前材料档案</h1>
+                        <h1 id="query-title">按店门口配置，检索当前材料档案</h1>
                     </div>
                     <span class="endpoint-label">GET /api/archives/:id/{direct|cached}</span>
                 </div>
@@ -84,7 +91,7 @@
                 </section>
 
                 <div class="query-controls">
-                    <div class="mode-switch" aria-label="室外设定的读取策略">
+                    <div class="mode-switch" aria-label="材料店门口设定的读取策略">
                         <article id="mode-direct" class="is-active">
                             <small>CONTROL PATH</small><strong>MySQL Direct</strong><span>每次请求都读取数据库</span>
                         </article>
@@ -100,16 +107,9 @@
                 <div class="shared-strategy-readout">
                     <div><small>SHARED EXPERIMENT STATE</small><strong id="lab-shared-strategy">MySQL Direct</strong></div>
                     <p id="lab-strategy-explanation">Redis 不参与；每次请求都会产生 MySQL DB Read。</p>
-                    <a href="/">返回室外调整</a>
+                    <a href="/material-shop">回店门口调整</a>
                 </div>
 
-                <div class="request-readout" role="status" aria-live="polite">
-                    <div><small>REQUEST</small><strong id="request-status">等待发起真实请求</strong></div>
-                    <div><small>ACTUAL RESPONSE</small><strong id="actual-latency">—</strong></div>
-                    <div><small>X-ARCHIVE-SOURCE</small><strong id="actual-source">—</strong></div>
-                    <div><small>TEACHING REPLAY</small><strong id="replay-status">尚未开始</strong></div>
-                </div>
-                <p class="replay-disclaimer">真实 HTTP 响应一到即记录耗时；下方动画只是本次数据路径的教学回放，不代表请求耗时。</p>
             </section>
 
             <section class="route-panel lab-panel" aria-labelledby="route-heading">
@@ -120,7 +120,7 @@
                     </div>
                     <div class="route-result">
                         <small id="route-label">WAITING</small>
-                        <strong id="route-title">按室外配置发起请求</strong>
+                        <strong id="route-title">按店门口配置发起请求</strong>
                     </div>
                 </div>
 
@@ -160,26 +160,46 @@
                     </div>
                 </div>
 
-                <ol id="route-events" class="route-events" aria-label="本次执行路径步骤">
-                    <li><span>READY</span><strong>等待真实响应头</strong><small>不会根据所选模式猜测结果</small></li>
-                </ol>
+                <div class="request-readout" role="status" aria-live="polite" aria-label="查询实验实时结算面板">
+                    <header>
+                        <div><small id="replay-status">WAITING FOR QUERY</small><strong id="request-status">等待发起真实请求</strong></div>
+                        <span id="route-step-progress">0 / 0</span>
+                    </header>
+                    <div><small>实际响应</small><strong id="actual-latency">—</strong></div>
+                    <div><small>真实来源</small><strong id="actual-source">—</strong></div>
+                    <div><small>SQL 查询</small><strong id="active-db-reads">0</strong></div>
+                    <div><small>缓存命中率</small><strong id="active-hit-rate">—</strong></div>
+                    <p id="query-verdict-line">掌柜点评：选好路径后发起一次真实查询，看看档案从哪里回来。</p>
+                </div>
+                <p class="replay-disclaimer">响应耗时来自真实 HTTP；像素路径只是对本次响应头的教学回放，不计入耗时。</p>
 
-                <div class="active-metrics" aria-label="当前策略 SSE 实时指标">
-                    <div><small>QPS</small><strong id="active-qps">0</strong></div>
-                    <div><small>SQL Queries</small><strong id="active-db-reads">0</strong></div>
-                    <div><small>P99 Latency</small><strong id="active-p99">0 ms</strong></div>
-                    <div><small>Pool Peak / Capacity</small><strong id="active-pool">0 / 0</strong></div>
-                    <div><small>Hit Rate</small><strong id="active-hit-rate">—</strong></div>
-                    <div><small>Errors</small><strong id="active-errors">0</strong></div>
-                </div>
-                <div class="metrics-playback">
-                    <span id="metrics-timestamp" class="metrics-timestamp">等待快照</span>
-                    <div role="group" aria-label="服务端实时指标重放控制">
-                        <button id="replay-metrics" type="button" disabled>重放实时指标</button>
-                        <button id="pause-metrics-replay" type="button" aria-pressed="false" disabled>暂停重放</button>
+                <details class="query-evidence-drawer">
+                    <summary>
+                        <span><b>实时指标与路径证据</b><small>需要核对 SSE、路径步骤或指标重放时再展开</small></span>
+                        <i aria-hidden="true">查看</i>
+                    </summary>
+                    <div class="query-evidence-body">
+                        <ol id="route-events" class="route-events" aria-label="本次执行路径步骤">
+                            <li><span>READY</span><strong>等待真实响应头</strong><small>不会根据所选模式猜测结果</small></li>
+                        </ol>
+
+                        <div class="active-metrics" aria-label="当前策略 SSE 实时指标">
+                            <div><small>QPS</small><strong id="active-qps">0</strong></div>
+                            <div><small>P99 Latency</small><strong id="active-p99">0 ms</strong></div>
+                            <div><small>Pool Peak / Capacity</small><strong id="active-pool">0 / 0</strong></div>
+                            <div><small>Errors</small><strong id="active-errors">0</strong></div>
+                        </div>
+                        <div class="metrics-playback">
+                            <span id="metrics-timestamp" class="metrics-timestamp">等待快照</span>
+                            <div role="group" aria-label="服务端实时指标重放控制">
+                                <button id="replay-metrics" type="button" disabled>重放实时指标</button>
+                                <button id="pause-metrics-replay" type="button" aria-pressed="false" disabled>暂停重放</button>
+                            </div>
+                            <small id="metrics-playback-state" role="status" aria-live="polite">SSE 实时采集中 · 等待压测数据</small>
+                        </div>
                     </div>
-                    <small id="metrics-playback-state" role="status" aria-live="polite">SSE 实时采集中 · 等待压测数据</small>
-                </div>
+                </details>
+            </section>
             </section>
 
             <div class="lab-columns">
@@ -238,6 +258,11 @@
                     </article>
                 </section>
 
+                <details class="query-report-drawer">
+                    <summary>
+                        <span><b>wrk2 最终指标</b><small>完整压测结束后再查看冻结结果</small></span>
+                        <i aria-hidden="true">查看</i>
+                    </summary>
                 <section class="metrics-panel lab-panel" aria-labelledby="metrics-heading">
                     <div class="panel-heading">
                         <div>
@@ -269,8 +294,14 @@
                         <div><strong>完整直方图</strong><span>P50/P90/P95/P99 在进程结束后统一冻结，不在中途切换口径。</span></div>
                     </div>
                 </section>
+                </details>
             </div>
 
+            <details class="query-report-drawer">
+                <summary>
+                    <span><b>已完成实验与胜负对比</b><small>需要比较 Direct 与 Cache-Aside 时再展开</small></span>
+                    <i aria-hidden="true">查看</i>
+                </summary>
             <section class="results-panel lab-panel" aria-labelledby="results-heading">
                 <div class="panel-heading">
                     <div>
@@ -341,6 +372,7 @@
                     <p>本表只使用 wrk2 最终汇总：吞吐、实际时长、完整延迟分布、超时和错误率。QPS 差异不超过 2% 视为持平；单次检索与应用 SSE 指标不参与最终判定。</p>
                 </div>
             </section>
+            </details>
 
         </div>
     </main>
@@ -388,7 +420,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/seckill-lab.js?v=20260724-wrk2-final-only"></script>
+    <script src="/js/seckill-lab.js?v=20260727-pixel-stage"></script>
 </body>
 
 </html>

@@ -17,6 +17,7 @@
     } : {});
     var cardElements = new Map();
     var body = document.body;
+    var WORLD_TRANSITION_KEY = "silas.world-transition.v1";
 
     function byId(id) {
         return document.getElementById(id);
@@ -78,11 +79,16 @@
         if (body.classList.contains("is-entering-archive")) {
             return;
         }
+        try {
+            window.sessionStorage.setItem(WORLD_TRANSITION_KEY, "street-to-material-shop");
+        } catch (_) {
+            // 动画标记失败时仍可正常进入门店。
+        }
         body.classList.add("is-entering-archive");
         byId("market-announcer").textContent = "正在进入材料情报店";
         window.setTimeout(function () {
             window.location.assign("/material-shop");
-        }, reducedMotion ? 0 : 260);
+        }, reducedMotion ? 0 : 540);
     }
 
     function stateContent(snapshot) {

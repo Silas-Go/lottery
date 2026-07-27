@@ -4,14 +4,15 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f0d9ad" />
+    <meta name="theme-color" content="#f6edcf" />
     <meta name="description" content="用真实 MySQL、Redis、Outbox 与 RocketMQ 比较同步和异步缓存失效。" />
     <title>材料购买实验 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/lottery.css?v=20260724-independent-reports" />
+    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260727-pixel-stage" />
 </head>
 
-<body class="lab-page purchase-page purchase-observatory" data-purchase-strategy="unselected" data-purchase-status="idle">
+<body class="lab-page purchase-page purchase-observatory purchase-focus" data-purchase-strategy="unselected" data-purchase-status="idle">
     <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
     <header class="lab-header purchase-lab-header">
@@ -45,6 +46,12 @@
         </section>
 
         <div id="purchase-content" class="purchase-observatory-content" hidden>
+            <section class="purchase-game-console" aria-label="材料购买实验中心舞台">
+                <header class="purchase-console-titlebar">
+                    <span><i aria-hidden="true"></i> PURCHASE RUN</span>
+                    <strong>所有数字来自真实执行与保存的 TRACE</strong>
+                </header>
+
             <section class="purchase-story-brief lab-panel" aria-labelledby="purchase-title">
                 <div>
                     <small>FROM SURVEY TO PURCHASE</small>
@@ -115,16 +122,6 @@
                     <li><button type="button" data-replay-step="4" data-status="waiting" disabled><span>05</span><strong>查询探针验证</strong><small data-step-status>waiting</small></button></li>
                     <li><button type="button" data-replay-step="5" data-status="waiting" disabled><span>06</span><strong>实验完成</strong><small data-step-status>waiting</small></button></li>
                 </ol>
-                <div class="purchase-stage-readout" aria-live="polite">
-                    <div><small id="stage-kicker">NOT STARTED</small><h3 id="stage-title">选择方案并开始真实实验</h3></div>
-                    <p id="stage-summary">页面会先等待后端完整执行；拿到本轮 trace 后，六个阶段才按保存证据逐步回放。</p>
-                    <dl>
-                        <div><dt>MySQL 库存</dt><dd id="stage-mysql-stock">—</dd></div>
-                        <div><dt>Redis 库存</dt><dd id="stage-redis-stock">—</dd></div>
-                        <div><dt>Outbox / MQ</dt><dd id="stage-message-state">—</dd></div>
-                        <div><dt>阶段耗时</dt><dd id="stage-duration">—</dd></div>
-                    </dl>
-                </div>
             </section>
 
             <div class="purchase-observation-grid">
@@ -174,6 +171,28 @@
                         <div class="shop-counter" aria-hidden="true"></div>
                         <div class="shop-basement" aria-hidden="true"></div>
                     </div>
+
+                    <div class="purchase-game-hud" aria-label="实验实时结算面板">
+                        <div class="purchase-stage-readout" aria-live="polite">
+                            <div>
+                                <small id="stage-kicker">NOT STARTED</small>
+                                <h3 id="stage-title">选择方案并开始真实实验</h3>
+                            </div>
+                            <p id="stage-summary">点击实验后，舞台保持原位；这里只播放真实 trace 中保存的变化。</p>
+                        </div>
+                        <dl class="purchase-score-grid">
+                            <div><dt>成功购买</dt><dd id="game-success-count" data-game-metric>0</dd></div>
+                            <div><dt>MySQL 库存</dt><dd id="stage-mysql-stock" data-game-metric>—</dd></div>
+                            <div><dt>Redis 库存</dt><dd id="stage-redis-stock" data-game-metric>—</dd></div>
+                            <div><dt>旧库存读取</dt><dd id="game-old-read-count" data-game-metric>0</dd></div>
+                        </dl>
+                        <div class="purchase-stage-meta">
+                            <div><span>链路状态</span><strong id="stage-message-state">—</strong></div>
+                            <div><span>阶段耗时</span><strong id="stage-duration" data-game-metric>—</strong></div>
+                        </div>
+                        <p id="game-verdict-line" class="purchase-game-verdict">掌柜点评：选一种方案，看看库存牌能不能追上账本。</p>
+                    </div>
+
                     <dl class="market-role-legend" aria-label="商店角色与技术组件映射">
                         <div><dt>掌柜</dt><dd>Purchase Service</dd></div>
                         <div><dt>账房</dt><dd>MySQL</dd></div>
@@ -254,7 +273,13 @@
                 </section>
                 </details>
             </div>
+            </section>
 
+            <details class="purchase-evidence-drawer">
+                <summary>
+                    <span><b>真实事件日志</b><small>需要时再展开，不打断中心实验舞台</small></span>
+                    <i aria-hidden="true">查看</i>
+                </summary>
             <section class="purchase-running-log lab-panel" aria-labelledby="running-log-heading">
                 <div class="purchase-section-heading">
                     <div><small>RECENT REAL EVENTS</small><h2 id="running-log-heading">最近关键日志</h2></div>
@@ -264,7 +289,13 @@
                     <li><time>READY</time><span>等待后端返回真实执行证据。</span></li>
                 </ol>
             </section>
+            </details>
 
+            <details class="purchase-battle-report-drawer">
+                <summary>
+                    <span><b>详细实验战报</b><small>实时结算板已经给出结论，需要证据时再展开</small></span>
+                    <i aria-hidden="true">查看</i>
+                </summary>
             <section id="purchase-main-results" class="purchase-main-results battle-report-shell lab-panel" aria-labelledby="results-heading" data-report-state="waiting">
                 <div id="battle-report-placeholder" class="battle-report-placeholder">
                     <span class="battle-placeholder-seal" aria-hidden="true">战</span>
@@ -390,7 +421,13 @@
                     </details>
                 </article>
             </section>
+            </details>
 
+            <details class="purchase-report-archive-drawer">
+                <summary>
+                    <span><b>历史实验报告</b><small>需要对照旧结果时再展开</small></span>
+                    <i aria-hidden="true">查看</i>
+                </summary>
             <section id="purchase-saved-results" class="purchase-saved-results battle-archive lab-panel" aria-labelledby="saved-heading" hidden>
                 <div class="purchase-section-heading">
                     <div><small>EXPERIMENT REPORT ARCHIVE</small><h2 id="saved-heading">实验报告列表</h2></div>
@@ -409,6 +446,7 @@
                         aria-controls="comparison-report-dialog" disabled>生成方案对比战报</button>
                 </div>
             </section>
+            </details>
 
             <dialog id="comparison-report-dialog" class="battle-comparison-dialog"
                 aria-labelledby="duel-title" aria-describedby="duel-description">
@@ -483,7 +521,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
-    <script src="/js/purchase-lab.js?v=20260724-independent-reports"></script>
+    <script src="/js/purchase-lab.js?v=20260727-pixel-stage"></script>
 </body>
 
 </html>

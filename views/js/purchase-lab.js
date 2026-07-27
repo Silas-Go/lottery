@@ -45,6 +45,8 @@
         timer: null,
         revealed: Object.create(null)
     };
+    // HUD 只在真实状态或保存 trace 切换时滚动到新数值；动画不生成业务进度。
+    var metricAnimations = new WeakMap();
     // executionMode 表示“真实执行 / 回放 / 暂停 / 结果”边界；replay 只保存前端游标和速度。
     // 只有 startExperiment 会进入购买与重置接口，任何回放控制都不能复用该入口。
     var state = {
@@ -68,6 +70,64 @@
 
     function byId(id) {
         return document.getElementById(id);
+    }
+
+    function setGameMetric(id, value) {
+        var element = byId(id);
+        if (!element) {
+            return;
+        }
+        var nextText = String(value === undefined || value === null ? "—" : value);
+        var nextMatch = nextText.match(/-?\d[\d,]*(?:\.\d+)?/);
+        var currentMatch = String(element.textContent || "").match(/-?\d[\d,]*(?:\.\d+)?/);
+        var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var previousFrame = metricAnimations.get(element);
+        if (previousFrame) {
+            window.cancelAnimationFrame(previousFrame);
+            metricAnimations.delete(element);
+        }
+        element.classList.remove("is-counting");
+        if (!nextMatch || !currentMatch || reduced) {
+            element.textContent = nextText;
+            element.classList.add("is-counting");
+            window.setTimeout(function () {
+                element.classList.remove("is-counting");
+            }, reduced ? 0 : 420);
+            return;
+        }
+
+        var from = Number(currentMatch[0].replace(/,/g, ""));
+        var to = Number(nextMatch[0].replace(/,/g, ""));
+        if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) {
+            element.textContent = nextText;
+            return;
+        }
+        var prefix = nextText.slice(0, nextMatch.index);
+        var suffix = nextText.slice(nextMatch.index + nextMatch[0].length);
+        var decimalPart = nextMatch[0].split(".")[1];
+        var decimals = decimalPart ? decimalPart.length : 0;
+        var startedAt = performance.now();
+        var duration = 520;
+        element.classList.add("is-counting");
+
+        function draw(now) {
+            var progress = Math.min(1, (now - startedAt) / duration);
+            var stepped = Math.floor(progress * 10) / 10;
+            var current = from + (to - from) * stepped;
+            var formatted = decimals > 0 ?
+                current.toFixed(decimals) :
+                Math.round(current).toLocaleString("zh-CN");
+            element.textContent = prefix + formatted + suffix;
+            if (progress < 1) {
+                metricAnimations.set(element, window.requestAnimationFrame(draw));
+                return;
+            }
+            element.textContent = nextText;
+            element.classList.remove("is-counting");
+            metricAnimations.delete(element);
+        }
+
+        metricAnimations.set(element, window.requestAnimationFrame(draw));
     }
 
     function clone(value) {
@@ -706,15 +766,59 @@
         return evidence;
     }
 
+    function stageVerdict(record, index) {
+        var run = record.run;
+        var probe = record.probe || {};
+        if (index === 0) {
+            return "掌柜点评：150 份请求已经进店，先看账本能不能稳稳接住。";
+        }
+        if (index === 1) {
+            return "掌柜点评：MySQL 已经落账，缓存世界还没有追上来。";
+        }
+        if (index === 2) {
+            return record.strategy === "sync-invalidate" ?
+                "掌柜点评：顾客还在等 Redis 收尾，响应链更长。" :
+                "掌柜点评：顾客先拿到结果，库存牌交给信使继续处理。";
+        }
+        if (index === 3) {
+            return record.strategy === "sync-invalidate" ?
+                "掌柜点评：库存牌已被撤下，接下来要防旧数据趁机回填。" :
+                "掌柜点评：Outbox 已把承诺交给消息链路，等 Consumer 真正完成删除。";
+        }
+        if (index === 4) {
+            return Number(probe.oldReads || 0) > 0 ?
+                "掌柜点评：探针抓到了旧库存，最终一致不等于过程没有脏读。" :
+                "掌柜点评：本轮探针没抓到旧读，但这不是永远安全的证明。";
+        }
+        if (run.status === "failed") {
+            return "掌柜点评：这轮链路没有结算成功，先看失败证据，再决定是否重跑。";
+        }
+        var consistent = currentConsistency(run);
+        if (record.strategy === "sync-invalidate") {
+            return consistent ?
+                "掌柜点评：库存牌最终追平，但顾客为同步删除多等了一程。" :
+                "掌柜点评：账本已经落定，库存牌却还慢了两步。";
+        }
+        if (consistent) {
+            return Number(run.retryCount || 0) > 0 ?
+                "掌柜点评：信使绕了路，但最终还是把库存牌追平了。" :
+                "掌柜点评：顾客先离场，信使随后把库存牌追平。";
+        }
+        return "掌柜点评：顾客已经离场，库存牌仍在等待信使。";
+    }
+
     function renderStageReadout(record, index) {
         var evidence = stageEvidence(record, index);
         byId("stage-kicker").textContent = evidence.kicker;
         byId("stage-title").textContent = evidence.title;
         byId("stage-summary").textContent = evidence.summary;
-        byId("stage-mysql-stock").textContent = stockText(evidence.mysql);
-        byId("stage-redis-stock").textContent = stockText(evidence.redis);
+        setGameMetric("game-success-count", index >= 2 ? formatNumber(record.run.purchaseSucceeded) : "0");
+        setGameMetric("stage-mysql-stock", stockText(evidence.mysql));
+        setGameMetric("stage-redis-stock", stockText(evidence.redis));
+        setGameMetric("game-old-read-count", index >= 4 ? formatNumber(record.probe.oldReads) : "0");
         byId("stage-message-state").textContent = evidence.message;
-        byId("stage-duration").textContent = evidence.duration;
+        setGameMetric("stage-duration", evidence.duration);
+        byId("game-verdict-line").textContent = stageVerdict(record, index);
         byId("purchase-stock-summary").textContent =
             "回放快照 · MySQL " + stockText(evidence.mysql) + " · Redis " + stockText(evidence.redis);
         byId("control-status").textContent = evidence.summary;
@@ -1371,11 +1475,15 @@
         byId("stage-kicker").textContent = "NOT STARTED";
         byId("stage-title").textContent = "选择方案并开始真实实验";
         byId("stage-summary").textContent =
-            "页面会先等待后端完整执行；拿到本轮 trace 后，六个阶段才按保存证据逐步回放。";
-        byId("stage-mysql-stock").textContent = stockText(state.stock && state.stock.mysqlStock);
-        byId("stage-redis-stock").textContent = stockText(state.stock && state.stock.redisStock);
+            "点击实验后舞台保持原位；拿到完整 trace 后，真实数字才会逐步结算。";
+        setGameMetric("game-success-count", "0");
+        setGameMetric("stage-mysql-stock", stockText(state.stock && state.stock.mysqlStock));
+        setGameMetric("stage-redis-stock", stockText(state.stock && state.stock.redisStock));
+        setGameMetric("game-old-read-count", "0");
         byId("stage-message-state").textContent = "—";
-        byId("stage-duration").textContent = "—";
+        setGameMetric("stage-duration", "—");
+        byId("game-verdict-line").textContent =
+            "掌柜点评：选一种方案，看看库存牌能不能追上账本。";
         byId("story-event-log").replaceChildren();
         var item = document.createElement("li");
         var time = document.createElement("time");
@@ -1501,6 +1609,9 @@
                 );
                 probe.staleOpenedAt = null;
             }
+            if (state.executionMode === "executing") {
+                setGameMetric("game-old-read-count", formatNumber(probe.oldReads));
+            }
         } catch (_) {
             probe.errors += 1;
         } finally {
@@ -1530,11 +1641,38 @@
         return "purchase-web-" + Date.now().toString(36) + "-" + Math.random().toString(16).slice(2, 10);
     }
 
+    function renderLiveRunHUD(run) {
+        if (!run) {
+            return;
+        }
+        var outbox = outboxSummary(run);
+        var waitingConsumer = run.status === "waiting_consumer";
+        byId("stage-kicker").textContent = "LIVE EXECUTION";
+        byId("stage-title").textContent = waitingConsumer ? "等待信使完成库存牌更新" : "真实购买正在结算";
+        byId("stage-summary").textContent = waitingConsumer ?
+            ("购买响应已经返回；Consumer 已完成 " + outbox.completed + " / " +
+                (outbox.total || PURCHASE_COUNT) + " 条缓存失效。") :
+            "这里只展示后端刚刚返回的真实数字，完整 trace 到齐后才开始六步回放。";
+        setGameMetric("game-success-count", formatNumber(run.purchaseSucceeded || 0));
+        setGameMetric("stage-mysql-stock", stockText(run.finalMySQLStock));
+        setGameMetric("stage-redis-stock", stockText(run.finalRedisStock));
+        setGameMetric("game-old-read-count", formatNumber(state.probe.oldReads || 0));
+        byId("stage-message-state").textContent = state.strategy === "sync-invalidate" ?
+            "等待同步 Redis DEL" :
+            ("Consumer " + outbox.completed + " / " + (outbox.total || PURCHASE_COUNT));
+        setGameMetric("stage-duration", Number(run.purchaseP99Ms) > 0 ?
+            formatMS(run.purchaseP99Ms) : "采集中");
+        byId("game-verdict-line").textContent = waitingConsumer ?
+            "掌柜点评：顾客已经离场，现在要看信使多久能把库存牌追平。" :
+            "掌柜点评：账本正在落定，先别用动画猜结果。";
+    }
+
     async function pollRun(id) {
         var deadline = Date.now() + 60000;
         while (Date.now() < deadline) {
             var run = await requestJSON("/api/purchase-lab/runs/" + encodeURIComponent(id));
             state.liveRun = run;
+            renderLiveRunHUD(run);
             setExecutionMode("executing",
                 run.status === "waiting_consumer" ?
                     "后端真实购买已响应，正在等待 Consumer 完成失效；回放尚未开始。" :
@@ -1637,11 +1775,17 @@
         byId("stage-kicker").textContent = "REAL EXECUTION";
         byId("stage-title").textContent = "正在真实执行，尚未开始回放";
         byId("stage-summary").textContent =
-            "页面正在等待购买、缓存失效和查询探针全部结束；取得完整 trace 前不会切换时间线画面。";
+            "舞台会保持原位；页面正在等待购买、缓存失效和查询探针返回真实证据。";
+        byId("game-verdict-line").textContent =
+            "掌柜点评：真正的数字还在路上，先看系统完成交易。";
         byId("control-status").textContent = "真实执行进行中；回放控制暂不可用。";
         byId("result-status").textContent = "正在真实执行";
         try {
             var baseline = await resetExperiment();
+            setGameMetric("game-success-count", "0");
+            setGameMetric("stage-mysql-stock", stockText(baseline.mysqlStock));
+            setGameMetric("stage-redis-stock", stockText(baseline.redisStock));
+            setGameMetric("game-old-read-count", "0");
             startProbe();
             var id = requestID();
             var run = await requestJSON("/api/purchase-lab/" + state.materialId + "/run", {
@@ -1654,6 +1798,7 @@
                 })
             });
             state.liveRun = run;
+            renderLiveRunHUD(run);
             if (runningStatus(run)) {
                 run = await pollRun(id);
             }
@@ -1679,6 +1824,8 @@
             byId("stage-kicker").textContent = "REAL EXECUTION FAILED";
             byId("stage-title").textContent = "后端真实执行失败";
             byId("stage-summary").textContent = error.message;
+            byId("game-verdict-line").textContent =
+                "掌柜点评：链路没有完整结算，先看失败证据，不让动画替系统圆场。";
             byId("purchase-fault-banner").hidden = false;
             byId("purchase-fault-title").textContent = "真实执行失败";
             byId("purchase-fault-copy").textContent = error.message;

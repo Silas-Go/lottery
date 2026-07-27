@@ -62,6 +62,7 @@
         metricsReplayTimer: null,
         reducedMotion: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
     };
+    var metricAnimations = new WeakMap();
 
     var sourceDefinitions = {
         mysql: {
@@ -147,6 +148,89 @@
 
     function formatNumber(value) {
         return Number(value || 0).toLocaleString("zh-CN");
+    }
+
+    function formatMetricValue(value, suffix, precision) {
+        var number = Number(value || 0);
+        return (precision > 0 ? number.toFixed(precision) : formatNumber(Math.round(number))) + (suffix || "");
+    }
+
+    function setQueryMetric(id, value, suffix, precision) {
+        var element = byId(id);
+        var target = Number(value);
+        if (!element || !Number.isFinite(target)) {
+            if (element) {
+                element.textContent = String(value);
+                delete element.dataset.metricValue;
+            }
+            return;
+        }
+        var previous = Number(element.dataset.metricValue);
+        if (!Number.isFinite(previous)) {
+            previous = Number.parseFloat(element.textContent.replace(/,/g, ""));
+        }
+        if (!Number.isFinite(previous)) {
+            previous = 0;
+        }
+        if (state.reducedMotion || previous === target) {
+            element.textContent = formatMetricValue(target, suffix, precision);
+            element.dataset.metricValue = String(target);
+            return;
+        }
+        var running = metricAnimations.get(element);
+        if (running) {
+            window.cancelAnimationFrame(running);
+        }
+        var startedAt = window.performance.now();
+        var duration = 460;
+        element.classList.remove("is-ticking");
+        void element.offsetWidth;
+        element.classList.add("is-ticking");
+
+        function tick(now) {
+            var progress = Math.min(1, (now - startedAt) / duration);
+            var eased = 1 - Math.pow(1 - progress, 3);
+            var current = previous + (target - previous) * eased;
+            element.textContent = formatMetricValue(current, suffix, precision);
+            if (progress < 1) {
+                metricAnimations.set(element, window.requestAnimationFrame(tick));
+                return;
+            }
+            element.dataset.metricValue = String(target);
+            element.classList.remove("is-ticking");
+            metricAnimations.delete(element);
+        }
+
+        metricAnimations.set(element, window.requestAnimationFrame(tick));
+    }
+
+    function setRouteProgress(current, total) {
+        var progress = byId("route-step-progress");
+        progress.textContent = formatNumber(current) + " / " + formatNumber(total);
+        progress.classList.remove("is-ticking");
+        void progress.offsetWidth;
+        progress.classList.add("is-ticking");
+    }
+
+    function queryVerdict(source, latency) {
+        var latencyText = Number.isFinite(Number(latency)) ? "，真实响应 " + Number(latency).toFixed(1) + " ms" : "";
+        if (source === "mysql") {
+            return "掌柜点评：这次直奔账房，路径最坦白" + latencyText + "；每次查询都要让 MySQL 亲自翻档案。";
+        }
+        if (source === "redis-hit") {
+            return "掌柜点评：缓存窗口直接递出了完整档案" + latencyText + "，账房这次可以继续休息。";
+        }
+        if (source === "redis-miss") {
+            return "掌柜点评：先在缓存扑空，再去账房取回档案并补上副本" + latencyText + "。";
+        }
+        if (source === "redis-fallback") {
+            return "掌柜点评：缓存出了岔子，但安全旁路仍从 MySQL 取回了正确档案" + latencyText + "。";
+        }
+        return "掌柜点评：响应来源无法识别，先保留证据，不替服务器猜路线。";
+    }
+
+    function setQueryVerdict(copy) {
+        byId("query-verdict-line").textContent = copy;
     }
 
     function normalizeMaterial(value) {
@@ -258,6 +342,11 @@
                 "查询前先清空档案缓存与本章指标，首个真实响应应映射为 Cache Miss。" :
                 "保留已有 Redis 副本；实际结果仍以 X-Archive-Source 的 Hit 或 Miss 为准。") :
             "Redis 不参与；每次请求都执行基础 JOIN、组成、交易和评分共 4 条 SQL。";
+        if (!state.lastResponse) {
+            setQueryVerdict(cached ?
+                "掌柜点评：这轮先问缓存，MISS 才去账房；最后仍由响应头裁定真实路线。" :
+                "掌柜点评：这轮绕过缓存，直接让 MySQL 组装完整材料档案。");
+        }
         renderActiveMetrics();
     }
 
@@ -314,10 +403,11 @@
         });
     }
 
-    function finishRouteReplay(definition) {
+    function finishRouteReplay(definition, source, origin) {
         state.isReplaying = false;
         byId("replay-status").textContent = "回放完成 · 不计入真实耗时";
         byId("route-title").textContent = definition.title;
+        setRouteProgress(definition.frames.length, definition.frames.length);
         if (definition.state === "miss") {
             byId("redis-state").textContent = "CACHE FILLED";
         }
@@ -326,6 +416,8 @@
             item.classList.remove("is-current");
             item.classList.add("is-complete");
         });
+        var latency = origin === "manual" && state.lastResponse ? state.lastResponse.latency : null;
+        setQueryVerdict(queryVerdict(source, latency));
         updateControlState();
     }
 
@@ -337,6 +429,8 @@
             byId("route-label").textContent = "UNKNOWN SOURCE";
             byId("route-title").textContent = "响应头无法映射到已知路径：" + (source || "空值");
             byId("replay-status").textContent = "未回放未知路径";
+            setRouteProgress(0, 0);
+            setQueryVerdict(queryVerdict(source, null));
             state.isReplaying = false;
             updateControlState();
             return;
@@ -349,6 +443,8 @@
         byId("redis-state").textContent = definition.redis;
         byId("mysql-state").textContent = definition.mysql;
         byId("replay-status").textContent = origin === "sse" ? "正在回放外部真实流量" : "正在回放本次数据路径";
+        setRouteProgress(0, definition.frames.length);
+        setQueryVerdict("掌柜点评：服务器已经给出真实来源，现在只把这条路径逐格走给你看。");
         renderRouteEvents(definition);
         updateControlState();
 
@@ -360,13 +456,14 @@
 
         if (state.reducedMotion) {
             definition.frames.forEach(function (frame) { activateFrame(frame, definition.tone); });
-            finishRouteReplay(definition);
+            finishRouteReplay(definition, source, origin);
             return;
         }
 
         definition.frames.forEach(function (frame, index) {
             var timer = window.setTimeout(function () {
                 activateFrame(frame, definition.tone);
+                setRouteProgress(index + 1, definition.frames.length);
                 var eventIndex = Math.min(definition.events.length - 1,
                     Math.floor(index * definition.events.length / definition.frames.length));
                 Array.prototype.forEach.call(byId("route-events").children, function (item, itemIndex) {
@@ -379,7 +476,7 @@
             state.routeTimers.push(timer);
         });
         state.routeTimers.push(window.setTimeout(function () {
-            finishRouteReplay(definition);
+            finishRouteReplay(definition, source, origin);
         }, definition.frames.length * 180 + 180));
     }
 
@@ -1051,11 +1148,13 @@
             var source = result.response.headers.get("X-Archive-Source") || "unknown";
             renderRecord(result.body, source, latency);
             byId("request-status").textContent = "人潮调查完成，材料资料已归档";
-            byId("actual-latency").textContent = latency.toFixed(1) + " ms";
-            byId("actual-source").textContent = source;
+            setQueryMetric("actual-latency", latency, " ms", 1);
+            setQueryMetric("actual-source", source);
+            setQueryVerdict(queryVerdict(source, latency));
         } catch (error) {
             state.loadtestRecordLoaded = false;
             byId("request-status").textContent = "压测完成，但材料资料回填失败";
+            setQueryVerdict("掌柜点评：人潮实验完成了，但材料档案没有成功回填，先保留这次错误证据。");
             showToast(error.message, "danger");
         }
     }
@@ -1090,9 +1189,11 @@
         updateControlState();
         resetRouteVisual();
         byId("request-status").textContent = "真实 HTTP 请求已发送";
-        byId("actual-latency").textContent = "等待响应";
-        byId("actual-source").textContent = "等待响应头";
+        setQueryMetric("actual-latency", "等待响应");
+        setQueryMetric("actual-source", "等待响应头");
         byId("replay-status").textContent = "响应到达后开始";
+        setRouteProgress(0, 0);
+        setQueryVerdict("掌柜点评：请求已经出发，先等真实响应头回来，再决定该点亮哪条路。");
         var experiment = currentExperiment();
         var path = experiment.mode === "cached" ? "cached" : "direct";
         var started = null;
@@ -1100,10 +1201,11 @@
         try {
             if (experiment.mode === "cached" && experiment.cacheTemperature === "cold") {
                 byId("request-status").textContent = "正在准备冷缓存：清除档案缓存与本章指标";
-                byId("actual-latency").textContent = "尚未发起材料请求";
+                setQueryMetric("actual-latency", "尚未发起");
+                setQueryVerdict("掌柜点评：先把缓存窗口清空，这样第一份档案会诚实暴露一次 MISS。");
                 await prepareColdCache();
                 byId("request-status").textContent = "冷缓存已准备，真实 HTTP 请求已发送";
-                byId("actual-latency").textContent = "等待响应";
+                setQueryMetric("actual-latency", "等待响应");
             }
             started = window.performance.now();
             var result = await requestJSON("/api/archives/" + state.id + "/" + path);
@@ -1112,8 +1214,9 @@
             var sqlQueries = Number(result.response.headers.get("X-SQL-Queries") || 0);
             state.isRequesting = false;
             byId("request-status").textContent = "响应已接收并保存";
-            byId("actual-latency").textContent = latency.toFixed(1) + " ms";
-            byId("actual-source").textContent = source;
+            setQueryMetric("actual-latency", latency, " ms", 1);
+            setQueryMetric("actual-source", source);
+            setQueryVerdict("掌柜点评：真实响应已经到手，正在按 " + source + " 把路径逐格结算。");
             renderRecord(result.body, source, latency);
             if (state.entry === "single") {
                 freezeSingleResult(source, latency, sqlQueries);
@@ -1122,10 +1225,15 @@
         } catch (error) {
             state.isRequesting = false;
             byId("request-status").textContent = started ? "真实请求失败" : "冷缓存准备失败，材料请求未发出";
-            byId("actual-latency").textContent = started ?
-                (window.performance.now() - started).toFixed(1) + " ms" : "—";
-            byId("actual-source").textContent = "ERROR";
+            if (started) {
+                setQueryMetric("actual-latency", window.performance.now() - started, " ms", 1);
+            } else {
+                setQueryMetric("actual-latency", "—");
+            }
+            setQueryMetric("actual-source", "ERROR");
             byId("replay-status").textContent = "没有成功路径可回放";
+            setRouteProgress(0, 0);
+            setQueryVerdict("掌柜点评：这次查询没有成功返回，舞台停在错误证据上，不伪造后续路径。");
             showToast(error.message, "danger");
             updateControlState();
         }
@@ -1144,7 +1252,7 @@
     }
 
     function setMetric(id, value, suffix) {
-        byId(id).textContent = formatNumber(value) + (suffix || "");
+        setQueryMetric(id, value, suffix || "", 0);
     }
 
     function renderActiveMetrics() {
@@ -1157,7 +1265,11 @@
         setMetric("active-db-reads", path.sqlQueries);
         setMetric("active-p99", path.p99, " ms");
         byId("active-pool").textContent = formatNumber(path.poolPeak) + " / " + formatNumber(path.poolCapacity);
-        byId("active-hit-rate").textContent = cached ? formatNumber(path.cacheHitRate) + "%" : "—";
+        if (cached) {
+            setQueryMetric("active-hit-rate", path.cacheHitRate, "%", 0);
+        } else {
+            setQueryMetric("active-hit-rate", "—");
+        }
         setMetric("active-errors", path.errors);
         byId("mysql-pool-live").textContent = "POOL " + formatNumber(path.poolPeak) + " / " + formatNumber(path.poolCapacity);
     }
@@ -1414,7 +1526,7 @@
             resetRouteVisual();
             document.body.dataset.routeState = "idle";
             byId("route-label").textContent = "WAITING";
-            byId("route-title").textContent = "按室外配置发起请求";
+            byId("route-title").textContent = "按店门口配置发起请求";
             byId("route-events").innerHTML = "<li><span>READY</span><strong>等待真实响应头</strong><small>不会根据所选模式猜测结果</small></li>";
             byId("record-placeholder").hidden = false;
             byId("record-result").hidden = true;
@@ -1422,9 +1534,11 @@
             state.crowdHandoff = null;
             state.loadtestRecordLoaded = false;
             byId("request-status").textContent = "等待发起真实请求";
-            byId("actual-latency").textContent = "—";
-            byId("actual-source").textContent = "—";
+            setQueryMetric("actual-latency", "—");
+            setQueryMetric("actual-source", "—");
             byId("replay-status").textContent = "尚未开始";
+            setRouteProgress(0, 0);
+            setQueryVerdict("掌柜点评：缓存与指标已经归零，下一次查询会从干净的实验起点出发。");
             resetMetricsHistory();
             if (result.body && result.body.snapshot) {
                 acceptMetricsSnapshot({ archiveRead: result.body.snapshot });
@@ -1526,7 +1640,7 @@
         updateControlState();
         updateMetricsPlaybackControls();
         if (entry === "crowd") {
-            byId("request-status").textContent = "已从室外跟随压测请求进入";
+            byId("request-status").textContent = "已从材料店门口跟随压测请求进入";
             byId("replay-status").textContent = "等待 SSE 捕获后续请求";
             if (state.loadtestTaskId) {
                 connectLoadtestTask(state.loadtestTaskId);

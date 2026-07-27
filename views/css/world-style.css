@@ -1,0 +1,518 @@
+:root {
+    color-scheme: light;
+    --world-paper: #fffdf4;
+    --world-paper-deep: #f6edcf;
+    --world-ink: #283b38;
+    --world-muted: #68766e;
+    --world-line: #b9aa8d;
+    --world-frame: #80643f;
+    --world-shadow: #c5a972;
+    --world-teal: #3f928c;
+    --world-teal-dark: #245f5b;
+}
+
+/* 暖潮街：把场景从灰暗入口调成与实验室相同的明亮像素世界。 */
+html:has(.market-street-shell) {
+    background: var(--world-paper-deep);
+}
+
+.market-street-shell {
+    color: var(--world-ink);
+    background: var(--world-paper-deep);
+}
+
+.market-street-shell .market-header {
+    min-height: 64px;
+    border-bottom: 2px solid var(--world-frame);
+    color: var(--world-ink);
+    background: rgba(255, 253, 244, .94);
+    box-shadow: 0 4px 0 rgba(128, 100, 63, .13);
+}
+
+.market-street-shell .market-header__brand {
+    color: var(--world-ink);
+}
+
+.market-street-shell .market-header__seal {
+    border: 2px solid var(--world-frame);
+    color: var(--world-teal-dark);
+    background: #fffef8;
+    box-shadow: 3px 3px 0 #d8c9aa;
+    transform: none;
+}
+
+.market-street-shell .market-header__brand small,
+.market-street-shell .market-header__location small {
+    color: var(--world-muted);
+}
+
+.market-street-shell .market-header__location > i {
+    border-radius: 1px;
+    background: #6aa27e;
+    box-shadow: 0 0 0 4px rgba(91, 151, 112, .12);
+}
+
+.market-street-shell .market-stage {
+    background: #d8caa2;
+}
+
+.market-street-shell .market-scene-canvas,
+.market-street-shell .event-dialogue,
+.market-page .market-scene,
+.market-page .event-card {
+    will-change: transform, filter, opacity;
+}
+
+.market-street-shell::after,
+.market-page::after {
+    position: fixed;
+    z-index: 90;
+    inset: 0;
+    pointer-events: none;
+    background:
+        repeating-linear-gradient(
+            90deg,
+            transparent 0 8%,
+            rgba(255, 250, 221, .42) 10% 11%,
+            rgba(63, 146, 140, .22) 13% 14%,
+            transparent 17% 25%
+        );
+    content: "";
+    opacity: 0;
+    transform: translate3d(100%, 0, 0);
+}
+
+.market-street-shell.is-entering-archive {
+    cursor: progress;
+}
+
+.market-street-shell.is-entering-archive .market-scene-canvas {
+    animation: worldStreetWhip 560ms cubic-bezier(.42, 0, .68, .36) both;
+}
+
+.market-street-shell.is-entering-archive .event-dialogue {
+    animation: worldDialogueWhip 470ms cubic-bezier(.42, 0, .8, .4) both;
+}
+
+.market-street-shell.is-entering-archive .market-header {
+    animation: worldHeaderWhip 520ms cubic-bezier(.42, 0, .72, .38) both;
+}
+
+.market-street-shell.is-entering-archive::after {
+    animation: worldSpeedCurtain 560ms ease-in both;
+}
+
+.market-street-shell.is-entering-archive button,
+.market-street-shell.is-entering-archive a {
+    pointer-events: none;
+}
+
+.market-street-shell .market-scene-canvas::before {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(180deg, rgba(255, 240, 172, .2), transparent 46%),
+        linear-gradient(90deg, rgba(111, 180, 171, .12), transparent 35% 65%, rgba(244, 207, 116, .13));
+    content: "";
+}
+
+.market-street-shell .market-scene-background {
+    filter: brightness(1.52) saturate(.78) sepia(.08) contrast(.88);
+}
+
+.market-street-shell .market-vignette {
+    background:
+        linear-gradient(90deg, rgba(73, 121, 112, .08), transparent 18% 82%, rgba(121, 83, 47, .08)),
+        linear-gradient(0deg, rgba(92, 72, 44, .08), transparent 30% 90%, rgba(255, 246, 211, .16));
+}
+
+.market-street-shell .shop-status,
+.market-street-shell .shop-preview-ribbon {
+    border: 1px solid var(--world-frame);
+    border-radius: 1px;
+    color: var(--world-ink);
+    background: rgba(255, 248, 224, .94);
+    box-shadow: 3px 3px 0 rgba(128, 100, 63, .3);
+}
+
+.market-street-shell .shop-status small {
+    color: var(--world-muted);
+}
+
+.market-street-shell .shop-status > i {
+    border-radius: 1px;
+    background: var(--world-teal);
+}
+
+.market-street-shell .shop-preview-ribbon {
+    border-left: 4px solid var(--world-teal);
+    color: var(--world-teal-dark);
+}
+
+.market-street-shell .shop-interaction__hitbox:hover,
+.market-street-shell .shop-interaction__hitbox:focus-visible {
+    background: linear-gradient(180deg, transparent 48%, rgba(80, 150, 139, .12));
+    box-shadow: inset 0 0 0 3px rgba(63, 146, 140, .58);
+}
+
+.market-street-shell.is-entering-archive [data-shop="archive"] .shop-interaction__hitbox {
+    background: rgba(63, 146, 140, .15);
+    box-shadow: inset 0 0 0 4px rgba(63, 146, 140, .58), inset 0 0 42px rgba(63, 146, 140, .18);
+}
+
+.market-street-shell .event-dialogue {
+    border: 2px solid var(--world-frame);
+    border-radius: 1px;
+    color: var(--world-ink);
+    background:
+        linear-gradient(rgba(96, 76, 44, .055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(96, 76, 44, .055) 1px, transparent 1px),
+        rgba(255, 253, 244, .97);
+    background-size: 18px 18px;
+    box-shadow: 6px 6px 0 var(--world-shadow);
+}
+
+.market-street-shell .event-dialogue::before {
+    border-color: rgba(128, 100, 63, .18);
+}
+
+.market-street-shell .event-dialogue::after {
+    height: 5px;
+    background: var(--world-teal);
+    box-shadow: 353px 0 var(--world-frame);
+}
+
+.market-street-shell .event-dialogue__heading {
+    color: var(--world-teal-dark);
+}
+
+.market-street-shell .event-dialogue__heading small,
+.market-street-shell .event-dialogue p,
+.market-street-shell .event-choices button small {
+    color: var(--world-muted);
+}
+
+.market-street-shell .event-dialogue h2 {
+    color: var(--world-ink);
+    font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif;
+    font-weight: 900;
+}
+
+.market-street-shell .event-choices button,
+.market-street-shell .preview-actions button {
+    border: 1px solid var(--world-line);
+    border-radius: 1px;
+    color: var(--world-ink);
+    background: #fffaf0;
+    box-shadow: 3px 3px 0 #d8c9aa;
+}
+
+.market-street-shell .event-choices button:hover,
+.market-street-shell .event-choices button:focus-visible,
+.market-street-shell .preview-actions button:hover,
+.market-street-shell .preview-actions button:focus-visible {
+    border-color: var(--world-teal-dark);
+    color: var(--world-ink);
+    background: #e2f1e9;
+    outline-color: rgba(36, 95, 91, .3);
+}
+
+.market-street-shell .event-choices button > span {
+    border: 2px solid var(--world-frame);
+    border-radius: 1px;
+    color: var(--world-teal-dark);
+    background: #fffdf4;
+}
+
+.market-street-shell .event-choices button > strong {
+    font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif;
+    font-weight: 900;
+}
+
+/* 材料情报店门口：沿用同一纸张、硬边框和青绿色行动色。 */
+.market-page .market-topbar {
+    min-height: 66px;
+    border-bottom: 2px solid var(--world-frame);
+    background: rgba(255, 253, 244, .94);
+    box-shadow: 0 4px 0 rgba(128, 100, 63, .13);
+}
+
+.market-page .market-brand-mark {
+    border: 2px solid var(--world-frame);
+    color: var(--world-teal-dark);
+    background: #fffef8;
+    box-shadow: 3px 3px 0 #d8c9aa;
+}
+
+.market-page .market-location {
+    gap: 9px;
+    color: var(--world-ink);
+}
+
+.market-page .market-location a {
+    padding: 7px 10px;
+    border: 1px solid var(--world-line);
+    border-radius: 1px;
+    color: var(--world-ink);
+    background: #fffaf0;
+    box-shadow: 2px 2px 0 #d8c9aa;
+    font-size: 10px;
+    text-decoration: none;
+}
+
+.market-page .market-location i {
+    border-radius: 1px;
+    background: #6aa27e;
+    box-shadow: 0 0 0 4px rgba(91, 151, 112, .12);
+}
+
+.market-page .event-card {
+    border: 2px solid var(--world-frame);
+    border-radius: 1px;
+    background:
+        linear-gradient(rgba(96, 76, 44, .055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(96, 76, 44, .055) 1px, transparent 1px),
+        rgba(255, 253, 244, .97);
+    background-size: 18px 18px;
+    box-shadow: 6px 6px 0 var(--world-shadow);
+}
+
+.market-page .event-heading {
+    border-color: var(--world-line);
+}
+
+.market-page .event-heading span {
+    color: var(--world-teal-dark);
+}
+
+.market-page .event-primary,
+.market-page .event-secondary,
+.market-page .material-choices button,
+.market-page .delivery-choice button,
+.market-page .crowd-tier-options button,
+.market-page .crowd-panel header button {
+    border-radius: 1px;
+}
+
+.market-page .event-primary {
+    border: 2px solid #254d4b;
+    color: #fffef7;
+    background: var(--world-teal);
+    box-shadow: 4px 4px 0 #244b49;
+}
+
+.market-page .event-secondary,
+.market-page .material-choices button,
+.market-page .delivery-choice button,
+.market-page .crowd-tier-options button {
+    border: 1px solid var(--world-line);
+    color: var(--world-ink);
+    background: #fffaf0;
+    box-shadow: 3px 3px 0 #d8c9aa;
+}
+
+.market-page .crowd-tier-options button.is-active,
+.market-page .delivery-choice button:last-child {
+    border: 2px solid var(--world-teal-dark);
+    color: var(--world-ink);
+    background: #e2f1e9;
+    box-shadow: 3px 3px 0 #afc8ba;
+}
+
+.market-page .roof-strategy-board {
+    border: 3px solid var(--world-frame);
+    border-radius: 1px;
+    color: var(--world-ink);
+    background: #fff3d2;
+    box-shadow: 5px 5px 0 rgba(128, 100, 63, .35);
+}
+
+.market-page .roof-strategy-board header small,
+.market-page .roof-cache-settings legend,
+.market-page .roof-mode-switch small,
+.market-page .roof-cache-settings small,
+.market-page .roof-strategy-board > p {
+    color: var(--world-muted);
+}
+
+.market-page .roof-mode-switch button,
+.market-page .roof-cache-settings label {
+    border: 1px solid var(--world-line);
+    border-radius: 1px;
+    color: var(--world-ink);
+    background: #fffaf0;
+}
+
+.market-page .roof-mode-switch button:hover,
+.market-page .roof-mode-switch button.is-active,
+.market-page .roof-cache-settings label:has(input:checked) {
+    border-color: var(--world-teal-dark);
+    color: var(--world-ink);
+    background: #dff1e8;
+    box-shadow: inset 4px 0 var(--world-teal);
+}
+
+.market-page .shop-sign {
+    border-color: var(--world-frame);
+    color: #fff8dd;
+    background: #304844;
+    box-shadow: 5px 5px 0 rgba(128, 100, 63, .35);
+}
+
+.market-page .shop-awning i:nth-child(odd) {
+    background: #3f928c;
+}
+
+.market-page .shop-awning i:nth-child(even) {
+    background: #fff3d2;
+}
+
+.market-page.is-arriving-from-street .market-scene {
+    opacity: .62;
+    filter: blur(7px) brightness(1.08);
+    transform: translate3d(13vw, 0, 0) scale(1.09);
+    transition: none;
+}
+
+.market-page.is-arriving-from-street .event-card {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translate3d(80px, 0, 0);
+    transition: none;
+}
+
+.market-page.is-arriving-from-street::after {
+    opacity: .72;
+    transform: translate3d(8%, 0, 0);
+}
+
+.market-page.is-arriving-from-street.is-arrival-settled .market-scene {
+    opacity: 1;
+    filter: blur(0) brightness(1);
+    transform: translate3d(0, 0, 0) scale(1);
+    transition:
+        transform 620ms cubic-bezier(.16, .82, .28, 1),
+        filter 520ms ease-out,
+        opacity 360ms ease-out;
+}
+
+.market-page.is-arriving-from-street.is-arrival-settled .event-card {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0);
+    transition:
+        transform 560ms cubic-bezier(.16, .82, .28, 1) 90ms,
+        filter 420ms ease-out 90ms,
+        opacity 360ms ease-out 90ms;
+}
+
+.market-page.is-arriving-from-street.is-arrival-settled::after {
+    opacity: 0;
+    transform: translate3d(-110%, 0, 0);
+    transition: transform 540ms cubic-bezier(.36, 0, .7, .3), opacity 420ms ease-out;
+}
+
+@keyframes worldStreetWhip {
+    0% {
+        filter: blur(0) brightness(1);
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    38% {
+        filter: blur(2px) brightness(1.03);
+        transform: translate3d(-3.5vw, 0, 0) scale(1.025);
+    }
+    100% {
+        filter: blur(8px) brightness(1.12);
+        transform: translate3d(-18vw, 0, 0) scale(1.13);
+    }
+}
+
+@keyframes worldDialogueWhip {
+    0% {
+        opacity: 1;
+        filter: blur(0);
+        transform: translateX(-50%);
+    }
+    100% {
+        opacity: 0;
+        filter: blur(5px);
+        transform: translateX(calc(-50% - 34vw));
+    }
+}
+
+@keyframes worldHeaderWhip {
+    0% {
+        opacity: 1;
+        filter: blur(0);
+        transform: translateX(0);
+    }
+    100% {
+        opacity: .3;
+        filter: blur(4px);
+        transform: translateX(-12vw);
+    }
+}
+
+@keyframes worldSpeedCurtain {
+    0% {
+        opacity: 0;
+        transform: translate3d(100%, 0, 0);
+    }
+    36% {
+        opacity: .82;
+    }
+    100% {
+        opacity: .12;
+        transform: translate3d(-90%, 0, 0);
+    }
+}
+
+@media (max-width: 650px) {
+    .market-street-shell .market-header {
+        padding: 0 12px;
+    }
+
+    .market-street-shell .market-header__brand small,
+    .market-street-shell .market-header__location small {
+        display: none;
+    }
+
+    .market-street-shell .market-header__location strong {
+        font-size: 11px;
+    }
+
+    .market-street-shell .event-dialogue {
+        width: calc(100vw - 20px);
+        padding: 17px 16px 16px;
+    }
+
+    .market-page .market-topbar {
+        gap: 10px;
+        padding: 0 12px;
+    }
+
+    .market-page .market-location {
+        display: flex;
+    }
+
+    .market-page .market-brand small,
+    .market-page .market-location > i,
+    .market-page .market-location > span {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .market-street-shell *,
+    .market-street-shell *::before,
+    .market-street-shell *::after,
+    .market-page *,
+    .market-page *::before,
+    .market-page *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
+}

@@ -18,6 +18,8 @@
     var activeTask = null;
     var enteringCrowdLab = false;
     var ACTIVE_TASK_KEY = "silas.cache-aside.active-loadtest.v1";
+    var WORLD_TRANSITION_KEY = "silas.world-transition.v1";
+    var arrivingFromStreet = false;
     // ID 是前端唯一提交给后端的压力参数；数值只用于展示和生成等价调试命令。
     var crowdTiers = Object.freeze({
         visitors: Object.freeze({ label: "零星访客", rate: 100, connections: 16, duration: 20, visibleFigures: 3 }),
@@ -34,6 +36,27 @@
 
     function byId(id) {
         return document.getElementById(id);
+    }
+
+    function startWorldEntrance() {
+        try {
+            arrivingFromStreet = window.sessionStorage.getItem(WORLD_TRANSITION_KEY) === "street-to-material-shop";
+            window.sessionStorage.removeItem(WORLD_TRANSITION_KEY);
+        } catch (_) {
+            arrivingFromStreet = false;
+        }
+        if (!arrivingFromStreet || reducedMotion) {
+            return;
+        }
+        document.body.classList.add("is-arriving-from-street");
+        window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () {
+                document.body.classList.add("is-arrival-settled");
+            });
+        });
+        window.setTimeout(function () {
+            document.body.classList.remove("is-arriving-from-street", "is-arrival-settled");
+        }, 820);
     }
 
     function setState(next) {
@@ -604,6 +627,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", function () {
+        startWorldEntrance();
         bindEvents();
         renderExperimentState(experimentState.get());
         experimentState.subscribe(renderExperimentState);
@@ -613,7 +637,7 @@
                 setState("dialogue");
                 byId("show-materials").focus({ preventScroll: true });
             }
-        }, reducedMotion ? 80 : 480);
+        }, reducedMotion ? 80 : (arrivingFromStreet ? 760 : 480));
     });
 
     window.addEventListener("beforeunload", closeTaskTracking);
