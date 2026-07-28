@@ -336,6 +336,12 @@
         document.body.dataset.labMode = next.mode;
         byId("mode-direct").classList.toggle("is-active", !cached);
         byId("mode-cached").classList.toggle("is-active", cached);
+        byId("mode-direct").setAttribute("aria-pressed", cached ? "false" : "true");
+        byId("mode-cached").setAttribute("aria-pressed", cached ? "true" : "false");
+        byId("lab-cache-settings").hidden = !cached;
+        Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
+            radio.checked = radio.value === next.cacheTemperature;
+        });
         byId("query-endpoint").textContent = cached ? "via /cached" : "via /direct";
         byId("lab-shared-strategy").textContent = cached ?
             "Redis Cache-Aside · " + (next.cacheTemperature === "cold" ? "冷缓存" : "热缓存") :
@@ -357,9 +363,15 @@
         var loadtestLocked = loadtestIsActive(state.loadtestTask);
         var locked = state.isRequesting || state.isReplaying || loadtestLocked;
         byId("query-archive").disabled = locked;
+        ["mode-direct", "mode-cached"].forEach(function (id) {
+            byId(id).disabled = locked;
+        });
+        Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
+            radio.disabled = locked;
+        });
         byId("query-archive").querySelector("span").textContent = state.isRequesting ?
             "正在等待真实响应" : (loadtestLocked ? "人潮实验进行中" :
-                (state.lastResponse ? "再次检索材料档案" : "检索材料档案"));
+                (state.lastResponse ? "再次启动读取实验" : "启动读取实验"));
         byId("reset-lab").disabled = loadtestLocked;
         byId("clear-comparison").disabled = loadtestLocked;
     }
@@ -1529,7 +1541,7 @@
             resetRouteVisual();
             document.body.dataset.routeState = "idle";
             byId("route-label").textContent = "WAITING";
-            byId("route-title").textContent = "按店门口配置发起请求";
+            byId("route-title").textContent = "等待读取器启动";
             byId("route-events").innerHTML = "<li><span>READY</span><strong>等待真实响应头</strong><small>不会根据所选模式猜测结果</small></li>";
             byId("record-placeholder").hidden = false;
             byId("record-result").hidden = true;
@@ -1604,6 +1616,19 @@
     }
 
     function bindEvents() {
+        byId("mode-direct").addEventListener("click", function () {
+            experimentState.set({ mode: "direct" });
+        });
+        byId("mode-cached").addEventListener("click", function () {
+            experimentState.set({ mode: "cached" });
+        });
+        Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
+            radio.addEventListener("change", function () {
+                if (radio.checked) {
+                    experimentState.set({ cacheTemperature: radio.value });
+                }
+            });
+        });
         byId("query-archive").addEventListener("click", readArchive);
         byId("reset-lab").addEventListener("click", resetLab);
         byId("clear-comparison").addEventListener("click", clearComparison);

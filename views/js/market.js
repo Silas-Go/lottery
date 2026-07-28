@@ -115,21 +115,6 @@
     }
 
     function renderExperimentState(next) {
-        var cached = next.mode === "cached";
-        var directButton = byId("roof-mode-direct");
-        var cachedButton = byId("roof-mode-cached");
-        directButton.classList.toggle("is-active", !cached);
-        cachedButton.classList.toggle("is-active", cached);
-        directButton.setAttribute("aria-pressed", cached ? "false" : "true");
-        cachedButton.setAttribute("aria-pressed", cached ? "true" : "false");
-        byId("roof-cache-settings").hidden = !cached;
-        Array.prototype.forEach.call(document.querySelectorAll("[name='cache-temperature']"), function (radio) {
-            radio.checked = radio.value === next.cacheTemperature;
-        });
-        byId("roof-strategy-summary").textContent = cached ?
-            "当前：Redis Cache-Aside · " + (next.cacheTemperature === "cold" ? "冷缓存" : "热缓存") :
-            "当前：MySQL Direct";
-
         if (selectedCode && state === "crowd_preparing" && !isTaskActive()) {
             renderCrowdTier();
         }
@@ -261,10 +246,10 @@
     }
 
     function setExperimentControlsLocked(locked) {
-        ["roof-mode-direct", "roof-mode-cached", "choose-again", "single-request", "leave-crowd-mode"].forEach(function (id) {
+        ["choose-again", "single-request", "leave-crowd-mode"].forEach(function (id) {
             byId(id).disabled = locked;
         });
-        Array.prototype.forEach.call(document.querySelectorAll("[name='cache-temperature'], [data-crowd-tier]"), function (control) {
+        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (control) {
             control.disabled = locked;
         });
     }
@@ -634,23 +619,6 @@
         });
         byId("copy-market-command").addEventListener("click", copyCrowdCommand);
         byId("leave-crowd-mode").addEventListener("click", leaveCrowdMode);
-        byId("roof-mode-direct").addEventListener("click", function () {
-            if (!isTaskActive()) {
-                experimentState.set({ mode: "direct" });
-            }
-        });
-        byId("roof-mode-cached").addEventListener("click", function () {
-            if (!isTaskActive()) {
-                experimentState.set({ mode: "cached" });
-            }
-        });
-        Array.prototype.forEach.call(document.querySelectorAll("[name='cache-temperature']"), function (radio) {
-            radio.addEventListener("change", function () {
-                if (radio.checked && !isTaskActive()) {
-                    experimentState.set({ cacheTemperature: radio.value });
-                }
-            });
-        });
     }
 
     document.addEventListener("DOMContentLoaded", function () {

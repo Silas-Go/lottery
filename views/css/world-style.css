@@ -433,39 +433,6 @@ html:has(.market-street-shell) {
     box-shadow: 3px 3px 0 #afc8ba;
 }
 
-.market-page .roof-strategy-board {
-    border: 3px solid var(--world-frame);
-    border-radius: 1px;
-    color: var(--world-ink);
-    background: #fff3d2;
-    box-shadow: 5px 5px 0 rgba(128, 100, 63, .35);
-}
-
-.market-page .roof-strategy-board header small,
-.market-page .roof-cache-settings legend,
-.market-page .roof-mode-switch small,
-.market-page .roof-cache-settings small,
-.market-page .roof-strategy-board > p {
-    color: var(--world-muted);
-}
-
-.market-page .roof-mode-switch button,
-.market-page .roof-cache-settings label {
-    border: 1px solid var(--world-line);
-    border-radius: 1px;
-    color: var(--world-ink);
-    background: #fffaf0;
-}
-
-.market-page .roof-mode-switch button:hover,
-.market-page .roof-mode-switch button.is-active,
-.market-page .roof-cache-settings label:has(input:checked) {
-    border-color: var(--world-teal-dark);
-    color: var(--world-ink);
-    background: #dff1e8;
-    box-shadow: inset 4px 0 var(--world-teal);
-}
-
 .market-page .shop-sign {
     border-color: var(--world-frame);
     color: #fff8dd;

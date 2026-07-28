@@ -276,16 +276,66 @@
     background: #f9f2df;
 }
 
+.query-focus .archive-reader-control {
+    position: relative;
+    padding: 12px;
+    border: 2px solid var(--query-frame);
+    background:
+        linear-gradient(90deg, rgba(48, 72, 68, .04) 1px, transparent 1px) 0 0 / 14px 14px,
+        #f4e8c9;
+    box-shadow: inset 0 0 0 3px #fff8e5, 4px 4px 0 #c5b38d;
+}
+
+.query-focus .archive-reader-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 34px;
+    padding: 6px 9px;
+    color: #f9f4df;
+    background: #304844;
+}
+
+.query-focus .archive-reader-heading > div {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+}
+
+.query-focus .archive-reader-heading small {
+    color: #b8cfbd;
+    font: 900 8px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .12em;
+}
+
+.query-focus .archive-reader-heading strong {
+    font-size: 13px;
+}
+
+.query-focus .archive-reader-heading output {
+    padding: 4px 7px;
+    color: #304844;
+    background: #dff1e8;
+    font: 900 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
 .query-focus .query-controls {
     grid-template-columns: minmax(0, 1fr) minmax(230px, 300px);
     gap: 12px;
+    margin-top: 10px;
+}
+
+.query-focus .reader-route-settings {
+    display: grid;
+    gap: 9px;
 }
 
 .query-focus .mode-switch {
     gap: 9px;
 }
 
-.query-focus .mode-switch article {
+.query-focus .mode-switch button {
     min-height: 82px;
     padding: 13px 14px;
     border: 1px solid var(--query-line);
@@ -295,15 +345,90 @@
     box-shadow: 3px 3px 0 #ddd0b5;
 }
 
-.query-focus .mode-switch article.is-active {
+.query-focus .mode-switch button:hover:not(:disabled) {
+    border-color: var(--query-teal-dark);
+    transform: translateY(-1px);
+}
+
+.query-focus .mode-switch button.is-active {
     border: 2px solid var(--query-teal-dark);
     background: #dff1e8;
     box-shadow: inset 5px 0 var(--query-teal), 3px 3px 0 #b7cabf;
 }
 
+.query-focus .mode-switch button:focus-visible,
+.query-focus .lab-cache-settings label:has(input:focus-visible) {
+    outline: 3px solid rgba(63, 146, 140, .32);
+    outline-offset: 2px;
+}
+
 .query-focus .mode-switch small,
 .query-focus .mode-switch span {
     color: var(--query-muted);
+}
+
+.query-focus .lab-cache-settings {
+    display: grid;
+    grid-template-columns: auto repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 7px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.query-focus .lab-cache-settings[hidden] {
+    display: none;
+}
+
+.query-focus .lab-cache-settings legend {
+    display: grid;
+    place-items: center;
+    float: left;
+    padding: 0 5px 0 0;
+    color: var(--query-muted);
+    font-size: 9px;
+    font-weight: 900;
+}
+
+.query-focus .lab-cache-settings label {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    padding: 7px 9px;
+    border: 1px solid var(--query-line);
+    background: #fffaf0;
+    cursor: pointer;
+}
+
+.query-focus .lab-cache-settings label:has(input:checked) {
+    border-color: var(--query-teal-dark);
+    background: #dff1e8;
+    box-shadow: inset 3px 0 var(--query-teal);
+}
+
+.query-focus .lab-cache-settings input {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--query-teal-dark);
+}
+
+.query-focus .lab-cache-settings span {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.query-focus .lab-cache-settings strong {
+    color: var(--query-ink);
+    font-size: 10px;
+}
+
+.query-focus .lab-cache-settings small {
+    color: var(--query-muted);
+    font-size: 8px;
 }
 
 .query-focus .query-button {
@@ -329,25 +454,11 @@
     color: rgba(255, 255, 247, .76);
 }
 
-.query-focus .shared-strategy-readout {
-    grid-template-columns: minmax(190px, .65fr) minmax(250px, 1.35fr) auto;
-    margin-top: 13px;
-    padding: 10px 12px;
-    border: 1px dashed var(--query-line);
-    border-radius: 1px;
-    background: #fbf5e5;
-}
-
-.query-focus .shared-strategy-readout strong {
-    color: var(--query-teal-dark);
-}
-
-.query-focus .shared-strategy-readout p {
+.query-focus .lab-strategy-explanation {
+    margin: 9px 2px 0;
     color: var(--query-muted);
-}
-
-.query-focus .shared-strategy-readout a {
-    color: var(--query-teal-dark);
+    font-size: 10px;
+    line-height: 1.5;
 }
 
 .query-focus .route-heading-row {
@@ -778,8 +889,7 @@
         grid-template-columns: 1fr 1fr;
     }
 
-    .query-focus .query-controls,
-    .query-focus .shared-strategy-readout {
+    .query-focus .query-controls {
         grid-template-columns: 1fr;
     }
 
@@ -874,11 +984,25 @@
         justify-self: start;
     }
 
+    .query-focus .archive-reader-control {
+        padding: 8px;
+    }
+
+    .query-focus .archive-reader-heading {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .query-focus .archive-reader-heading output {
+        align-self: flex-start;
+    }
+
     .query-focus .mode-switch {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .query-focus .mode-switch article {
+    .query-focus .mode-switch button {
         min-height: 76px;
         padding: 10px;
     }
@@ -890,6 +1014,16 @@
     .query-focus .mode-switch span {
         font-size: 9px;
         line-height: 1.35;
+    }
+
+    .query-focus .lab-cache-settings {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .query-focus .lab-cache-settings legend {
+        grid-column: 1 / -1;
+        justify-content: start;
+        min-height: 18px;
     }
 
     .query-focus .route-result {
