@@ -10,7 +10,7 @@
         "ARC-003": { name: "龙息琥珀", sigil: "Ⅲ", kind: "amber" },
         "ARC-004": { name: "星髓", sigil: "Ⅳ", kind: "star" }
     };
-    var state = "arrival";
+    var state = "dialogue";
     var selectedCode = null;
     var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var crowdStream = null;
@@ -519,10 +519,39 @@
         startTaskPolling(taskID);
     }
 
-    function enterLab() {
+    async function prepareStarMarrow(button, busyLabel, idleLabel) {
+        if (state !== "dialogue") {
+            return false;
+        }
+        button.disabled = true;
+        button.textContent = busyLabel;
+        try {
+            var response = await fetch("/api/purchase-lab/4/reset", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}"
+            });
+            if (!response.ok) {
+                throw new Error(await readAPIError(response));
+            }
+            setState("choosing");
+            selectMaterial("ARC-004");
+            showToast("星髓首发库存已真实重置为 100 份");
+            return true;
+        } catch (error) {
+            showToast(error.message, "danger");
+            return false;
+        } finally {
+            button.disabled = false;
+            button.textContent = idleLabel;
+        }
+    }
+
+    function enterLab(entryMode) {
         if (!selectedCode || state !== "record_selected") {
             return;
         }
+        var nextEntry = entryMode === "crowd-setup" ? "crowd-setup" : "single";
         setState("inserting_record");
         byId("market-announcer").textContent = selectedCode + " 档案片正在插入检索槽";
         animateRecordIntoSlot();
@@ -532,36 +561,20 @@
             byId("accepted-stamp").setAttribute("aria-hidden", "false");
             byId("market-announcer").textContent = "档案片已接受，正在进入机器内部";
             window.setTimeout(function () {
-                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) + "&entry=single");
+                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) + "&entry=" + nextEntry);
             }, reducedMotion ? 80 : 820);
         }, reducedMotion ? 40 : 700);
     }
 
     function bindEvents() {
         byId("show-materials").addEventListener("click", async function () {
-            if (state !== "dialogue") {
-                return;
-            }
-            var button = byId("show-materials");
-            button.disabled = true;
-            button.textContent = "正在开启首发库存…";
-            try {
-                var response = await fetch("/api/purchase-lab/4/reset", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: "{}"
-                });
-                if (!response.ok) {
-                    throw new Error(await readAPIError(response));
-                }
-                setState("choosing");
-                selectMaterial("ARC-004");
-                showToast("星髓首发库存已真实重置为 100 份");
-            } catch (error) {
-                showToast(error.message, "danger");
-            } finally {
-                button.disabled = false;
-                button.textContent = "接过星髓档案片";
+            await prepareStarMarrow(byId("show-materials"), "正在开启档案…", "独自查验");
+        });
+
+        byId("star-crowd-entry").addEventListener("click", async function () {
+            var button = byId("star-crowd-entry");
+            if (await prepareStarMarrow(button, "正在召集人潮…", "召集人潮")) {
+                enterLab("crowd-setup");
             }
         });
 
@@ -593,8 +606,8 @@
             setState("choosing");
             document.querySelector("[data-material]").focus({ preventScroll: true });
         });
-        byId("single-request").addEventListener("click", enterLab);
-        byId("crowd-test").addEventListener("click", openCrowdMode);
+        byId("single-request").addEventListener("click", function () { enterLab("single"); });
+        byId("crowd-test").addEventListener("click", function () { enterLab("crowd-setup"); });
         byId("start-crowd-test").addEventListener("click", startCrowdTest);
         byId("enter-crowd-lab").addEventListener("click", enterCrowdLabView);
         Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (button) {
@@ -627,12 +640,6 @@
         renderExperimentState(experimentState.get());
         experimentState.subscribe(renderExperimentState);
         restoreActiveTask();
-        window.setTimeout(function () {
-            if (state === "arrival") {
-                setState("dialogue");
-                byId("show-materials").focus({ preventScroll: true });
-            }
-        }, reducedMotion ? 80 : (arrivingFromStreet ? 760 : 480));
     });
 
     window.addEventListener("beforeunload", closeTaskTracking);

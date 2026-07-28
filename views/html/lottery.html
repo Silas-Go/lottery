@@ -9,7 +9,7 @@
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/lottery.css?v=20260724-wrk2-final-only" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260729-reader-switch" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260729-crowd-entry-2" />
 </head>
 
 <body class="lab-page query-focus" data-lab-mode="direct" data-route-state="idle">
@@ -128,6 +128,24 @@
                                     <input type="radio" name="lab-cache-temperature" value="hot" />
                                     <span><strong>热缓存</strong><small>保留已有副本</small></span>
                                 </label>
+                            </fieldset>
+                            <fieldset id="lab-crowd-settings" class="lab-crowd-settings" hidden>
+                                <legend>选择人潮挡位</legend>
+                                <div class="lab-crowd-options" role="group" aria-label="固定人潮挡位">
+                                    <button type="button" data-lab-crowd-tier="visitors" aria-pressed="false">
+                                        <strong>零星访客</strong><span>100 req/s</span><small>16 连接</small>
+                                    </button>
+                                    <button type="button" data-lab-crowd-tier="tide_eve" aria-pressed="false">
+                                        <strong>潮汐前夜</strong><span>500 req/s</span><small>32 连接</small>
+                                    </button>
+                                    <button class="is-active" type="button" data-lab-crowd-tier="crowd" aria-pressed="true">
+                                        <strong>人潮涌入</strong><span>1500 req/s</span><small>64 连接</small>
+                                    </button>
+                                    <button type="button" data-lab-crowd-tier="boiling_city" aria-pressed="false">
+                                        <strong>王城沸腾</strong><span>3000 req/s</span><small>96 连接</small>
+                                    </button>
+                                </div>
+                                <p><output id="lab-crowd-summary">人潮涌入 · 1500 req/s · 64 连接</output><small>固定运行 20 秒，Runner 会先重置缓存与指标。</small></p>
                             </fieldset>
                         </div>
                         <button id="query-archive" class="query-button" type="button">
@@ -447,7 +465,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/seckill-lab.js?v=20260728-star-marrow"></script>
+    <script src="/js/seckill-lab.js?v=20260729-crowd-entry-3"></script>
 </body>
 
 </html>

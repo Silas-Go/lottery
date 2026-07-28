@@ -407,8 +407,14 @@ html:has(.market-street-shell) {
 }
 
 .rare-material-actions {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(150px, 1.15fr) minmax(130px, 1fr) auto;
     gap: 10px;
+}
+
+.rare-material-actions .event-primary,
+.rare-material-actions .event-secondary {
+    margin-top: 0;
 }
 
 .rare-material-actions .event-secondary {
@@ -606,6 +612,10 @@ html:has(.market-street-shell) {
     .rare-material-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
+    }
+
+    .rare-material-actions #star-crowd-entry {
+        grid-column: 1 / -1;
     }
 
     .rare-material-actions .event-primary,

@@ -9,10 +9,10 @@
     <title>Silas 炼金市 · 材料情报店</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/lottery.css?v=20260722-loadtest-inside" />
-    <link rel="stylesheet" href="/css/world-style.css?v=20260728-star-marrow" />
+    <link rel="stylesheet" href="/css/world-style.css?v=20260729-crowd-entry" />
 </head>
 
-<body class="market-page" data-event-state="arrival">
+<body class="market-page" data-event-state="dialogue">
     <header class="market-topbar">
         <a class="market-brand" href="/" aria-label="返回暖潮街">
             <span class="market-brand-mark">S</span>
@@ -106,12 +106,7 @@
         <section class="event-card" aria-live="polite">
             <div class="event-heading">
                 <span id="event-kicker">RARE MATERIAL EVENT · STAR MARROW</span>
-                <small id="event-step">抵达</small>
-            </div>
-
-            <div id="arrival-copy" class="arrival-copy">
-                <strong>星髓现世</strong>
-                <p>你推开材料情报店的木门。来自坠星盆地的星髓正在柜台上发光，门外的人群还在增加。</p>
+                <small id="event-step">可行动</small>
             </div>
 
             <div id="dialogue-copy" class="dialogue-copy">
@@ -129,7 +124,8 @@
                     </div>
                 </div>
                 <div class="rare-material-actions">
-                    <button id="show-materials" class="event-primary" type="button">接过星髓档案片</button>
+                    <button id="star-crowd-entry" class="event-primary" type="button">召集人潮</button>
+                    <button id="show-materials" class="event-secondary" type="button">独自查验</button>
                     <button id="browse-materials" class="event-secondary" type="button">看看普通货架</button>
                 </div>
             </div>
@@ -236,7 +232,7 @@
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260728-star-marrow"></script>
+    <script src="/js/market.js?v=20260729-crowd-entry-2"></script>
 </body>
 
 </html>

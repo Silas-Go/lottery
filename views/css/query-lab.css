@@ -431,6 +431,99 @@
     font-size: 8px;
 }
 
+.query-focus .lab-crowd-settings {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 9px;
+    border: 1px solid var(--query-line);
+    background: rgba(255, 250, 240, .72);
+}
+
+.query-focus .lab-crowd-settings[hidden] {
+    display: none;
+}
+
+.query-focus .lab-crowd-settings legend {
+    padding: 0 5px;
+    color: var(--query-teal-dark);
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: .06em;
+}
+
+.query-focus .lab-crowd-options {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.query-focus .lab-crowd-options button {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+    padding: 8px;
+    border: 1px solid var(--query-line);
+    color: var(--query-ink);
+    background: #fffaf0;
+    cursor: pointer;
+    text-align: left;
+}
+
+.query-focus .lab-crowd-options button:hover:not(:disabled),
+.query-focus .lab-crowd-options button.is-active {
+    border-color: var(--query-teal-dark);
+    background: #dff1e8;
+    box-shadow: inset 3px 0 var(--query-teal);
+}
+
+.query-focus .lab-crowd-options button:focus-visible {
+    outline: 3px solid rgba(63, 146, 140, .32);
+    outline-offset: 2px;
+}
+
+.query-focus .lab-crowd-options button:disabled {
+    cursor: wait;
+    opacity: .62;
+}
+
+.query-focus .lab-crowd-options strong {
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.query-focus .lab-crowd-options span {
+    color: var(--query-teal-dark);
+    font: 900 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.query-focus .lab-crowd-options small {
+    color: var(--query-muted);
+    font-size: 8px;
+}
+
+.query-focus .lab-crowd-settings > p {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0;
+}
+
+.query-focus .lab-crowd-settings output {
+    color: var(--query-ink);
+    font-size: 9px;
+    font-weight: 900;
+}
+
+.query-focus .lab-crowd-settings > p small {
+    color: var(--query-muted);
+    font-size: 8px;
+    text-align: right;
+}
+
 .query-focus .query-button {
     min-height: 82px;
     border: 2px solid #254d4b;
@@ -1024,6 +1117,20 @@
         grid-column: 1 / -1;
         justify-content: start;
         min-height: 18px;
+    }
+
+    .query-focus .lab-crowd-options {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .query-focus .lab-crowd-settings > p {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .query-focus .lab-crowd-settings > p small {
+        text-align: left;
     }
 
     .query-focus .route-result {

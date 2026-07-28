@@ -63,6 +63,13 @@
         reducedMotion: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
     };
     var metricAnimations = new WeakMap();
+    var crowdTiers = Object.freeze({
+        visitors: Object.freeze({ label: "零星访客", rate: 100, connections: 16, duration: 20 }),
+        tide_eve: Object.freeze({ label: "潮汐前夜", rate: 500, connections: 32, duration: 20 }),
+        crowd: Object.freeze({ label: "人潮涌入", rate: 1500, connections: 64, duration: 20 }),
+        boiling_city: Object.freeze({ label: "王城沸腾", rate: 3000, connections: 96, duration: 20 })
+    });
+    var crowdTierID = "crowd";
 
     var sourceDefinitions = {
         mysql: {
@@ -258,7 +265,8 @@
     }
 
     function incomingEntry() {
-        return new URLSearchParams(window.location.search).get("entry") === "crowd" ? "crowd" : "single";
+        var entry = new URLSearchParams(window.location.search).get("entry");
+        return entry === "crowd" ? "crowd" : (entry === "crowd-setup" ? "crowd-setup" : "single");
     }
 
     function incomingLoadtestTaskID() {
@@ -331,6 +339,27 @@
         return experimentState.get();
     }
 
+    function isCrowdEntry() {
+        return state.entry === "crowd" || state.entry === "crowd-setup";
+    }
+
+    function renderCrowdSetup() {
+        var panel = byId("lab-crowd-settings");
+        panel.hidden = !isCrowdEntry();
+        if (!isCrowdEntry()) {
+            return;
+        }
+        var tier = crowdTiers[crowdTierID] || crowdTiers.crowd;
+        Array.prototype.forEach.call(document.querySelectorAll("[data-lab-crowd-tier]"), function (button) {
+            var active = button.dataset.labCrowdTier === crowdTierID;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        byId("lab-crowd-summary").textContent = tier.label + " · " +
+            tier.rate.toLocaleString("zh-CN") + " req/s · " + tier.connections + " 连接";
+        byId("query-endpoint").textContent = tier.rate.toLocaleString("zh-CN") + " req/s · " + tier.duration + "s";
+    }
+
     function renderExperimentState(next) {
         var cached = next.mode === "cached";
         document.body.dataset.labMode = next.mode;
@@ -338,7 +367,7 @@
         byId("mode-cached").classList.toggle("is-active", cached);
         byId("mode-direct").setAttribute("aria-pressed", cached ? "false" : "true");
         byId("mode-cached").setAttribute("aria-pressed", cached ? "true" : "false");
-        byId("lab-cache-settings").hidden = !cached;
+        byId("lab-cache-settings").hidden = !cached || isCrowdEntry();
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
             radio.checked = radio.value === next.cacheTemperature;
         });
@@ -346,17 +375,22 @@
         byId("lab-shared-strategy").textContent = cached ?
             "Redis Cache-Aside · " + (next.cacheTemperature === "cold" ? "冷缓存" : "热缓存") :
             "MySQL Direct";
-        byId("lab-strategy-explanation").textContent = cached ?
+        byId("lab-strategy-explanation").textContent = isCrowdEntry() ?
+            (cached ?
+                "人潮实验固定从冷缓存起跑；Runner 会先清空缓存与指标，再持续请求 Cache-Aside 路径。" :
+                "人潮实验会持续请求 MySQL Direct 路径；Runner 启动前会清空本章指标。") :
+            (cached ?
             (next.cacheTemperature === "cold" ?
                 "查询前先清空档案缓存与本章指标，首个真实响应应映射为 Cache Miss。" :
                 "保留已有 Redis 副本；实际结果仍以 X-Archive-Source 的 Hit 或 Miss 为准。") :
-            "Redis 不参与；每次请求都执行基础 JOIN、组成、交易和评分共 4 条 SQL。";
+            "Redis 不参与；每次请求都执行基础 JOIN、组成、交易和评分共 4 条 SQL。");
         if (!state.lastResponse) {
             setQueryVerdict(cached ?
                 "掌柜点评：这轮先问缓存，MISS 才去账房；最后仍由响应头裁定真实路线。" :
                 "掌柜点评：这轮绕过缓存，直接让 MySQL 组装完整材料档案。");
         }
         renderActiveMetrics();
+        renderCrowdSetup();
     }
 
     function updateControlState() {
@@ -369,8 +403,13 @@
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
             radio.disabled = locked;
         });
-        byId("query-archive").querySelector("span").textContent = state.isRequesting ?
-            "正在等待真实响应" : (loadtestLocked ? "人潮实验进行中" :
+        Array.prototype.forEach.call(document.querySelectorAll("[data-lab-crowd-tier]"), function (button) {
+            button.disabled = locked;
+        });
+        byId("query-archive").querySelector("span").textContent = isCrowdEntry() ?
+            (loadtestLocked ? "人潮实验进行中" :
+                (state.loadtestTask ? "再次召集人潮" : "召集人潮")) :
+            (state.isRequesting ? "正在等待真实响应" :
                 (state.lastResponse ? "再次启动读取实验" : "启动读取实验"));
         byId("reset-lab").disabled = loadtestLocked;
         byId("clear-comparison").disabled = loadtestLocked;
@@ -765,7 +804,7 @@
         var copies = {
             starting: ["准备实验", "Runner 已接单，正在准备受控压测。"],
             resetting: ["重置数据", "正在清空缓存和本章指标，保证本轮结果独立。"],
-            running: ["人潮正在涌入", "wrk2 正在店外持续提交真实读取请求。"],
+            running: ["人潮正在涌入", "wrk2 正在实验室持续提交真实读取请求。"],
             collecting: ["收集结果", "压测已结束，正在解析输出并汇总指标。"],
             completed: ["实验已完成", "结果已经冻结，并已进入下方路径比对。"],
             failed: ["实验失败", "Runner 未能完成本轮实验，请查看关键事件。"],
@@ -875,6 +914,10 @@
         }
         var previousStatus = state.loadtestTask && state.loadtestTask.status;
         state.loadtestTask = task;
+        if (task.tier && crowdTiers[task.tier.id]) {
+            crowdTierID = task.tier.id;
+            renderCrowdSetup();
+        }
         if (loadtestIsActive(task)) {
             state.loadtestLastActiveStatus = task.status;
         }
@@ -886,6 +929,9 @@
         panel.dataset.status = task.status || "starting";
         byId("lab-loadtest-title").textContent = copy[0];
         byId("lab-loadtest-copy").textContent = task.errorMessage || copy[1];
+        byId("request-status").textContent = copy[0];
+        byId("replay-status").textContent = loadtestIsActive(task) ? "SSE 正在接收真实请求" :
+            (task.status === "completed" ? "人潮实验结算完成" : "人潮实验已结束");
         byId("lab-loadtest-clock").textContent = formatLoadtestClock(task.elapsedSeconds) + " / " + formatLoadtestClock(duration);
         byId("lab-stop-loadtest").hidden = !loadtestIsActive(task);
         byId("lab-stop-loadtest").disabled = false;
@@ -972,6 +1018,77 @@
         state.loadtestStream.onerror = function () {
             fetchLoadtestTask();
         };
+    }
+
+    async function startCrowdTest() {
+        if (loadtestIsActive(state.loadtestTask)) {
+            return;
+        }
+        var experiment = currentExperiment();
+        var tier = crowdTiers[crowdTierID] || crowdTiers.crowd;
+        var button = byId("query-archive");
+        button.disabled = true;
+        button.querySelector("span").textContent = "正在打开人潮入口";
+        try {
+            if (experiment.cacheTemperature !== "cold") {
+                experiment = experimentState.set({ cacheTemperature: "cold" });
+            }
+            var result = await requestJSON("/api/loadtests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    experiment: "cache-aside-read",
+                    archiveId: state.id,
+                    mode: experiment.mode,
+                    tier: crowdTierID
+                })
+            });
+            var created = result.body;
+            var pending = {
+                taskId: created.taskId,
+                entry: "crowd",
+                materialCode: state.profile.code,
+                materialName: state.profile.name,
+                mode: experiment.mode,
+                cacheTemperature: "cold",
+                tier: crowdTierID,
+                expectedRate: tier.rate,
+                expectedDurationSeconds: tier.duration,
+                armedAt: new Date().toISOString()
+            };
+            experimentResults.arm(pending);
+            state.pendingRun = pending;
+            state.entry = "crowd";
+            state.loadtestTaskId = created.taskId;
+            state.loadtestResultSaved = false;
+            state.loadtestRecordLoaded = false;
+            document.body.dataset.entryMode = "crowd";
+            var nextURL = new URL(window.location.href);
+            nextURL.searchParams.set("entry", "crowd");
+            nextURL.searchParams.set("task", created.taskId);
+            window.history.replaceState(null, "", nextURL.toString());
+            stopLoadtestConnections();
+            renderLoadtestTask({
+                taskId: created.taskId,
+                status: created.status || "starting",
+                mode: experiment.mode,
+                elapsedSeconds: 0,
+                metrics: {},
+                logs: [{ level: "info", message: "准备实验" }],
+                tier: {
+                    id: crowdTierID,
+                    label: tier.label,
+                    rate: tier.rate,
+                    connections: tier.connections,
+                    durationSeconds: tier.duration
+                }
+            });
+            connectLoadtestTask(created.taskId);
+            showToast(tier.label + "已经受理，真实请求即将开始。", "success");
+        } catch (error) {
+            showToast(error.message, "danger");
+            updateControlState();
+        }
     }
 
     async function stopLoadtest() {
@@ -1629,7 +1746,22 @@
                 }
             });
         });
-        byId("query-archive").addEventListener("click", readArchive);
+        Array.prototype.forEach.call(document.querySelectorAll("[data-lab-crowd-tier]"), function (button) {
+            button.addEventListener("click", function () {
+                var nextTier = button.dataset.labCrowdTier;
+                if (!loadtestIsActive(state.loadtestTask) && crowdTiers[nextTier]) {
+                    crowdTierID = nextTier;
+                    renderCrowdSetup();
+                }
+            });
+        });
+        byId("query-archive").addEventListener("click", function () {
+            if (isCrowdEntry()) {
+                startCrowdTest();
+            } else {
+                readArchive();
+            }
+        });
         byId("reset-lab").addEventListener("click", resetLab);
         byId("clear-comparison").addEventListener("click", clearComparison);
         byId("lab-stop-loadtest").addEventListener("click", stopLoadtest);
@@ -1656,6 +1788,9 @@
         bindEvents();
         var entry = incomingEntry();
         state.entry = entry;
+        if (isCrowdEntry() && currentExperiment().cacheTemperature !== "cold") {
+            experimentState.set({ cacheTemperature: "cold" });
+        }
         state.pendingRun = entry === "crowd" ? experimentResults.pending() : null;
         state.loadtestTaskId = entry === "crowd" ? (incomingLoadtestTaskID() ||
             (state.pendingRun && state.pendingRun.taskId) || "") : "";
@@ -1668,11 +1803,14 @@
         updateControlState();
         updateMetricsPlaybackControls();
         if (entry === "crowd") {
-            byId("request-status").textContent = "已从材料店门口跟随压测请求进入";
-            byId("replay-status").textContent = "等待 SSE 捕获后续请求";
+            byId("request-status").textContent = "正在连接人潮实验";
+            byId("replay-status").textContent = "等待 SSE 捕获真实请求";
             if (state.loadtestTaskId) {
                 connectLoadtestTask(state.loadtestTaskId);
             }
+        } else if (entry === "crowd-setup") {
+            byId("request-status").textContent = "选择读取路径与人潮挡位";
+            byId("replay-status").textContent = "等待召集人潮";
         }
         fetchSnapshot();
         connectMetrics();
