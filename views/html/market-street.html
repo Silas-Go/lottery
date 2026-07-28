@@ -5,11 +5,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f6edcf" />
-    <meta name="description" content="暖潮街 17 号：选择秒杀请求预览，或进入材料情报店体验 Cache-Aside。" />
+    <meta name="description" content="暖潮街 17 号：星髓现世，从材料情报店一路进入真实 Cache-Aside 查询与购买实验。" />
     <title>暖潮街 17 号 · 技术实验街区</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/market-street.css?v=20260721-static-scene" />
-    <link rel="stylesheet" href="/css/world-style.css?v=20260727-whip-pan" />
+    <link rel="stylesheet" href="/css/world-style.css?v=20260728-star-marrow" />
 </head>
 
 <body class="market-street-shell" data-dialogue="street" data-seckill-state="idle">
@@ -81,17 +81,21 @@
         <section class="event-dialogue" data-component="EventDialogue" aria-live="polite">
             <div id="street-dialogue" class="event-dialogue__view event-dialogue__view--street">
                 <div class="event-dialogue__heading">
-                    <span>街道事件 · 暖阳</span>
-                    <small>MARKET EVENT 01</small>
+                    <span>街道事件 · 稀有材料现世</span>
+                    <small>RARE MATERIAL ALERT</small>
                 </div>
-                <h2>暖潮街 17 号</h2>
-                <p>魔法潮汐接近，街上的实验店陆续亮起招牌。左边演示限时委托，右边是材料情报店门口。</p>
+                <h2>坠星盆地送来一枚星髓</h2>
+                <p>材料情报店刚把实物摆上柜台：首批只开放 100 份，却已有 1500 名法师赶来查档。</p>
+                <div class="street-rare-notice" aria-label="星髓事件摘要">
+                    <img src="/img/star-marrow-relic.png" alt="深蓝晶体中流动着金色星光的星髓" />
+                    <span><strong>ARC-004 · 星髓</strong><small>先验证热点查询，再观察 150 人争购 100 份库存。</small></span>
+                </div>
                 <div class="event-choices" aria-label="选择前往的店铺">
                     <button id="dialogue-seckill" type="button">
                         <span aria-hidden="true">Ⅰ</span><strong>前往秒杀实验室<small>观看请求卡片的前端演示</small></strong>
                     </button>
                     <button id="dialogue-archive" type="button">
-                        <span aria-hidden="true">Ⅱ</span><strong>前往材料情报店门口<small>选择材料，再进入 Cache-Aside 实验</small></strong>
+                        <span aria-hidden="true">Ⅱ</span><strong>进入材料情报店<small>亲眼查验星髓，再跟随人潮进入实验</small></strong>
                     </button>
                 </div>
             </div>
@@ -128,7 +132,7 @@
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/market-scene-config.js?v=20260721-static-scene"></script>
     <script src="/js/seckill-mock.js?v=20260721-state-machine"></script>
-    <script src="/js/market-street.js?v=20260727-whip-pan"></script>
+    <script src="/js/market-street.js?v=20260728-star-marrow"></script>
 </body>
 
 </html>

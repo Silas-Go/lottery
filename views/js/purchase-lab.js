@@ -794,6 +794,10 @@
             return "掌柜点评：这轮链路没有结算成功，先看失败证据，再决定是否重跑。";
         }
         var consistent = currentConsistency(run);
+        if (Number(run.soldOutRequests || 0) > 0 && consistent) {
+            return "掌柜点评：" + run.purchaseSucceeded + " 份星髓各归其主，" +
+                run.soldOutRequests + " 人收到售罄；库存没有超卖，缓存最终也追平了账本。";
+        }
         if (record.strategy === "sync-invalidate") {
             return consistent ?
                 "掌柜点评：库存牌最终追平，但顾客为同步删除多等了一程。" :
@@ -1621,6 +1625,7 @@
 
     async function fetchStockState() {
         state.stock = await requestJSON("/api/purchase-lab/" + state.materialId + "/state");
+        byId("story-initial-stock").textContent = formatNumber(state.stock.initialStock);
         if (!state.record) {
             byId("purchase-stock-summary").textContent =
                 "MySQL " + stockText(state.stock.mysqlStock) + " · Redis " + stockText(state.stock.redisStock);
@@ -1634,6 +1639,7 @@
             body: "{}"
         });
         state.stock = payload.state;
+        byId("story-initial-stock").textContent = formatNumber(state.stock.initialStock);
         return payload.state;
     }
 
@@ -2362,6 +2368,7 @@
         }
         state.materialId = material.id;
         state.profile = material.profile;
+        document.body.dataset.materialKind = material.profile.code === "ARC-004" ? "star" : "standard";
         rememberMaterial(material.profile);
         byId("purchase-current-code").textContent = material.profile.code;
         byId("purchase-current-name").textContent = material.profile.name;

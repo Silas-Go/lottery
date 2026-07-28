@@ -154,7 +154,7 @@
 .purchase-focus .purchase-story-brief {
     order: 1;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 78px minmax(0, 1fr) auto;
     gap: 16px;
     padding: 12px 14px;
     border: 0;
@@ -162,6 +162,34 @@
     border-radius: 0;
     background: transparent;
     box-shadow: none;
+}
+
+.purchase-relic {
+    align-self: center;
+    margin: 0;
+}
+
+.purchase-relic img {
+    display: block;
+    width: 72px;
+    aspect-ratio: 1;
+    border: 1px solid var(--focus-line);
+    object-fit: cover;
+}
+
+.purchase-relic figcaption {
+    margin-top: 4px;
+    color: #6b5f91;
+    font: 900 7px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+    text-align: center;
+}
+
+.purchase-focus:not([data-material-kind="star"]) .purchase-relic {
+    display: none;
+}
+
+.purchase-focus:not([data-material-kind="star"]) .purchase-story-brief {
+    grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .purchase-focus .purchase-story-brief h1 {
@@ -1019,9 +1047,17 @@
     }
 
     .purchase-focus .purchase-story-brief {
-        grid-template-columns: 1fr;
+        grid-template-columns: 64px minmax(0, 1fr);
         gap: 8px;
         padding: 9px;
+    }
+
+    .purchase-focus .purchase-story-brief dl {
+        grid-column: 1 / -1;
+    }
+
+    .purchase-relic img {
+        width: 60px;
     }
 
     .purchase-focus .purchase-story-brief h1 {

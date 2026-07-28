@@ -31,7 +31,7 @@
         powershell: Object.freeze({ label: "PowerShell 5.1+" }),
         bash: Object.freeze({ label: "Bash / WSL" })
     });
-    var crowdTierID = "tide_eve";
+    var crowdTierID = "crowd";
     var crowdShell = "powershell";
 
     function byId(id) {
@@ -553,7 +553,34 @@
     }
 
     function bindEvents() {
-        byId("show-materials").addEventListener("click", function () {
+        byId("show-materials").addEventListener("click", async function () {
+            if (state !== "dialogue") {
+                return;
+            }
+            var button = byId("show-materials");
+            button.disabled = true;
+            button.textContent = "正在开启首发库存…";
+            try {
+                var response = await fetch("/api/purchase-lab/4/reset", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: "{}"
+                });
+                if (!response.ok) {
+                    throw new Error(await readAPIError(response));
+                }
+                setState("choosing");
+                selectMaterial("ARC-004");
+                showToast("星髓首发库存已真实重置为 100 份");
+            } catch (error) {
+                showToast(error.message, "danger");
+            } finally {
+                button.disabled = false;
+                button.textContent = "接过星髓档案片";
+            }
+        });
+
+        byId("browse-materials").addEventListener("click", function () {
             if (state !== "dialogue") {
                 return;
             }

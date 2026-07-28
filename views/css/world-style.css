@@ -200,6 +200,47 @@ html:has(.market-street-shell) {
     font-weight: 900;
 }
 
+.street-rare-notice {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    margin: 8px 0 11px;
+    padding: 6px;
+    border: 1px solid var(--world-line);
+    background: #fff8df;
+    box-shadow: inset 3px 0 #8877d7;
+}
+
+.street-rare-notice img {
+    width: 58px;
+    aspect-ratio: 1;
+    border: 1px solid var(--world-frame);
+    object-fit: cover;
+}
+
+.street-rare-notice span,
+.street-rare-notice strong,
+.street-rare-notice small {
+    display: block;
+}
+
+.street-rare-notice span {
+    min-width: 0;
+}
+
+.street-rare-notice strong {
+    color: #55477e;
+    font-size: 12px;
+}
+
+.street-rare-notice small {
+    margin-top: 3px;
+    color: var(--world-muted);
+    font-size: 9px;
+    line-height: 1.45;
+}
+
 .market-street-shell .event-choices button,
 .market-street-shell .preview-actions button {
     border: 1px solid var(--world-line);
@@ -301,6 +342,77 @@ html:has(.market-street-shell) {
     color: #fffef7;
     background: var(--world-teal);
     box-shadow: 4px 4px 0 #244b49;
+}
+
+.rare-material-feature {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+}
+
+.rare-material-feature img {
+    width: 112px;
+    aspect-ratio: 1;
+    border: 2px solid var(--world-frame);
+    object-fit: cover;
+    box-shadow: 4px 4px 0 #cbb78e;
+}
+
+.rare-material-feature > div > small {
+    color: #7665b1;
+    font: 900 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .1em;
+}
+
+.rare-material-feature > div > strong {
+    display: block;
+    margin: 4px 0;
+    color: var(--world-ink);
+    font-size: 20px;
+}
+
+.market-page .rare-material-feature p {
+    margin-bottom: 7px;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.rare-material-feature dl {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin: 0;
+    border: 1px solid var(--world-line);
+    background: #fffaf0;
+}
+
+.rare-material-feature dl > div {
+    padding: 6px 8px;
+    border-left: 1px solid var(--world-line);
+}
+
+.rare-material-feature dl > div:first-child {
+    border-left: 0;
+}
+
+.rare-material-feature dt {
+    color: var(--world-muted);
+    font-size: 8px;
+}
+
+.rare-material-feature dd {
+    margin: 2px 0 0;
+    color: var(--world-teal-dark);
+    font: 900 12px/1 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.rare-material-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.rare-material-actions .event-secondary {
+    border-style: dashed;
 }
 
 .market-page .event-secondary,
@@ -488,6 +600,14 @@ html:has(.market-street-shell) {
         padding: 17px 16px 16px;
     }
 
+    .street-rare-notice {
+        grid-template-columns: 48px minmax(0, 1fr);
+    }
+
+    .street-rare-notice img {
+        width: 48px;
+    }
+
     .market-page .market-topbar {
         gap: 10px;
         padding: 0 12px;
@@ -501,6 +621,29 @@ html:has(.market-street-shell) {
     .market-page .market-location > i,
     .market-page .market-location > span {
         display: none;
+    }
+
+    .rare-material-feature {
+        grid-template-columns: 78px minmax(0, 1fr);
+        gap: 10px;
+    }
+
+    .rare-material-feature img {
+        width: 78px;
+    }
+
+    .rare-material-feature dl {
+        grid-column: 1 / -1;
+    }
+
+    .rare-material-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .rare-material-actions .event-primary,
+    .rare-material-actions .event-secondary {
+        padding-inline: 10px;
     }
 }
 

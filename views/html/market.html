@@ -5,11 +5,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f2c77d" />
-    <meta name="description" content="在阳光下的 Silas 炼金市选择材料档案片，再进入 Cache-Aside 技术实验室。" />
+    <meta name="description" content="星髓现世：在材料情报店查验实物，并进入真实 Cache-Aside 查询与限量购买实验。" />
     <title>Silas 炼金市 · 材料情报店</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/lottery.css?v=20260722-loadtest-inside" />
-    <link rel="stylesheet" href="/css/world-style.css?v=20260727-whip-pan" />
+    <link rel="stylesheet" href="/css/world-style.css?v=20260728-star-marrow" />
 </head>
 
 <body class="market-page" data-event-state="arrival">
@@ -108,12 +108,12 @@
                 <i></i><i></i><i></i><i></i><i></i><i></i>
             </div>
             <div id="crowd-tickets" class="crowd-tickets" aria-hidden="true">
-                <i><span data-crowd-ticket>ARC-002</span></i>
-                <i><span data-crowd-ticket>ARC-002</span></i>
-                <i><span data-crowd-ticket>ARC-002</span></i>
-                <i><span data-crowd-ticket>ARC-002</span></i>
-                <i><span data-crowd-ticket>ARC-002</span></i>
-                <i><span data-crowd-ticket>ARC-002</span></i>
+                <i><span data-crowd-ticket>ARC-004</span></i>
+                <i><span data-crowd-ticket>ARC-004</span></i>
+                <i><span data-crowd-ticket>ARC-004</span></i>
+                <i><span data-crowd-ticket>ARC-004</span></i>
+                <i><span data-crowd-ticket>ARC-004</span></i>
+                <i><span data-crowd-ticket>ARC-004</span></i>
             </div>
 
             <div class="stone-street" aria-hidden="true"></div>
@@ -124,27 +124,40 @@
 
             <div id="accepted-stamp" class="accepted-stamp" role="status" aria-live="polite" aria-hidden="true">
                 <span>ARCHIVE ACCEPTED</span>
-                <strong id="accepted-material">ARC-002 · 雾银</strong>
+                <strong id="accepted-material">ARC-004 · 星髓</strong>
             </div>
             <div class="slot-focus" aria-hidden="true"></div>
         </section>
 
         <section class="event-card" aria-live="polite">
             <div class="event-heading">
-                <span id="event-kicker">A SHORT EVENT · MATERIAL INTELLIGENCE</span>
+                <span id="event-kicker">RARE MATERIAL EVENT · STAR MARROW</span>
                 <small id="event-step">抵达</small>
             </div>
 
             <div id="arrival-copy" class="arrival-copy">
-                <strong>魔法潮汐前夕</strong>
-                <p>暖阳落在石板路上。你推开材料情报店的木门，柜台后的店主抬起头。</p>
+                <strong>星髓现世</strong>
+                <p>你推开材料情报店的木门。来自坠星盆地的星髓正在柜台上发光，门外的人群还在增加。</p>
             </div>
 
             <div id="dialogue-copy" class="dialogue-copy">
-                <strong>店主</strong>
-                <p>“魔法潮汐快到了。最近来打听材料的人越来越多。”</p>
-                <p>“你想查询哪一种材料？”</p>
-                <button id="show-materials" class="event-primary" type="button">选择材料档案</button>
+                <div class="rare-material-feature">
+                    <img src="/img/star-marrow-relic.png" alt="深蓝晶体中流动着金色星光的星髓" />
+                    <div>
+                        <small>LEGENDARY · 首批发售</small>
+                        <strong>ARC-004 · 星髓</strong>
+                        <p>“1500 人正在查它的档案。首批只有 100 份——先把这张档案片交给你。”</p>
+                        <dl>
+                            <div><dt>调查者</dt><dd>1500</dd></div>
+                            <div><dt>购买者</dt><dd>150</dd></div>
+                            <div><dt>首批库存</dt><dd>100</dd></div>
+                        </dl>
+                    </div>
+                </div>
+                <div class="rare-material-actions">
+                    <button id="show-materials" class="event-primary" type="button">接过星髓档案片</button>
+                    <button id="browse-materials" class="event-secondary" type="button">看看普通货架</button>
+                </div>
             </div>
 
             <div id="material-choices" class="material-choices" role="list" aria-label="选择要查询的材料">
@@ -163,10 +176,10 @@
             </div>
 
             <div id="record-selection" class="record-selection">
-                <div id="record-card" class="record-card" data-kind="silver">
-                    <span id="record-code">ARC-002</span>
-                    <i id="record-sigil" aria-hidden="true">Ⅱ</i>
-                    <strong id="record-name">雾银</strong>
+                <div id="record-card" class="record-card" data-kind="star">
+                    <span id="record-code">ARC-004</span>
+                    <i id="record-sigil" aria-hidden="true">Ⅳ</i>
+                    <strong id="record-name">星髓</strong>
                     <small>MATERIAL ARCHIVE</small>
                     <em>UNREAD RECORD</em>
                 </div>
@@ -176,7 +189,7 @@
                         <p>“你可以亲自投递这一张档案片，也可以召集一批访客同时提交查询。”</p>
                         <div class="delivery-choice" role="group" aria-label="选择档案投递方式">
                             <button id="single-request" type="button">
-                                <strong>单人购买</strong><small>先投递一次只读资料校验</small>
+                                <strong>查验一份档案</strong><small>先发出一次真实只读请求</small>
                             </button>
                             <button id="crowd-test" type="button">
                                 <strong>召集人潮</strong><small>选择固定人潮挡位，准备批量投递</small>
@@ -196,17 +209,17 @@
                                 <button type="button" data-crowd-tier="visitors" aria-pressed="false">
                                     <span>零星访客</span><strong>100 req/s</strong><small>16 条连接</small>
                                 </button>
-                                <button class="is-active" type="button" data-crowd-tier="tide_eve" aria-pressed="true">
+                                <button type="button" data-crowd-tier="tide_eve" aria-pressed="false">
                                     <span>潮汐前夜</span><strong>500 req/s</strong><small>32 条连接</small>
                                 </button>
-                                <button type="button" data-crowd-tier="crowd" aria-pressed="false">
+                                <button class="is-active" type="button" data-crowd-tier="crowd" aria-pressed="true">
                                     <span>人潮涌入</span><strong>1500 req/s</strong><small>64 条连接</small>
                                 </button>
                                 <button type="button" data-crowd-tier="boiling_city" aria-pressed="false">
                                     <span>王城沸腾</span><strong>3000 req/s</strong><small>96 条连接</small>
                                 </button>
                             </div>
-                            <div class="crowd-tier-selection"><small>当前挡位</small><output id="crowd-size-value">潮汐前夜 · 500 req/s · 32 连接</output></div>
+                            <div class="crowd-tier-selection"><small>当前挡位</small><output id="crowd-size-value">人潮涌入 · 1500 req/s · 64 连接</output></div>
                             <small id="crowd-size-note">固定运行 20 秒。批量实验会先重置数据；所有参数由 Runner 白名单决定。</small>
                         </fieldset>
                         <div class="crowd-run-actions">
@@ -249,7 +262,7 @@
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260727-whip-pan"></script>
+    <script src="/js/market.js?v=20260728-star-marrow"></script>
 </body>
 
 </html>

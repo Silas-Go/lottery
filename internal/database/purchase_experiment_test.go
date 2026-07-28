@@ -252,6 +252,9 @@ func TestPurchaseExperimentConcurrentStockNeverNegative(t *testing.T) {
 	if appErr != nil {
 		t.Fatalf("reset oversell fixture: %v", appErr)
 	}
+	if baseline.InitialStock != 100 {
+		t.Fatalf("star marrow launch stock must be 100, got %d", baseline.InitialStock)
+	}
 
 	batchID := purchaseIntegrationID("oversell")
 	attempts := baseline.InitialStock + 8

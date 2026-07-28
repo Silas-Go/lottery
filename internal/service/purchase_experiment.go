@@ -26,6 +26,9 @@ const (
 
 	maxPurchaseBatch = 150
 	maxQueryBatch    = 20
+	// 同一材料只有一行权威库存。150 个事务同时争抢这把行锁会把“购买人数”
+	// 偷换成锁等待实验；12 个并发槽既保留真实竞争，也让 150 人持续请求池稳定结算。
+	maxConcurrentPurchases = 12
 )
 
 var purchaseRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$`)
@@ -173,7 +176,7 @@ func (s *PurchaseLabService) Reset(materialID int) (*database.PurchaseExperiment
 	return s.State(materialID)
 }
 
-// RunExperiment 并发释放最多 150 个真实购买，并让可选查询样本与缓存失效窗口竞争。
+// RunExperiment 让最多 150 个真实购买通过受控并发槽持续进入，并让查询样本与缓存失效窗口竞争。
 // 每个购买请求使用独立 request_id；重复提交同一批次不会再次扣库存。
 func (s *PurchaseLabService) RunExperiment(
 	ctx context.Context,
@@ -218,19 +221,23 @@ func (s *PurchaseLabService) RunExperiment(
 
 	withOutbox := request.Strategy == PurchaseOutboxMQInvalidate
 	purchaseResults := make(chan purchaseExecutionResult, request.PurchaseCount)
+	purchaseSlots := make(chan struct{}, maxConcurrentPurchases)
 	var purchaseWait sync.WaitGroup
 	for index := 0; index < request.PurchaseCount; index++ {
 		purchaseWait.Add(1)
 		go func(purchaseIndex int) {
 			defer purchaseWait.Done()
 			<-startGate
+			purchaseSlots <- struct{}{}
+			defer func() { <-purchaseSlots }()
 			purchaseResults <- s.executePurchase(
 				ctx, request, materialID, purchaseIndex, withOutbox,
 			)
 		}(index)
 	}
 	recorder.add("purchase", "transaction_started", "PURCHASES RELEASED",
-		fmt.Sprintf("%d 个唯一 request_id 已并发进入购买事务", request.PurchaseCount),
+		fmt.Sprintf("%d 个唯一 request_id 已进入持续请求池，最多 %d 个事务同时争抢库存",
+			request.PurchaseCount, maxConcurrentPurchases),
 		"mysql", 0, run.FinalMySQLStock, run.FinalRedisStock, nil)
 	close(startGate)
 	go func() {

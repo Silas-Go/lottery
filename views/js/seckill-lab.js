@@ -213,7 +213,9 @@
     }
 
     function queryVerdict(source, latency) {
-        var latencyText = Number.isFinite(Number(latency)) ? "，真实响应 " + Number(latency).toFixed(1) + " ms" : "";
+        var hasLatency = latency !== null && latency !== undefined && latency !== "" &&
+            Number.isFinite(Number(latency));
+        var latencyText = hasLatency ? "，真实响应 " + Number(latency).toFixed(1) + " ms" : "";
         if (source === "mysql") {
             return "掌柜点评：这次直奔账房，路径最坦白" + latencyText + "；每次查询都要让 MySQL 亲自翻档案。";
         }
@@ -319,6 +321,7 @@
         document.body.dataset.materialKind = context.profile.kind;
         byId("lab-current-code").textContent = context.profile.code;
         byId("lab-current-name").textContent = context.profile.name;
+        byId("rare-query-brief").hidden = context.profile.kind !== "star";
         byId("empty-state").hidden = true;
         byId("lab-content").hidden = false;
         return true;
@@ -416,7 +419,7 @@
             item.classList.remove("is-current");
             item.classList.add("is-complete");
         });
-        var latency = origin === "manual" && state.lastResponse ? state.lastResponse.latency : null;
+        var latency = state.lastResponse ? state.lastResponse.latency : null;
         setQueryVerdict(queryVerdict(source, latency));
         updateControlState();
     }
