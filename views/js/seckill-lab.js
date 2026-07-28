@@ -273,6 +273,11 @@
         return new URLSearchParams(window.location.search).get("task") || "";
     }
 
+    function incomingCrowdTier() {
+        var tier = new URLSearchParams(window.location.search).get("tier") || "";
+        return crowdTiers[tier] ? tier : "crowd";
+    }
+
     function rememberMaterial(profile) {
         try {
             window.sessionStorage.setItem(STORAGE_KEY, profile.code);
@@ -350,11 +355,6 @@
             return;
         }
         var tier = crowdTiers[crowdTierID] || crowdTiers.crowd;
-        Array.prototype.forEach.call(document.querySelectorAll("[data-lab-crowd-tier]"), function (button) {
-            var active = button.dataset.labCrowdTier === crowdTierID;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-        });
         byId("lab-crowd-summary").textContent = tier.label + " · " +
             tier.rate.toLocaleString("zh-CN") + " req/s · " + tier.connections + " 连接";
         byId("query-endpoint").textContent = tier.rate.toLocaleString("zh-CN") + " req/s · " + tier.duration + "s";
@@ -403,12 +403,9 @@
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
             radio.disabled = locked;
         });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-lab-crowd-tier]"), function (button) {
-            button.disabled = locked;
-        });
         byId("query-archive").querySelector("span").textContent = isCrowdEntry() ?
             (loadtestLocked ? "人潮实验进行中" :
-                (state.loadtestTask ? "再次召集人潮" : "召集人潮")) :
+                (state.loadtestTask ? "再次启动人潮实验" : "启动人潮实验")) :
             (state.isRequesting ? "正在等待真实响应" :
                 (state.lastResponse ? "再次启动读取实验" : "启动读取实验"));
         byId("reset-lab").disabled = loadtestLocked;
@@ -1028,7 +1025,7 @@
         var tier = crowdTiers[crowdTierID] || crowdTiers.crowd;
         var button = byId("query-archive");
         button.disabled = true;
-        button.querySelector("span").textContent = "正在打开人潮入口";
+        button.querySelector("span").textContent = "正在启动人潮实验";
         try {
             if (experiment.cacheTemperature !== "cold") {
                 experiment = experimentState.set({ cacheTemperature: "cold" });
@@ -1746,15 +1743,6 @@
                 }
             });
         });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-lab-crowd-tier]"), function (button) {
-            button.addEventListener("click", function () {
-                var nextTier = button.dataset.labCrowdTier;
-                if (!loadtestIsActive(state.loadtestTask) && crowdTiers[nextTier]) {
-                    crowdTierID = nextTier;
-                    renderCrowdSetup();
-                }
-            });
-        });
         byId("query-archive").addEventListener("click", function () {
             if (isCrowdEntry()) {
                 startCrowdTest();
@@ -1788,6 +1776,7 @@
         bindEvents();
         var entry = incomingEntry();
         state.entry = entry;
+        crowdTierID = incomingCrowdTier();
         if (isCrowdEntry() && currentExperiment().cacheTemperature !== "cold") {
             experimentState.set({ cacheTemperature: "cold" });
         }
@@ -1809,8 +1798,8 @@
                 connectLoadtestTask(state.loadtestTaskId);
             }
         } else if (entry === "crowd-setup") {
-            byId("request-status").textContent = "选择读取路径与人潮挡位";
-            byId("replay-status").textContent = "等待召集人潮";
+            byId("request-status").textContent = "门口人数已锁定，选择读取路径";
+            byId("replay-status").textContent = "等待启动实验";
         }
         fetchSnapshot();
         connectMetrics();

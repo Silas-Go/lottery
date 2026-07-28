@@ -143,7 +143,8 @@
         });
 
         if (state === "crowd_preparing" && !activeTask) {
-            byId("crowd-status-copy").textContent = tier.label + "已就绪，点击后由页面直接启动实验。";
+            byId("crowd-status-title").textContent = tier.label + "已集合";
+            byId("crowd-status-copy").textContent = "带他们进入实验室，再选择 MySQL 或 Redis 路径。";
         }
     }
 
@@ -548,10 +549,13 @@
     }
 
     function enterLab(entryMode) {
-        if (!selectedCode || state !== "record_selected") {
+        var nextEntry = entryMode === "crowd-setup" ? "crowd-setup" : "single";
+        var canEnter = state === "record_selected" ||
+            (nextEntry === "crowd-setup" && state === "crowd_preparing");
+        if (!selectedCode || !canEnter) {
             return;
         }
-        var nextEntry = entryMode === "crowd-setup" ? "crowd-setup" : "single";
+        var tierQuery = nextEntry === "crowd-setup" ? "&tier=" + encodeURIComponent(crowdTierID) : "";
         setState("inserting_record");
         byId("market-announcer").textContent = selectedCode + " 档案片正在插入检索槽";
         animateRecordIntoSlot();
@@ -561,7 +565,8 @@
             byId("accepted-stamp").setAttribute("aria-hidden", "false");
             byId("market-announcer").textContent = "档案片已接受，正在进入机器内部";
             window.setTimeout(function () {
-                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) + "&entry=" + nextEntry);
+                window.location.assign("/lab?material=" + encodeURIComponent(selectedCode) +
+                    "&entry=" + nextEntry + tierQuery);
             }, reducedMotion ? 80 : 820);
         }, reducedMotion ? 40 : 700);
     }
@@ -574,7 +579,7 @@
         byId("star-crowd-entry").addEventListener("click", async function () {
             var button = byId("star-crowd-entry");
             if (await prepareStarMarrow(button, "正在召集人潮…", "召集人潮")) {
-                enterLab("crowd-setup");
+                openCrowdMode();
             }
         });
 
@@ -607,8 +612,8 @@
             document.querySelector("[data-material]").focus({ preventScroll: true });
         });
         byId("single-request").addEventListener("click", function () { enterLab("single"); });
-        byId("crowd-test").addEventListener("click", function () { enterLab("crowd-setup"); });
-        byId("start-crowd-test").addEventListener("click", startCrowdTest);
+        byId("crowd-test").addEventListener("click", openCrowdMode);
+        byId("start-crowd-test").addEventListener("click", function () { enterLab("crowd-setup"); });
         byId("enter-crowd-lab").addEventListener("click", enterCrowdLabView);
         Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (button) {
             button.addEventListener("click", function () {

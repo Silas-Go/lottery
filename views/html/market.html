@@ -162,7 +162,7 @@
                                 <strong>查验一份档案</strong><small>先发出一次真实只读请求</small>
                             </button>
                             <button id="crowd-test" type="button">
-                                <strong>召集人潮</strong><small>选择固定人潮挡位，准备批量投递</small>
+                                <strong>召集人潮</strong><small>先在门口决定来多少人</small>
                             </button>
                         </div>
                         <small class="purchase-boundary">此处不会直接扣减库存；购买时会重新校验价格与库存。</small>
@@ -193,15 +193,15 @@
                             <small id="crowd-size-note">固定运行 20 秒。批量实验会先重置数据；所有参数由 Runner 白名单决定。</small>
                         </fieldset>
                         <div class="crowd-run-actions">
-                            <button id="start-crowd-test" class="event-primary" type="button">召集人潮</button>
+                            <button id="start-crowd-test" class="event-primary" type="button">带人潮进入实验室</button>
                             <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入店内查看</button>
                         </div>
                         <div class="crowd-status" role="status" aria-live="polite">
                             <i></i>
-                            <span><strong id="crowd-status-title">等待召集</strong><small id="crowd-status-copy">选择挡位后，页面会直接启动本地 wrk2 实验。</small></span>
+                            <span><strong id="crowd-status-title">等待选择人数</strong><small id="crowd-status-copy">人数在门口决定；读取路径与实验启动放在实验室。</small></span>
                             <time id="crowd-clock">00:00 / 00:20</time>
                         </div>
-                        <details id="equivalent-command" class="crowd-command-details">
+                        <details id="equivalent-command" class="crowd-command-details" hidden>
                             <summary>查看等价命令</summary>
                             <p>仅用于学习和调试；正常使用无需复制到终端。</p>
                             <div class="crowd-command-toolbar">
@@ -232,7 +232,7 @@
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260729-crowd-entry-2"></script>
+    <script src="/js/market.js?v=20260729-door-tier-2"></script>
 </body>
 
 </html>
