@@ -2,9 +2,12 @@ package loadtest
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -62,4 +65,158 @@ func TestRunnerHTTPRejectsUnknownFields(t *testing.T) {
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty body, got %d", recorder.Code)
 	}
+}
+
+func TestAutoConnectionsUseConservativeBaseline(t *testing.T) {
+	runner := &Runner{records: make(map[string]*taskRecord)}
+	expected := map[int]int{
+		100:  70,
+		300:  140,
+		800:  300,
+		1500: 500,
+	}
+	for rate, want := range expected {
+		got, _ := runner.resolveAutoConnectionsLocked(CreateRequest{ArchiveID: 2, Mode: "direct"}, rate)
+		if got != want {
+			t.Fatalf("rate %d: expected %d connections, got %d", rate, want, got)
+		}
+	}
+}
+
+func TestAutoConnectionsReuseSameConfigurationForBothPaths(t *testing.T) {
+	runner := &Runner{
+		records: map[string]*taskRecord{
+			"direct": {
+				Task: Task{
+					ID:             "direct",
+					ArchiveID:      2,
+					Mode:           "direct",
+					Status:         StatusCompleted,
+					ConnectionMode: ConnectionModeAuto,
+					Tier: TierConfig{
+						Rate:        1500,
+						Connections: 500,
+					},
+					Metrics: TaskMetrics{RequestP95MS: 210},
+				},
+			},
+		},
+		order: []string{"direct"},
+	}
+	connections, _ := runner.resolveAutoConnectionsLocked(
+		CreateRequest{ArchiveID: 2, Mode: "cached"},
+		1500,
+	)
+	if connections != 500 {
+		t.Fatalf("expected cached path to reuse 500 connections, got %d", connections)
+	}
+}
+
+func TestAutoConnectionsUseSlowerActualRequestHistory(t *testing.T) {
+	runner := &Runner{
+		records: map[string]*taskRecord{
+			"direct": completedHistoricalTask("direct", 2, 800, 220),
+			"cached": completedHistoricalTask("cached", 2, 800, 4),
+		},
+		order: []string{"direct", "cached"},
+	}
+	connections, _ := runner.resolveAutoConnectionsLocked(
+		CreateRequest{ArchiveID: 2, Mode: "direct"},
+		800,
+	)
+	if connections != 300 {
+		t.Fatalf("expected slower direct P95 to select 300 connections, got %d", connections)
+	}
+}
+
+func TestHistoricalLegacyOverloadDoesNotUseCorrectedLatency(t *testing.T) {
+	task := Task{
+		Tier: TierConfig{Rate: 1500, Connections: 64},
+		Metrics: TaskMetrics{
+			ActualQPS: 361.08,
+			P95MS:     14680.06,
+		},
+	}
+	got := historicalTaskRequestP95(task)
+	assertNear(t, got, 64/361.08*1000)
+}
+
+func TestHistoricalOverloadUsesConduitOccupancyFloor(t *testing.T) {
+	task := Task{
+		Tier: TierConfig{Rate: 1500, Connections: 70},
+		Metrics: TaskMetrics{
+			ActualQPS:    100,
+			RequestP95MS: 12,
+			SocketErrors: 3,
+		},
+	}
+	got := historicalTaskRequestP95(task)
+	assertNear(t, got, 700)
+}
+
+func TestWrkArgumentsCollectBothLatencySemantics(t *testing.T) {
+	task := Task{Tier: TierConfig{Rate: 1500, Connections: 500, DurationSeconds: 30}}
+	got := wrkArguments(task, "/opt/read.lua", "http://app/direct")
+	want := []string{
+		"-t1",
+		"-c500",
+		"-d30s",
+		"-R1500",
+		"--latency",
+		"--u_latency",
+		"--timeout", "2s",
+		"-s", "/opt/read.lua",
+		"http://app/direct",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected wrk2 arguments:\nwant: %#v\n got: %#v", want, got)
+	}
+}
+
+func TestRunnerLoadsLegacyPersistedTask(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "tasks.json")
+	legacy := persistedState{Records: []persistedRecord{{
+		Task: Task{
+			ID:     "legacy-task",
+			Mode:   "direct",
+			Status: StatusCompleted,
+			Tier: TierConfig{
+				ID:              TierCrowd,
+				Rate:            1500,
+				Connections:     64,
+				DurationSeconds: 20,
+			},
+		},
+	}}}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner, err := NewRunner(RunnerOptions{StatePath: statePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, apiErr := runner.Get("legacy-task")
+	if apiErr != nil {
+		t.Fatal(apiErr)
+	}
+	if task.Tier.Connections != 64 || task.ConnectionMode != "" || task.Metrics.RequestP95MS != 0 {
+		t.Fatalf("legacy task was not preserved: %+v", task)
+	}
+}
+
+func completedHistoricalTask(mode string, archiveID, rate int, requestP95MS float64) *taskRecord {
+	return &taskRecord{Task: Task{
+		ID:        mode,
+		ArchiveID: archiveID,
+		Mode:      mode,
+		Status:    StatusCompleted,
+		Tier: TierConfig{
+			Rate: rate,
+		},
+		Metrics: TaskMetrics{RequestP95MS: requestP95MS},
+	}}
 }

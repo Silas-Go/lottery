@@ -8,8 +8,8 @@
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260724-wrk2-final-only" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260729-door-tier" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260729-query-tide-2" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260729-query-tide-2" />
 </head>
 
 <body class="lab-page query-focus" data-lab-mode="direct" data-route-state="idle">
@@ -53,11 +53,11 @@
                     <div>
                         <small>RARE MATERIAL ALERT</small>
                         <strong>星髓档案正在成为查询热点</strong>
-                        <p>1500 名法师先来查资料；其中约 150 人会继续购买首批 100 份星髓。</p>
+                        <p>法师公会持续生成查询卷轴。查询潮汐描述每秒计划请求数，并不代表法师人数。</p>
                     </div>
                     <dl>
-                        <div><dt>调查流量</dt><dd>1500 req/s</dd></div>
-                        <div><dt>购买转化</dt><dd>10%</dd></div>
+                        <div><dt>查询潮汐</dt><dd>最高 1500/s</dd></div>
+                        <div><dt>魔法通路</dt><dd>自动 / 手动</dd></div>
                         <div><dt>首批配额</dt><dd>100</dd></div>
                     </dl>
                 </aside>
@@ -73,11 +73,11 @@
                 <section id="lab-loadtest" class="lab-loadtest" aria-labelledby="lab-loadtest-title" hidden>
                     <header>
                         <div>
-                            <small>ACTIVE CROWD EXPERIMENT</small>
-                            <strong id="lab-loadtest-title">人潮正在进入店内</strong>
+                            <small>ACTIVE QUERY TIDE</small>
+                            <strong id="lab-loadtest-title">查询卷轴正在进入通路</strong>
                             <span id="lab-loadtest-copy">正在连接 Runner 任务。</span>
                         </div>
-                        <time id="lab-loadtest-clock">00:00 / 00:20</time>
+                        <time id="lab-loadtest-clock">00:00 / 00:30</time>
                         <button id="lab-stop-loadtest" type="button">停止实验</button>
                     </header>
                     <ol id="lab-loadtest-stages" class="lab-loadtest-stages" aria-label="压测阶段">
@@ -88,13 +88,17 @@
                         <li data-load-stage="completed">完成</li>
                     </ol>
                     <div class="lab-loadtest-metrics" aria-label="Runner 实时指标">
-                        <span><small>实际请求</small><strong id="lab-load-requests">0</strong></span>
-                        <span><small>实际 QPS</small><strong id="lab-load-qps">0</strong></span>
-                        <span><small>P50</small><strong id="lab-load-p50">—</strong></span>
-                        <span><small>P95</small><strong id="lab-load-p95">—</strong></span>
-                        <span><small>P99</small><strong id="lab-load-p99">—</strong></span>
+                        <span><small>目标速率</small><strong id="lab-load-target">0 QPS</strong></span>
+                        <span><small>实际速率</small><strong id="lab-load-qps">0 QPS</strong></span>
+                        <span><small>目标完成率</small><strong id="lab-load-completion">0%</strong></span>
+                        <span><small>通路数量</small><strong id="lab-load-connections">—</strong></span>
+                        <span><small>完成请求</small><strong id="lab-load-requests">0</strong></span>
+                        <span><small>实际请求 P50</small><strong id="lab-load-request-p50">—</strong></span>
+                        <span><small>实际请求 P95</small><strong id="lab-load-request-p95">—</strong></span>
+                        <span><small>需求侧 P50</small><strong id="lab-load-p50">—</strong></span>
+                        <span><small>需求侧 P95</small><strong id="lab-load-p95">—</strong></span>
                         <span><small>错误率</small><strong id="lab-load-errors">0%</strong></span>
-                        <span><small>超时</small><strong id="lab-load-timeouts">0</strong></span>
+                        <span><small>Socket Errors</small><strong id="lab-load-timeouts">0</strong></span>
                         <span><small>Redis 命中</small><strong id="lab-load-hits">0</strong></span>
                         <span><small>MySQL 回源</small><strong id="lab-load-fallbacks">0</strong></span>
                     </div>
@@ -130,8 +134,8 @@
                                 </label>
                             </fieldset>
                             <aside id="lab-crowd-settings" class="lab-crowd-settings" hidden>
-                                <div><small>门口已召集</small><strong id="lab-crowd-summary">人潮涌入 · 1500 req/s · 64 连接</strong></div>
-                                <p>人数已经锁定；这里仅选择读取路径并启动。<a href="/material-shop">重新召集</a></p>
+                                <div><small>查询潮汐与魔法通路</small><strong id="lab-crowd-summary">1500 卷轴/秒 · 通路自动配置</strong></div>
+                                <p>查询潮汐是目标 QPS，魔法通路是 HTTP 持久连接；两者都不是用户人数。<a href="/material-shop">重新配置</a></p>
                             </aside>
                         </div>
                         <button id="query-archive" class="query-button" type="button">
@@ -140,6 +144,36 @@
                     </div>
                     <p id="lab-strategy-explanation" class="lab-strategy-explanation">Redis 不参与；每次请求都会产生 MySQL DB Read。</p>
                 </div>
+
+                <section id="query-tide-stage" class="query-tide-stage" data-flow-state="waiting" aria-labelledby="query-tide-heading" hidden>
+                    <header>
+                        <div><small>QUERY DELIVERY MODEL</small><strong id="query-tide-heading">卷轴、通路与后厨处理</strong></div>
+                        <span id="query-tide-badge" role="status" aria-live="polite">等待启动</span>
+                    </header>
+                    <div class="query-tide-diagram">
+                        <div class="tide-guild-node">
+                            <div class="tide-guild-casters" aria-hidden="true"><i></i><i></i><i></i></div>
+                            <strong>法师公会</strong><small>请求来源 · 不对应具体人数</small>
+                        </div>
+                        <div class="tide-generator-node">
+                            <div class="tide-scroll-maker" aria-hidden="true"><i></i><i></i><i></i></div>
+                            <strong id="tide-target-rate">1500 卷轴/秒</strong><small>查询潮汐 · 目标 QPS</small>
+                        </div>
+                        <div id="tide-backlog-node" class="tide-backlog-node">
+                            <div class="tide-backlog-scrolls" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                            <strong id="tide-backlog-title">通路入口</strong><small id="tide-backlog-copy">等待卷轴投递</small>
+                        </div>
+                        <div class="tide-conduit-node">
+                            <div class="tide-conduit-bank" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                            <strong id="tide-conduit-count">自动配置</strong><small>魔法通路 · HTTP connections</small>
+                        </div>
+                        <div class="tide-kitchen-node">
+                            <div class="tide-kitchen-icons" aria-hidden="true"><i>GO</i><i id="tide-backend-icon">SQL</i></div>
+                            <strong id="tide-kitchen-title">Go 服务 → MySQL</strong><small id="tide-occupancy-copy">通路占用时间等待实测</small>
+                        </div>
+                    </div>
+                    <p id="query-tide-explanation">卷轴尚未开始投递。积压只会显示在通路入口，不会伪装成已经进入 MySQL 后的处理时间。</p>
+                </section>
 
             </section>
 
@@ -216,7 +250,7 @@
 
                         <div class="active-metrics" aria-label="当前策略 SSE 实时指标">
                             <div><small>QPS</small><strong id="active-qps">0</strong></div>
-                            <div><small>P99 Latency</small><strong id="active-p99">0 ms</strong></div>
+                            <div><small>服务端处理 P99</small><strong id="active-p99">0 ms</strong></div>
                             <div><small>Pool Peak / Capacity</small><strong id="active-pool">0 / 0</strong></div>
                             <div><small>Errors</small><strong id="active-errors">0</strong></div>
                         </div>
@@ -275,12 +309,12 @@
                             <span>实际响应延迟<strong id="record-latency">—</strong></span>
                         </div>
                         <section id="crowd-conversion" class="crowd-conversion" aria-labelledby="crowd-spread-title" hidden>
-                            <small>BLACK MARKET WORD OF MOUTH · 10% PURCHASE INTENT</small>
-                            <strong id="crowd-spread-title">材料资料正在黑市中传播</strong>
-                            <p><b id="crowd-survey-count">0</b> 名法师完成了调查，其中 <b id="crowd-buyer-count">0</b> 人表现出明确购买意愿。</p>
+                            <small>QUERY RESULT BOUNDARY · REQUESTS ARE NOT PEOPLE</small>
+                            <strong id="crowd-spread-title">本轮查询卷轴已经完成归档</strong>
+                            <p>本轮完成 <b id="crowd-scroll-count">0</b> 张查询卷轴；这是 HTTP 请求数量，不用于推导法师或购买者人数。</p>
                             <div>
-                                <span><small>购买请求池</small><strong id="crowd-buyer-pool">0 人</strong></span>
-                                <span><small>继续观察库存</small><strong id="crowd-observer-pool">0 人</strong></span>
+                                <span><small>实际处理速率</small><strong id="crowd-actual-rate">0 QPS</strong></span>
+                                <span><small>购买实验边界</small><strong>独立的 150 个唯一请求</strong></span>
                             </div>
                         </section>
                         <p>当前只读取材料资料，不会占用或扣减真实库存。</p>
@@ -307,22 +341,27 @@
                         <div class="metrics-row metrics-head" role="row">
                             <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong>
                         </div>
-                        <div class="metrics-row" role="row"><span>Requests</span><strong id="direct-total">—</strong><strong id="cached-total">—</strong></div>
-                        <div class="metrics-row" role="row"><span>Actual QPS</span><strong id="direct-actual-qps">—</strong><strong id="cached-actual-qps">—</strong></div>
-                        <div class="metrics-row" role="row"><span>Duration</span><strong id="direct-duration">—</strong><strong id="cached-duration">—</strong></div>
-                        <div class="metrics-row" role="row"><span>P50 Latency</span><strong id="direct-p50">—</strong><strong id="cached-p50">—</strong></div>
-                        <div class="metrics-row" role="row"><span>P90 Latency</span><strong id="direct-p90">—</strong><strong id="cached-p90">—</strong></div>
-                        <div class="metrics-row" role="row"><span>P95 Latency</span><strong id="direct-p95">—</strong><strong id="cached-p95">—</strong></div>
-                        <div class="metrics-row" role="row"><span>P99 Latency</span><strong id="direct-p99">—</strong><strong id="cached-p99">—</strong></div>
-                        <div class="metrics-row" role="row"><span>Timeouts</span><strong id="direct-timeouts">—</strong><strong id="cached-timeouts">—</strong></div>
+                        <div class="metrics-row" role="row"><span>目标速率</span><strong id="direct-target-qps">—</strong><strong id="cached-target-qps">—</strong></div>
+                        <div class="metrics-row" role="row"><span>实际速率</span><strong id="direct-actual-qps">—</strong><strong id="cached-actual-qps">—</strong></div>
+                        <div class="metrics-row" role="row"><span>目标完成率</span><strong id="direct-completion-rate">—</strong><strong id="cached-completion-rate">—</strong></div>
+                        <div class="metrics-row" role="row"><span>完成请求</span><strong id="direct-total">—</strong><strong id="cached-total">—</strong></div>
+                        <div class="metrics-row" role="row"><span>魔法通路</span><strong id="direct-connections">—</strong><strong id="cached-connections">—</strong></div>
+                        <div class="metrics-row" role="row"><span>实际时长</span><strong id="direct-duration">—</strong><strong id="cached-duration">—</strong></div>
+                        <div class="metrics-row" role="row"><span>实际请求 P50</span><strong id="direct-request-p50">—</strong><strong id="cached-request-p50">—</strong></div>
+                        <div class="metrics-row" role="row"><span>实际请求 P95</span><strong id="direct-request-p95">—</strong><strong id="cached-request-p95">—</strong></div>
+                        <div class="metrics-row" role="row"><span>实际请求 P99</span><strong id="direct-request-p99">—</strong><strong id="cached-request-p99">—</strong></div>
+                        <div class="metrics-row" role="row"><span>需求侧 P50（含投递欠账）</span><strong id="direct-p50">—</strong><strong id="cached-p50">—</strong></div>
+                        <div class="metrics-row" role="row"><span>需求侧 P95（含投递欠账）</span><strong id="direct-p95">—</strong><strong id="cached-p95">—</strong></div>
+                        <div class="metrics-row" role="row"><span>需求侧 P99（含投递欠账）</span><strong id="direct-p99">—</strong><strong id="cached-p99">—</strong></div>
+                        <div class="metrics-row" role="row"><span>Socket Errors</span><strong id="direct-timeouts">—</strong><strong id="cached-timeouts">—</strong></div>
                         <div class="metrics-row" role="row"><span>Error Rate</span><strong id="direct-error-rate">—</strong><strong id="cached-error-rate">—</strong></div>
                     </div>
                     <div id="wrk2-summary" class="comparison-summary">运行期间保持未冻结；wrk2 退出并解析完整直方图后一次写入。</div>
 
                     <div class="engineering-notes">
-                        <div><strong>统一客户端口径</strong><span>请求量、吞吐、持续时间、延迟和错误全部取 wrk2 最终输出。</span></div>
+                        <div><strong>两种延迟口径</strong><span>实际请求延迟从真正发出开始；需求侧延迟从计划投递时刻开始，并包含连接不足造成的发送欠账。</span></div>
                         <div><strong>不混入应用快照</strong><span>SQL、连接池与缓存命中率只在上方 SSE 区域实时观察。</span></div>
-                        <div><strong>完整直方图</strong><span>P50/P90/P95/P99 在进程结束后统一冻结，不在中途切换口径。</span></div>
+                        <div><strong>卷轴不是用户</strong><span>目标 QPS、完成请求和 HTTP connections 都不会换算成法师人数。</span></div>
                     </div>
                 </section>
                 </details>
@@ -350,14 +389,15 @@
                         <header><div><small>CONTROL RESULT</small><strong>MySQL Direct</strong></div><span>待测试</span></header>
                         <p class="frozen-result-context" data-result-context>完成直查测试后自动冻结</p>
                         <dl>
-                            <div><dt>Requests</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>Actual QPS</dt><dd data-result="qps">—</dd></div>
-                            <div><dt>Duration</dt><dd data-result="durationSeconds">—</dd></div>
-                            <div><dt>P50 Latency</dt><dd data-result="p50">—</dd></div>
-                            <div><dt>P90 Latency</dt><dd data-result="p90">—</dd></div>
-                            <div><dt>P95 Latency</dt><dd data-result="p95">—</dd></div>
-                            <div><dt>P99</dt><dd data-result="p99">—</dd></div>
-                            <div><dt>Timeouts</dt><dd data-result="timeouts">—</dd></div>
+                            <div><dt>目标 / 实际速率</dt><dd data-result="ratePair">—</dd></div>
+                            <div><dt>目标完成率</dt><dd data-result="completionRate">—</dd></div>
+                            <div><dt>完成请求</dt><dd data-result="requests">—</dd></div>
+                            <div><dt>魔法通路</dt><dd data-result="connections">—</dd></div>
+                            <div><dt>实际请求 P50</dt><dd data-result="requestP50">—</dd></div>
+                            <div><dt>实际请求 P95</dt><dd data-result="requestP95">—</dd></div>
+                            <div><dt>需求侧 P50</dt><dd data-result="p50">—</dd></div>
+                            <div><dt>需求侧 P95</dt><dd data-result="p95">—</dd></div>
+                            <div><dt>Socket Errors</dt><dd data-result="socketErrors">—</dd></div>
                             <div><dt>Error Rate</dt><dd data-result="errorRate">—</dd></div>
                         </dl>
                         <footer data-result-time>结果不会随实时指标变化</footer>
@@ -367,14 +407,15 @@
                         <header><div><small>OPTIMIZED RESULT</small><strong>Redis Cache-Aside</strong></div><span>待测试</span></header>
                         <p class="frozen-result-context" data-result-context>完成旁路缓存测试后自动冻结</p>
                         <dl>
-                            <div><dt>Requests</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>Actual QPS</dt><dd data-result="qps">—</dd></div>
-                            <div><dt>Duration</dt><dd data-result="durationSeconds">—</dd></div>
-                            <div><dt>P50 Latency</dt><dd data-result="p50">—</dd></div>
-                            <div><dt>P90 Latency</dt><dd data-result="p90">—</dd></div>
-                            <div><dt>P95 Latency</dt><dd data-result="p95">—</dd></div>
-                            <div><dt>P99</dt><dd data-result="p99">—</dd></div>
-                            <div><dt>Timeouts</dt><dd data-result="timeouts">—</dd></div>
+                            <div><dt>目标 / 实际速率</dt><dd data-result="ratePair">—</dd></div>
+                            <div><dt>目标完成率</dt><dd data-result="completionRate">—</dd></div>
+                            <div><dt>完成请求</dt><dd data-result="requests">—</dd></div>
+                            <div><dt>魔法通路</dt><dd data-result="connections">—</dd></div>
+                            <div><dt>实际请求 P50</dt><dd data-result="requestP50">—</dd></div>
+                            <div><dt>实际请求 P95</dt><dd data-result="requestP95">—</dd></div>
+                            <div><dt>需求侧 P50</dt><dd data-result="p50">—</dd></div>
+                            <div><dt>需求侧 P95</dt><dd data-result="p95">—</dd></div>
+                            <div><dt>Socket Errors</dt><dd data-result="socketErrors">—</dd></div>
                             <div><dt>Error Rate</dt><dd data-result="errorRate">—</dd></div>
                         </dl>
                         <footer data-result-time>结果不会随实时指标变化</footer>
@@ -390,17 +431,18 @@
                         <div class="frozen-comparison-row is-head" role="row">
                             <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong><em role="columnheader">判断</em>
                         </div>
-                        <div id="compare-requests-row" class="frozen-comparison-row" role="row"><span>Requests</span><strong id="compare-requests-direct">—</strong><strong id="compare-requests-cached">—</strong><em id="compare-requests-winner">等待</em></div>
-                        <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>Actual QPS</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
-                        <div id="compare-duration-row" class="frozen-comparison-row" role="row"><span>Duration</span><strong id="compare-duration-direct">—</strong><strong id="compare-duration-cached">—</strong><em id="compare-duration-winner">等待</em></div>
-                        <div id="compare-p50-row" class="frozen-comparison-row" role="row"><span>P50 Latency</span><strong id="compare-p50-direct">—</strong><strong id="compare-p50-cached">—</strong><em id="compare-p50-winner">等待</em></div>
-                        <div id="compare-p90-row" class="frozen-comparison-row" role="row"><span>P90 Latency</span><strong id="compare-p90-direct">—</strong><strong id="compare-p90-cached">—</strong><em id="compare-p90-winner">等待</em></div>
-                        <div id="compare-p95-row" class="frozen-comparison-row" role="row"><span>P95 Latency</span><strong id="compare-p95-direct">—</strong><strong id="compare-p95-cached">—</strong><em id="compare-p95-winner">等待</em></div>
-                        <div id="compare-p99-row" class="frozen-comparison-row" role="row"><span>P99 Latency</span><strong id="compare-p99-direct">—</strong><strong id="compare-p99-cached">—</strong><em id="compare-p99-winner">等待</em></div>
-                        <div id="compare-timeout-row" class="frozen-comparison-row" role="row"><span>Timeouts / 1k</span><strong id="compare-timeout-direct">—</strong><strong id="compare-timeout-cached">—</strong><em id="compare-timeout-winner">等待</em></div>
+                        <div id="compare-target-row" class="frozen-comparison-row" role="row"><span>目标速率</span><strong id="compare-target-direct">—</strong><strong id="compare-target-cached">—</strong><em id="compare-target-winner">等待</em></div>
+                        <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>实际速率</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
+                        <div id="compare-completion-row" class="frozen-comparison-row" role="row"><span>目标完成率</span><strong id="compare-completion-direct">—</strong><strong id="compare-completion-cached">—</strong><em id="compare-completion-winner">等待</em></div>
+                        <div id="compare-connections-row" class="frozen-comparison-row" role="row"><span>魔法通路</span><strong id="compare-connections-direct">—</strong><strong id="compare-connections-cached">—</strong><em id="compare-connections-winner">等待</em></div>
+                        <div id="compare-request-p50-row" class="frozen-comparison-row" role="row"><span>实际请求 P50</span><strong id="compare-request-p50-direct">—</strong><strong id="compare-request-p50-cached">—</strong><em id="compare-request-p50-winner">等待</em></div>
+                        <div id="compare-request-p95-row" class="frozen-comparison-row" role="row"><span>实际请求 P95</span><strong id="compare-request-p95-direct">—</strong><strong id="compare-request-p95-cached">—</strong><em id="compare-request-p95-winner">等待</em></div>
+                        <div id="compare-p50-row" class="frozen-comparison-row" role="row"><span>需求侧 P50</span><strong id="compare-p50-direct">—</strong><strong id="compare-p50-cached">—</strong><em id="compare-p50-winner">等待</em></div>
+                        <div id="compare-p95-row" class="frozen-comparison-row" role="row"><span>需求侧 P95</span><strong id="compare-p95-direct">—</strong><strong id="compare-p95-cached">—</strong><em id="compare-p95-winner">等待</em></div>
+                        <div id="compare-timeout-row" class="frozen-comparison-row" role="row"><span>Socket Errors</span><strong id="compare-timeout-direct">—</strong><strong id="compare-timeout-cached">—</strong><em id="compare-timeout-winner">等待</em></div>
                         <div id="compare-error-row" class="frozen-comparison-row" role="row"><span>Error Rate</span><strong id="compare-error-direct">—</strong><strong id="compare-error-cached">—</strong><em id="compare-error-winner">等待</em></div>
                     </div>
-                    <p>本表只使用 wrk2 最终汇总：吞吐、实际时长、完整延迟分布、超时和错误率。QPS 差异不超过 2% 视为持平；单次检索与应用 SSE 指标不参与最终判定。</p>
+                    <p>只有材料、目标速率、实际通路数和时长一致时才比较。实际请求延迟与需求侧延迟分别裁决；不会把连接数、QPS 或请求数换算成用户人数。</p>
                 </div>
             </section>
             </details>
@@ -451,7 +493,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/seckill-lab.js?v=20260729-door-tier-2"></script>
+    <script src="/js/seckill-lab.js?v=20260729-query-tide-2"></script>
 </body>
 
 </html>

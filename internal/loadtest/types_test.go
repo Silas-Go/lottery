@@ -23,12 +23,72 @@ func TestTierWhitelist(t *testing.T) {
 	}
 }
 
+func TestQueryTideWhitelist(t *testing.T) {
+	expected := map[int]TierID{
+		100:  TierQPS100,
+		300:  TierQPS300,
+		800:  TierQPS800,
+		1500: TierQPS1500,
+	}
+	for rate, expectedID := range expected {
+		config, ok := ResolveRate(rate)
+		if !ok {
+			t.Fatalf("rate %d missing", rate)
+		}
+		if config.ID != expectedID || config.Rate != rate || config.Connections != 0 ||
+			config.DurationSeconds != DefaultDurationSeconds {
+			t.Fatalf("rate %d mismatch: %+v", rate, config)
+		}
+	}
+	if _, ok := ResolveRate(500); ok {
+		t.Fatal("500 QPS must not be accepted by the new query tide protocol")
+	}
+}
+
+func TestCreateRequestAcceptsControlledConnectionModes(t *testing.T) {
+	auto := CreateRequest{
+		Experiment:     ExperimentCacheAsideRead,
+		ArchiveID:      2,
+		Mode:           "direct",
+		Rate:           800,
+		ConnectionMode: ConnectionModeAuto,
+	}
+	config, message := ValidateCreateRequest(auto)
+	if message != "" {
+		t.Fatal(message)
+	}
+	if config.Rate != 800 || config.Connections != 0 {
+		t.Fatalf("unexpected auto config before runner resolution: %+v", config)
+	}
+
+	manual := auto
+	manual.ConnectionMode = ConnectionModeManual
+	manual.Connections = 300
+	config, message = ValidateCreateRequest(manual)
+	if message != "" {
+		t.Fatal(message)
+	}
+	if config.Connections != 300 {
+		t.Fatalf("manual connections not preserved: %+v", config)
+	}
+}
+
 func TestCreateRequestRejectsUncontrolledInputs(t *testing.T) {
 	tests := []CreateRequest{
 		{Experiment: "shell", ArchiveID: 2, Mode: "cached", Tier: TierVisitors},
 		{Experiment: ExperimentCacheAsideRead, ArchiveID: 99, Mode: "cached", Tier: TierVisitors},
 		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "http://example.com", Tier: TierVisitors},
 		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Tier: TierID("custom")},
+		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Rate: 500},
+		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Tier: TierVisitors, Rate: 100},
+		{
+			Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Rate: 800,
+			ConnectionMode: ConnectionModeAuto, Connections: 300,
+		},
+		{
+			Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Rate: 800,
+			ConnectionMode: ConnectionModeManual, Connections: 64,
+		},
 	}
 	for _, input := range tests {
 		if _, message := ValidateCreateRequest(input); message == "" {

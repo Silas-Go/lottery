@@ -20,18 +20,22 @@
     var ACTIVE_TASK_KEY = "silas.cache-aside.active-loadtest.v1";
     var WORLD_TRANSITION_KEY = "silas.world-transition.v1";
     var arrivingFromStreet = false;
-    // ID 是前端唯一提交给后端的压力参数；数值只用于展示和生成等价调试命令。
+    // 查询潮汐描述计划 QPS，不代表人数；通路数量描述 wrk2 保持的 HTTP 连接。
+    // 前端只提交白名单速率与通路模式，Runner 仍会再次校验并解析最终连接数。
     var crowdTiers = Object.freeze({
-        visitors: Object.freeze({ label: "零星访客", rate: 100, connections: 16, duration: 20, visibleFigures: 3 }),
-        tide_eve: Object.freeze({ label: "潮汐前夜", rate: 500, connections: 32, duration: 20, visibleFigures: 9 }),
-        crowd: Object.freeze({ label: "人潮涌入", rate: 1500, connections: 64, duration: 20, visibleFigures: 19 }),
-        boiling_city: Object.freeze({ label: "王城沸腾", rate: 3000, connections: 96, duration: 20, visibleFigures: 30 })
+        qps_100: Object.freeze({ label: "涓流", rate: 100, duration: 30 }),
+        qps_300: Object.freeze({ label: "涟漪", rate: 300, duration: 30 }),
+        qps_800: Object.freeze({ label: "浪潮", rate: 800, duration: 30 }),
+        qps_1500: Object.freeze({ label: "满潮", rate: 1500, duration: 30 })
     });
+    var allowedConnections = Object.freeze([70, 140, 300, 500]);
     var crowdShells = Object.freeze({
         powershell: Object.freeze({ label: "PowerShell 5.1+" }),
         bash: Object.freeze({ label: "Bash / WSL" })
     });
-    var crowdTierID = "crowd";
+    var crowdTierID = "qps_1500";
+    var connectionMode = "auto";
+    var manualConnections = 300;
     var crowdShell = "powershell";
 
     function byId(id) {
@@ -67,8 +71,8 @@
             dialogue: "交谈",
             choosing: "选择材料",
             record_selected: "取得档案片",
-            crowd_preparing: "召集人潮",
-            crowd_submitting: "请求投递",
+            crowd_preparing: "配置查询潮汐",
+            crowd_submitting: "卷轴投递",
             inserting_record: "插入档案片",
             entering_lab: "进入机器内部"
         };
@@ -101,8 +105,12 @@
         var experiment = experimentState.get();
         var tier = crowdTiers[crowdTierID];
         var path = experiment.mode === "cached" ? "cached" : "direct";
+        if (connectionMode === "auto") {
+            return "# 自动配置会读取 Runner 保存的真实响应历史，并在任务创建时确定 CONNECTIONS。\n" +
+                "# 启动后可在实验室查看本轮实际使用的魔法通路数量。";
+        }
         var loadCommand = "docker compose --profile loadtest run --rm --no-deps " +
-            "-e RATE=" + tier.rate + " -e DURATION=" + tier.duration + "s -e THREADS=1 -e CONNECTIONS=" + tier.connections + " " +
+            "-e RATE=" + tier.rate + " -e DURATION=" + tier.duration + "s -e THREADS=1 -e CONNECTIONS=" + manualConnections + " " +
             "-e TARGET_URL=http://app:5678/api/archives/" + materialNumericId() + "/" + path + " " +
             "-e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
         if (crowdShell === "powershell") {
@@ -121,30 +129,41 @@
     }
 
     function renderCrowdTier() {
-        var tier = crowdTiers[crowdTierID] || crowdTiers.tide_eve;
+        var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
         if (!crowdTiers[crowdTierID]) {
-            crowdTierID = "tide_eve";
+            crowdTierID = "qps_1500";
         }
         Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (button) {
             var active = button.dataset.crowdTier === crowdTierID;
             button.classList.toggle("is-active", active);
             button.setAttribute("aria-pressed", active ? "true" : "false");
         });
-        byId("crowd-size-value").textContent = tier.label + " · " + tier.rate.toLocaleString("zh-CN") +
-            " req/s · " + tier.connections + " 连接";
-        byId("crowd-size-note").textContent = "固定运行 " + tier.duration +
-            " 秒；批量实验会先重置数据，参数由 Runner 白名单决定。";
+        Array.prototype.forEach.call(document.querySelectorAll("[data-connection-mode]"), function (button) {
+            var active = button.dataset.connectionMode === connectionMode;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        var manualPanel = byId("manual-conduit-options");
+        manualPanel.hidden = connectionMode !== "manual";
+        Array.prototype.forEach.call(document.querySelectorAll("[data-connection-count]"), function (button) {
+            var active = Number(button.dataset.connectionCount) === manualConnections;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        var conduitText = connectionMode === "auto" ? "通路自动配置" : manualConnections + " 条通路";
+        byId("crowd-size-value").textContent = "查询潮汐 " + tier.rate.toLocaleString("zh-CN") +
+            " 卷轴/秒 · " + conduitText;
+        byId("market-conduit-count").textContent = connectionMode === "auto" ? "自动配置" : manualConnections + " 条";
+        byId("crowd-size-note").textContent = connectionMode === "auto" ?
+            "固定运行 " + tier.duration + " 秒；Runner 会依据目标 QPS 与历史实际响应时间选择足够通路。" :
+            "固定运行 " + tier.duration + " 秒；手动通路用于观察响应变慢时卷轴如何在入口形成发送欠账。";
         if (selectedCode) {
             byId("market-load-command").textContent = crowdCommand();
         }
 
-        Array.prototype.forEach.call(byId("crowd-queue").children, function (figure, index) {
-            figure.classList.toggle("is-visible", index < tier.visibleFigures);
-        });
-
         if (state === "crowd_preparing" && !activeTask) {
-            byId("crowd-status-title").textContent = tier.label + "已集合";
-            byId("crowd-status-copy").textContent = "带他们进入实验室，再选择 MySQL 或 Redis 路径。";
+            byId("crowd-status-title").textContent = tier.label + "查询潮汐已配置";
+            byId("crowd-status-copy").textContent = "带查询卷轴进入实验室，再选择 MySQL 或 Redis 路径。";
         }
     }
 
@@ -250,7 +269,8 @@
         ["choose-again", "single-request", "leave-crowd-mode"].forEach(function (id) {
             byId(id).disabled = locked;
         });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (control) {
+        Array.prototype.forEach.call(document.querySelectorAll(
+            "[data-crowd-tier], [data-connection-mode], [data-connection-count]"), function (control) {
             control.disabled = locked;
         });
     }
@@ -262,15 +282,36 @@
 
     function renderTask(task) {
         activeTask = task;
-        if (task.tier && task.tier.id && crowdTiers[task.tier.id]) {
-            crowdTierID = task.tier.id;
+        if (task.tier && task.tier.rate) {
+            var legacyProtocol = task.connectionMode !== "auto" && task.connectionMode !== "manual";
+            var matchingTier = Object.keys(crowdTiers).find(function (key) {
+                return crowdTiers[key].rate === Number(task.tier.rate);
+            });
+            if (matchingTier) {
+                crowdTierID = matchingTier;
+            }
+            if (task.connectionMode === "manual") {
+                connectionMode = "manual";
+                manualConnections = Number(task.tier.connections || task.requestedConnections || manualConnections);
+            } else if (task.connectionMode === "auto") {
+                connectionMode = "auto";
+            }
             renderCrowdTier();
+            if (legacyProtocol || !matchingTier) {
+                byId("crowd-size-value").textContent = "兼容旧任务 · " +
+                    Number(task.tier.rate).toLocaleString("zh-CN") + " 卷轴/秒 · " +
+                    Number(task.tier.connections || 0).toLocaleString("zh-CN") + " 条旧固定通路";
+                byId("crowd-size-note").textContent =
+                    "这是升级前已经启动的任务；完成查看后请重新选择新查询潮汐与通路模式。";
+            }
+            byId("market-conduit-count").textContent = Number(task.tier.connections || 0) > 0 ?
+                Number(task.tier.connections).toLocaleString("zh-CN") + " 条" : "自动配置";
         }
         var active = isTaskActive(task);
         var titles = {
             starting: "准备实验",
             resetting: "正在重置数据",
-            running: "人潮正在涌入",
+            running: "查询卷轴正在投递",
             collecting: "正在收集结果",
             completed: "实验已完成",
             failed: "实验失败",
@@ -279,19 +320,22 @@
         var copies = {
             starting: "委托已受理，正在打开通往店内实验室的门。",
             resetting: "店内正在清理上一轮记录。",
-            running: "人潮已经进入店内，完整指标在实验室中展示。",
+            running: "法师公会持续生成卷轴；完整的通路周转与入口积压在实验室中展示。",
             collecting: "店内正在整理本轮记录。",
             completed: "本轮记录已整理完成，可进入店内查看。",
             failed: task.errorMessage || "实验未能完成，可进入店内查看原因。",
-            stopped: "本轮人潮已经停止。"
+            stopped: "本轮查询潮汐已经停止。"
         };
-        setState(active ? "crowd_submitting" : "crowd_preparing");
+        setState(task.status === "running" ? "crowd_submitting" : "crowd_preparing");
         setExperimentControlsLocked(active);
         byId("start-crowd-test").disabled = active;
-        byId("start-crowd-test").textContent = active ? "人潮正在涌入" : (task.status === "completed" ? "再次召集人潮" : "召集人潮");
+        var activeButtonCopy = task.status === "running" ? "查询卷轴正在投递" :
+            (task.status === "collecting" ? "正在结算查询潮汐" : "正在准备查询潮汐");
+        byId("start-crowd-test").textContent = active ? activeButtonCopy :
+            (task.status === "completed" ? "再次配置查询潮汐" : "配置查询潮汐");
         byId("enter-crowd-lab").hidden = !task.taskId;
         byId("enter-crowd-lab").textContent = active ? "进入店内查看" : "进入店内查看结果";
-        byId("crowd-status-title").textContent = titles[task.status] || "等待召集";
+        byId("crowd-status-title").textContent = titles[task.status] || "等待查询潮汐";
         byId("crowd-status-copy").textContent = copies[task.status] || "任务状态正在同步。";
         byId("crowd-clock").textContent = formatClock(task.elapsedSeconds) + " / " +
             formatClock((task.elapsedSeconds || 0) + (task.remainingSeconds || 0));
@@ -392,7 +436,7 @@
         setState("crowd_submitting");
         byId("crowd-status-title").textContent = "正在进入材料情报店";
         byId("crowd-status-copy").textContent = "请求档案已经进入槽口，完整实验将在店内继续。";
-        byId("market-announcer").textContent = "人潮已受理，正在跟随请求进入材料情报店";
+        byId("market-announcer").textContent = "查询潮汐已受理，正在跟随卷轴进入材料情报店";
         animateRecordIntoSlot();
         window.setTimeout(function () {
             setState("entering_lab");
@@ -411,7 +455,7 @@
         var experiment = experimentState.get();
         setExperimentControlsLocked(true);
         byId("start-crowd-test").disabled = true;
-        byId("start-crowd-test").textContent = "人潮正在涌入";
+        byId("start-crowd-test").textContent = "查询卷轴正在投递";
         byId("crowd-status-title").textContent = "准备实验";
         byId("crowd-status-copy").textContent = "正在向本地 Runner 创建受控任务。";
         try {
@@ -422,7 +466,9 @@
                     experiment: "cache-aside-read",
                     archiveId: materialNumericId(),
                     mode: experiment.mode,
-                    tier: crowdTierID
+                    rate: crowdTiers[crowdTierID].rate,
+                    connectionMode: connectionMode,
+                    connections: connectionMode === "manual" ? manualConnections : 0
                 })
             });
             if (!response.ok) {
@@ -447,6 +493,8 @@
                 cacheTemperature: "cold",
                 tier: crowdTierID,
                 expectedRate: tier.rate,
+                connectionMode: connectionMode,
+                requestedConnections: connectionMode === "manual" ? manualConnections : 0,
                 expectedDurationSeconds: tier.duration,
                 armedAt: new Date().toISOString()
             });
@@ -458,7 +506,7 @@
             activeTask = null;
             setExperimentControlsLocked(false);
             byId("start-crowd-test").disabled = false;
-            byId("start-crowd-test").textContent = "召集人潮";
+            byId("start-crowd-test").textContent = "配置查询潮汐";
             byId("crowd-status-title").textContent = "未能启动实验";
             byId("crowd-status-copy").textContent = error.message;
             showToast(error.message);
@@ -555,7 +603,11 @@
         if (!selectedCode || !canEnter) {
             return;
         }
-        var tierQuery = nextEntry === "crowd-setup" ? "&tier=" + encodeURIComponent(crowdTierID) : "";
+        var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
+        var tierQuery = nextEntry === "crowd-setup" ?
+            "&rate=" + encodeURIComponent(tier.rate) +
+            "&connectionMode=" + encodeURIComponent(connectionMode) +
+            (connectionMode === "manual" ? "&connections=" + encodeURIComponent(manualConnections) : "") : "";
         setState("inserting_record");
         byId("market-announcer").textContent = selectedCode + " 档案片正在插入检索槽";
         animateRecordIntoSlot();
@@ -578,7 +630,7 @@
 
         byId("star-crowd-entry").addEventListener("click", async function () {
             var button = byId("star-crowd-entry");
-            if (await prepareStarMarrow(button, "正在召集人潮…", "召集人潮")) {
+            if (await prepareStarMarrow(button, "正在配置潮汐…", "配置查询潮汐")) {
                 openCrowdMode();
             }
         });
@@ -622,6 +674,27 @@
                     return;
                 }
                 crowdTierID = nextTier;
+                renderCrowdTier();
+            });
+        });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-connection-mode]"), function (button) {
+            button.addEventListener("click", function () {
+                if (isTaskActive() || (button.dataset.connectionMode !== "auto" &&
+                    button.dataset.connectionMode !== "manual")) {
+                    return;
+                }
+                connectionMode = button.dataset.connectionMode;
+                renderCrowdTier();
+            });
+        });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-connection-count]"), function (button) {
+            button.addEventListener("click", function () {
+                var nextConnections = Number(button.dataset.connectionCount);
+                if (isTaskActive() || allowedConnections.indexOf(nextConnections) < 0) {
+                    return;
+                }
+                manualConnections = nextConnections;
+                connectionMode = "manual";
                 renderCrowdTier();
             });
         });

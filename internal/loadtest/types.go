@@ -8,6 +8,7 @@ import (
 const (
 	ExperimentCacheAsideRead = "cache-aside-read"
 	MaxDurationSeconds       = 30
+	DefaultDurationSeconds   = 30
 )
 
 // TierID 是公开挡位的稳定标识；它不携带任何可执行参数。
@@ -20,8 +21,25 @@ const (
 	TierBoilingCity TierID = "boiling_city"
 )
 
+const (
+	TierQPS100  TierID = "qps_100"
+	TierQPS300  TierID = "qps_300"
+	TierQPS800  TierID = "qps_800"
+	TierQPS1500 TierID = "qps_1500"
+)
+
+// ConnectionMode 区分由 Runner 估算通路数，还是用户从有限白名单中选择通路数。
+// 它描述的是 wrk2 持久连接，不是虚拟用户数。
+type ConnectionMode string
+
+const (
+	ConnectionModeAuto   ConnectionMode = "auto"
+	ConnectionModeManual ConnectionMode = "manual"
+)
+
 // TierConfig 是 Runner 唯一信任的压测参数白名单。
-// 前端只提交 TierID，RATE、CONNECTIONS 和 DURATION 只能在服务端映射，避免任意压力参数进入子进程。
+// Rate 是每秒计划产生的 HTTP 请求数，Connections 是本轮实际启用的 HTTP 持久连接数；
+// 二者都不是在线人数。Duration 仍由 Runner 固定，避免任意压力参数进入子进程。
 type TierConfig struct {
 	ID              TierID `json:"id"`
 	Label           string `json:"label"`
@@ -37,10 +55,37 @@ var tierConfigs = map[TierID]TierConfig{
 	TierBoilingCity: {ID: TierBoilingCity, Label: "王城沸腾", Rate: 3000, Connections: 96, DurationSeconds: 20},
 }
 
+var rateConfigs = map[int]TierConfig{
+	100:  {ID: TierQPS100, Label: "100 卷轴/秒", Rate: 100, DurationSeconds: DefaultDurationSeconds},
+	300:  {ID: TierQPS300, Label: "300 卷轴/秒", Rate: 300, DurationSeconds: DefaultDurationSeconds},
+	800:  {ID: TierQPS800, Label: "800 卷轴/秒", Rate: 800, DurationSeconds: DefaultDurationSeconds},
+	1500: {ID: TierQPS1500, Label: "1500 卷轴/秒", Rate: 1500, DurationSeconds: DefaultDurationSeconds},
+}
+
+var manualConnectionOptions = map[int]struct{}{
+	70:  {},
+	140: {},
+	300: {},
+	500: {},
+}
+
 // ResolveTier 把公开挡位 ID 转换为 Runner 内部固定参数。
+// 旧 Tier 只为已发布页面和磁盘任务兼容保留；新页面应提交 Rate 与 ConnectionMode。
 func ResolveTier(id TierID) (TierConfig, bool) {
 	config, ok := tierConfigs[id]
 	return config, ok
+}
+
+// ResolveRate 把“查询潮汐”速率转换为 Runner 的固定白名单参数。
+func ResolveRate(rate int) (TierConfig, bool) {
+	config, ok := rateConfigs[rate]
+	return config, ok
+}
+
+// ValidManualConnections 判断手动通路数是否属于页面公开的有限选项。
+func ValidManualConnections(connections int) bool {
+	_, ok := manualConnectionOptions[connections]
+	return ok
 }
 
 // TaskStatus 表示 Runner 权威任务状态，不由前端本地动画推断。
@@ -90,10 +135,13 @@ const (
 // CreateRequest 是主应用和 Runner 共同使用的受控任务输入。
 // 这里刻意没有 target URL、Lua 路径、持续时间或可执行文件字段。
 type CreateRequest struct {
-	Experiment string `json:"experiment"`
-	ArchiveID  int    `json:"archiveId"`
-	Mode       string `json:"mode"`
-	Tier       TierID `json:"tier"`
+	Experiment     string         `json:"experiment"`
+	ArchiveID      int            `json:"archiveId"`
+	Mode           string         `json:"mode"`
+	Tier           TierID         `json:"tier,omitempty"`
+	Rate           int            `json:"rate,omitempty"`
+	ConnectionMode ConnectionMode `json:"connectionMode,omitempty"`
+	Connections    int            `json:"connections,omitempty"`
 }
 
 // ValidateCreateRequest 在主应用和 Runner 两侧重复执行白名单校验。
@@ -108,9 +156,46 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 	if request.Mode != "direct" && request.Mode != "cached" {
 		return TierConfig{}, "mode must be direct or cached"
 	}
-	tier, ok := ResolveTier(request.Tier)
+
+	// 没有 Rate 的请求属于旧页面协议，完整沿用原 Tier 参数，保证滚动升级期间旧页面
+	// 和磁盘中的任务仍可读取。新协议只能使用 100/300/800/1500 QPS。
+	if request.Rate == 0 {
+		if request.ConnectionMode != "" || request.Connections != 0 {
+			return TierConfig{}, "rate is required when configuring connections"
+		}
+		tier, ok := ResolveTier(request.Tier)
+		if !ok {
+			return TierConfig{}, "tier is not supported"
+		}
+		if tier.DurationSeconds <= 0 || tier.DurationSeconds > MaxDurationSeconds {
+			return TierConfig{}, "tier duration exceeds runner limit"
+		}
+		return tier, ""
+	}
+	if request.Tier != "" {
+		return TierConfig{}, "tier and rate cannot be used together"
+	}
+
+	tier, ok := ResolveRate(request.Rate)
 	if !ok {
-		return TierConfig{}, "tier is not supported"
+		return TierConfig{}, "rate must be one of 100, 300, 800 or 1500"
+	}
+	connectionMode := request.ConnectionMode
+	if connectionMode == "" {
+		connectionMode = ConnectionModeAuto
+	}
+	switch connectionMode {
+	case ConnectionModeAuto:
+		if request.Connections != 0 {
+			return TierConfig{}, "connections must be omitted in auto mode"
+		}
+	case ConnectionModeManual:
+		if !ValidManualConnections(request.Connections) {
+			return TierConfig{}, "manual connections must be one of 70, 140, 300 or 500"
+		}
+		tier.Connections = request.Connections
+	default:
+		return TierConfig{}, "connectionMode must be auto or manual"
 	}
 	if tier.DurationSeconds <= 0 || tier.DurationSeconds > MaxDurationSeconds {
 		return TierConfig{}, "tier duration exceeds runner limit"
@@ -120,21 +205,27 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 
 // TaskMetrics 合并 wrk2 延迟/吞吐结果与应用已有的缓存、SQL 指标。
 type TaskMetrics struct {
-	ActualRequests  int64   `json:"actualRequests"`
-	ActualQPS       float64 `json:"actualQps"`
-	DurationSeconds float64 `json:"durationSeconds"`
-	P50MS           float64 `json:"p50Ms"`
-	P90MS           float64 `json:"p90Ms"`
-	P95MS           float64 `json:"p95Ms"`
-	P99MS           float64 `json:"p99Ms"`
-	ErrorRate       float64 `json:"errorRate"`
-	Timeouts        int64   `json:"timeouts"`
-	RedisHits       int64   `json:"redisHits"`
-	MySQLFallbacks  int64   `json:"mysqlFallbacks"`
-	SQLQueries      int64   `json:"sqlQueries"`
-	CacheHitRate    float64 `json:"cacheHitRate"`
-	PoolPeak        int64   `json:"poolPeak"`
-	PoolCapacity    int64   `json:"poolCapacity"`
+	ActualRequests       int64   `json:"actualRequests"`
+	ActualQPS            float64 `json:"actualQps"`
+	DurationSeconds      float64 `json:"durationSeconds"`
+	P50MS                float64 `json:"p50Ms"`
+	P90MS                float64 `json:"p90Ms"`
+	P95MS                float64 `json:"p95Ms"`
+	P99MS                float64 `json:"p99Ms"`
+	RequestP50MS         float64 `json:"requestP50Ms"`
+	RequestP90MS         float64 `json:"requestP90Ms"`
+	RequestP95MS         float64 `json:"requestP95Ms"`
+	RequestP99MS         float64 `json:"requestP99Ms"`
+	TargetCompletionRate float64 `json:"targetCompletionRate"`
+	ErrorRate            float64 `json:"errorRate"`
+	Timeouts             int64   `json:"timeouts"`
+	SocketErrors         int64   `json:"socketErrors"`
+	RedisHits            int64   `json:"redisHits"`
+	MySQLFallbacks       int64   `json:"mysqlFallbacks"`
+	SQLQueries           int64   `json:"sqlQueries"`
+	CacheHitRate         float64 `json:"cacheHitRate"`
+	PoolPeak             int64   `json:"poolPeak"`
+	PoolCapacity         int64   `json:"poolCapacity"`
 }
 
 // TaskLog 只保存任务级关键事件，不保存逐请求日志。
@@ -146,21 +237,23 @@ type TaskLog struct {
 
 // Task 是页面查询和 SSE 恢复使用的权威任务快照。
 type Task struct {
-	ID               string      `json:"taskId"`
-	Experiment       string      `json:"experiment"`
-	ArchiveID        int         `json:"archiveId"`
-	Mode             string      `json:"mode"`
-	Tier             TierConfig  `json:"tier"`
-	Status           TaskStatus  `json:"status"`
-	CreatedAt        time.Time   `json:"createdAt"`
-	StartedAt        *time.Time  `json:"startedAt,omitempty"`
-	EndedAt          *time.Time  `json:"endedAt,omitempty"`
-	ElapsedSeconds   int         `json:"elapsedSeconds"`
-	RemainingSeconds int         `json:"remainingSeconds"`
-	Metrics          TaskMetrics `json:"metrics"`
-	ErrorCode        string      `json:"errorCode,omitempty"`
-	ErrorMessage     string      `json:"errorMessage,omitempty"`
-	Logs             []TaskLog   `json:"logs"`
+	ID                   string         `json:"taskId"`
+	Experiment           string         `json:"experiment"`
+	ArchiveID            int            `json:"archiveId"`
+	Mode                 string         `json:"mode"`
+	Tier                 TierConfig     `json:"tier"`
+	ConnectionMode       ConnectionMode `json:"connectionMode,omitempty"`
+	RequestedConnections int            `json:"requestedConnections,omitempty"`
+	Status               TaskStatus     `json:"status"`
+	CreatedAt            time.Time      `json:"createdAt"`
+	StartedAt            *time.Time     `json:"startedAt,omitempty"`
+	EndedAt              *time.Time     `json:"endedAt,omitempty"`
+	ElapsedSeconds       int            `json:"elapsedSeconds"`
+	RemainingSeconds     int            `json:"remainingSeconds"`
+	Metrics              TaskMetrics    `json:"metrics"`
+	ErrorCode            string         `json:"errorCode,omitempty"`
+	ErrorMessage         string         `json:"errorMessage,omitempty"`
+	Logs                 []TaskLog      `json:"logs"`
 }
 
 // Event 是 Runner 推给主应用、再由主应用转发给浏览器的 SSE 数据。

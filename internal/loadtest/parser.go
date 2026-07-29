@@ -16,15 +16,20 @@ var (
 )
 
 type wrkResult struct {
-	Requests   int64
-	QPS        float64
-	Duration   float64
-	P50MS      float64
-	P90MS      float64
-	P95MS      float64
-	P99MS      float64
-	Timeouts   int64
-	ErrorCount int64
+	Requests        int64
+	QPS             float64
+	Duration        float64
+	P50MS           float64
+	P90MS           float64
+	P95MS           float64
+	P99MS           float64
+	RequestP50MS    float64
+	RequestP90MS    float64
+	RequestP95MS    float64
+	RequestP99MS    float64
+	Timeouts        int64
+	SocketErrors    int64
+	Non2xxResponses int64
 }
 
 type percentilePoint struct {
@@ -32,14 +37,35 @@ type percentilePoint struct {
 	percentile float64
 }
 
-// parseWrkOutput 只解析 wrk2 的汇总和有界直方图，不把逐请求内容带到页面。
+type latencyHistogram struct {
+	p50MS  float64
+	p90MS  float64
+	p95MS  float64
+	p99MS  float64
+	points []percentilePoint
+}
+
+// parseWrkOutput 只解析 wrk2 的汇总和两组有界直方图，不把逐请求内容带到页面。
+// Recorded Latency 是按计划投递时刻修正后的需求侧延迟；Uncorrected Latency 才是
+// HTTP 请求真正发出到收到响应的延迟，两者不能再共用一个“客户等待时间”标签。
 func parseWrkOutput(output string) wrkResult {
 	var result wrkResult
+	var corrected latencyHistogram
+	var uncorrected latencyHistogram
+	current := &corrected
 	var detailed bool
-	var points []percentilePoint
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		line := scanner.Text()
+		if strings.Contains(line, "Latency Distribution (HdrHistogram") {
+			detailed = false
+			if strings.Contains(line, "Uncorrected Latency") {
+				current = &uncorrected
+			} else {
+				current = &corrected
+			}
+			continue
+		}
 		if match := requestsPattern.FindStringSubmatch(line); len(match) == 4 {
 			result.Requests, _ = strconv.ParseInt(match[1], 10, 64)
 			duration, _ := strconv.ParseFloat(match[2], 64)
@@ -55,18 +81,18 @@ func parseWrkOutput(output string) wrkResult {
 			value = durationToMilliseconds(value, match[3])
 			switch match[1] {
 			case "50":
-				result.P50MS = value
+				current.p50MS = value
 			case "90":
-				result.P90MS = value
+				current.p90MS = value
 			case "99":
-				result.P99MS = value
+				current.p99MS = value
 			}
 			continue
 		}
 		if match := socketPattern.FindStringSubmatch(line); len(match) == 5 {
 			for index := 1; index <= 4; index++ {
 				value, _ := strconv.ParseInt(match[index], 10, 64)
-				result.ErrorCount += value
+				result.SocketErrors += value
 				if index == 4 {
 					result.Timeouts = value
 				}
@@ -75,7 +101,7 @@ func parseWrkOutput(output string) wrkResult {
 		}
 		if match := non2xxPattern.FindStringSubmatch(line); len(match) == 2 {
 			value, _ := strconv.ParseInt(match[1], 10, 64)
-			result.ErrorCount += value
+			result.Non2xxResponses += value
 			continue
 		}
 		if strings.Contains(line, "Detailed Percentile spectrum") {
@@ -94,21 +120,34 @@ func parseWrkOutput(output string) wrkResult {
 			value, valueErr := strconv.ParseFloat(fields[0], 64)
 			percentileValue, percentileErr := strconv.ParseFloat(fields[1], 64)
 			if valueErr == nil && percentileErr == nil && percentileValue >= 0 && percentileValue <= 1 {
-				points = append(points, percentilePoint{value: value, percentile: percentileValue})
+				current.points = append(current.points, percentilePoint{value: value, percentile: percentileValue})
 			}
 		}
 	}
-	if result.P50MS == 0 {
-		result.P50MS = percentileAt(points, .50)
-	}
-	if result.P90MS == 0 {
-		result.P90MS = percentileAt(points, .90)
-	}
-	result.P95MS = percentileAt(points, .95)
-	if result.P99MS == 0 {
-		result.P99MS = percentileAt(points, .99)
-	}
+	finalizeHistogram(&corrected)
+	finalizeHistogram(&uncorrected)
+	result.P50MS = corrected.p50MS
+	result.P90MS = corrected.p90MS
+	result.P95MS = corrected.p95MS
+	result.P99MS = corrected.p99MS
+	result.RequestP50MS = uncorrected.p50MS
+	result.RequestP90MS = uncorrected.p90MS
+	result.RequestP95MS = uncorrected.p95MS
+	result.RequestP99MS = uncorrected.p99MS
 	return result
+}
+
+func finalizeHistogram(histogram *latencyHistogram) {
+	if histogram.p50MS == 0 {
+		histogram.p50MS = percentileAt(histogram.points, .50)
+	}
+	if histogram.p90MS == 0 {
+		histogram.p90MS = percentileAt(histogram.points, .90)
+	}
+	histogram.p95MS = percentileAt(histogram.points, .95)
+	if histogram.p99MS == 0 {
+		histogram.p99MS = percentileAt(histogram.points, .99)
+	}
 }
 
 func percentileAt(points []percentilePoint, percentile float64) float64 {

@@ -41,7 +41,7 @@
         <section id="purchase-empty" class="lab-empty" hidden>
             <span>PRODUCT CONTEXT REQUIRED</span>
             <h1>尚未选择材料</h1>
-            <p>请先在材料情报店完成一次查询，再带领购买者进入这里。</p>
+            <p>请先在材料情报店完成一次查询，再进入这轮独立的购买实验。</p>
             <a href="/lab">返回材料查询</a>
         </section>
 
@@ -58,11 +58,12 @@
                     <figcaption>ARC-004 · 首批现货</figcaption>
                 </figure>
                 <div>
-                    <small>FROM SURVEY TO PURCHASE</small>
-                    <h1 id="purchase-title"><span>1500</span> 名法师完成调查，其中 <span>150</span> 人准备购买<span id="story-material-name">月盐</span>。</h1>
+                    <small>INDEPENDENT PURCHASE LOAD</small>
+                    <h1 id="purchase-title">查询实验已经结束；接下来独立发出 <span>150</span> 个唯一购买请求，争购<span id="story-material-name">月盐</span>。</h1>
+                    <p>这 150 个请求与查询潮汐的目标 QPS、实际完成量和魔法通路数没有换算关系。</p>
                 </div>
                 <dl aria-label="实验固定负载">
-                    <div><dt>购买者</dt><dd>150</dd></div>
+                    <div><dt>唯一购买请求</dt><dd>150</dd></div>
                     <div><dt>初始库存</dt><dd id="story-initial-stock">100</dd></div>
                     <div><dt>查询探针</dt><dd>20 QPS</dd></div>
                 </dl>
@@ -83,7 +84,7 @@
                     </button>
                 </div>
                 <div class="purchase-prepare-action">
-                    <button id="start-purchase-run" class="purchase-hero-button" type="button" disabled>开始 150 人购买实验</button>
+                    <button id="start-purchase-run" class="purchase-hero-button" type="button" disabled>开始 150 个唯一请求实验</button>
                     <p id="prepare-action-hint">请先选择一种缓存失效方案。</p>
                 </div>
             </section>
@@ -146,7 +147,7 @@
                         <div class="material-crates" aria-hidden="true"><i></i><i></i><i></i></div>
                         <div id="story-buyers" class="shop-role shop-buyers" data-state="idle">
                             <div class="buyer-silhouettes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-                            <strong>150 名购买者</strong><small data-role-status>正在店外等待</small>
+                            <strong>购买请求来源</strong><small data-role-status>150 个唯一请求正在店外等待</small>
                         </div>
                         <div id="story-service" class="shop-role shop-service" data-state="idle">
                             <span class="role-figure shopkeeper" aria-hidden="true"></span>
@@ -218,8 +219,8 @@
 
                     <div class="topology-canvas" aria-label="购买与库存探针拓扑">
                         <div id="node-buyers" class="topology-node" data-state="idle">
-                            <header><span>01</span><strong>购买者</strong></header>
-                            <small data-node-status>150 个唯一用户</small><dl><div><dt>耗时</dt><dd data-node-time>—</dd></div><div><dt>I/O</dt><dd data-node-io>150 × 1</dd></div></dl>
+                            <header><span>01</span><strong>请求来源</strong></header>
+                            <small data-node-status>150 个唯一请求</small><dl><div><dt>耗时</dt><dd data-node-time>—</dd></div><div><dt>I/O</dt><dd data-node-io>150 × 1</dd></div></dl>
                         </div>
                         <span class="topology-arrow route-common" aria-hidden="true">→</span>
                         <div id="node-service" class="topology-node" data-state="idle">
@@ -339,7 +340,7 @@
                         <dl class="battle-overview-grid">
                             <div><dt>材料</dt><dd id="report-material">—</dd></div>
                             <div><dt>方案</dt><dd id="report-strategy">—</dd></div>
-                            <div><dt>购买人数</dt><dd id="report-participants">—</dd></div>
+                            <div><dt>购买请求数</dt><dd id="report-participants">—</dd></div>
                             <div><dt>成功购买数</dt><dd id="report-success">—</dd></div>
                             <div><dt>售罄</dt><dd id="report-soldout">—</dd></div>
                             <div><dt>初始库存</dt><dd id="report-initial-stock">—</dd></div>

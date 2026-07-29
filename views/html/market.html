@@ -8,8 +8,8 @@
     <meta name="description" content="星髓现世：在材料情报店查验实物，并进入真实 Cache-Aside 查询与限量购买实验。" />
     <title>Silas 炼金市 · 材料情报店</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260722-loadtest-inside" />
-    <link rel="stylesheet" href="/css/world-style.css?v=20260729-crowd-entry" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260729-query-tide" />
+    <link rel="stylesheet" href="/css/world-style.css?v=20260729-query-tide" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -74,20 +74,23 @@
                 <i class="visitor-satchel"></i>
             </div>
 
-            <div id="crowd-queue" class="crowd-queue" aria-hidden="true">
-                <i></i><i></i><i></i><i></i><i></i><i></i>
-                <i></i><i></i><i></i><i></i><i></i><i></i>
-                <i></i><i></i><i></i><i></i><i></i><i></i>
-                <i></i><i></i><i></i><i></i><i></i><i></i>
-                <i></i><i></i><i></i><i></i><i></i><i></i>
+            <div id="query-guild" class="query-guild" aria-hidden="true">
+                <div class="query-guild-members" aria-hidden="true"><i></i><i></i><i></i></div>
+                <div class="query-scroll-press" aria-hidden="true">
+                    <span data-crowd-ticket>ARC-004</span><i></i>
+                </div>
+                <small>法师公会</small>
+                <strong>请求来源</strong>
             </div>
-            <div id="crowd-tickets" class="crowd-tickets" aria-hidden="true">
-                <i><span data-crowd-ticket>ARC-004</span></i>
-                <i><span data-crowd-ticket>ARC-004</span></i>
-                <i><span data-crowd-ticket>ARC-004</span></i>
-                <i><span data-crowd-ticket>ARC-004</span></i>
-                <i><span data-crowd-ticket>ARC-004</span></i>
-                <i><span data-crowd-ticket>ARC-004</span></i>
+            <div id="query-ingress" class="query-ingress" aria-hidden="true">
+                <div class="query-scroll-stream" aria-hidden="true">
+                    <i></i><i></i><i></i><i></i><i></i><i></i>
+                </div>
+                <div class="query-conduit-gate" aria-hidden="true">
+                    <i></i><i></i><i></i><i></i><i></i>
+                </div>
+                <span>通路入口 · 图标为通路组示意</span>
+                <strong id="market-conduit-count">自动配置</strong>
             </div>
 
             <div class="stone-street" aria-hidden="true"></div>
@@ -115,16 +118,16 @@
                     <div>
                         <small>LEGENDARY · 首批发售</small>
                         <strong>ARC-004 · 星髓</strong>
-                        <p>“1500 人正在查它的档案。首批只有 100 份——先把这张档案片交给你。”</p>
+                        <p>“法师公会正在持续生成查询卷轴。先设置每秒卷轴数，再决定同时开启多少条魔法通路。”</p>
                         <dl>
-                            <div><dt>调查者</dt><dd>1500</dd></div>
-                            <div><dt>购买者</dt><dd>150</dd></div>
+                            <div><dt>查询潮汐</dt><dd>最高 1500/s</dd></div>
+                            <div><dt>通路模式</dt><dd>自动 / 手动</dd></div>
                             <div><dt>首批库存</dt><dd>100</dd></div>
                         </dl>
                     </div>
                 </div>
                 <div class="rare-material-actions">
-                    <button id="star-crowd-entry" class="event-primary" type="button">召集人潮</button>
+                    <button id="star-crowd-entry" class="event-primary" type="button">配置查询潮汐</button>
                     <button id="show-materials" class="event-secondary" type="button">独自查验</button>
                     <button id="browse-materials" class="event-secondary" type="button">看看普通货架</button>
                 </div>
@@ -156,13 +159,13 @@
                 <div class="record-copy">
                     <div id="delivery-prompt" class="delivery-prompt">
                         <strong>店主</strong>
-                        <p>“你可以亲自投递这一张档案片，也可以召集一批访客同时提交查询。”</p>
+                        <p>“你可以亲自投递一张查询卷轴，也可以让法师公会持续生成卷轴，观察通路如何周转。”</p>
                         <div class="delivery-choice" role="group" aria-label="选择档案投递方式">
                             <button id="single-request" type="button">
                                 <strong>查验一份档案</strong><small>先发出一次真实只读请求</small>
                             </button>
                             <button id="crowd-test" type="button">
-                                <strong>召集人潮</strong><small>先在门口决定来多少人</small>
+                                <strong>配置查询潮汐</strong><small>选择每秒卷轴数与魔法通路</small>
                             </button>
                         </div>
                         <small class="purchase-boundary">此处不会直接扣减库存；购买时会重新校验价格与库存。</small>
@@ -170,36 +173,53 @@
 
                     <div id="crowd-panel" class="crowd-panel">
                         <header>
-                            <div><small>MULTI-VISITOR LOAD</small><strong>召集人潮</strong></div>
+                            <div><small>QUERY TIDE CONTROL</small><strong>配置查询潮汐</strong></div>
                             <button id="leave-crowd-mode" type="button">返回方式选择</button>
                         </header>
                         <fieldset class="crowd-tier-control" aria-describedby="crowd-size-note">
-                            <legend>选择人潮挡位</legend>
-                            <div class="crowd-tier-options" role="group" aria-label="固定人潮挡位">
-                                <button type="button" data-crowd-tier="visitors" aria-pressed="false">
-                                    <span>零星访客</span><strong>100 req/s</strong><small>16 条连接</small>
+                            <legend>查询潮汐</legend>
+                            <div class="crowd-tier-options" role="group" aria-label="每秒计划生成的查询卷轴数量">
+                                <button type="button" data-crowd-tier="qps_100" aria-pressed="false">
+                                    <span>涓流</span><strong>100 卷轴/秒</strong><small>目标 QPS 100</small>
                                 </button>
-                                <button type="button" data-crowd-tier="tide_eve" aria-pressed="false">
-                                    <span>潮汐前夜</span><strong>500 req/s</strong><small>32 条连接</small>
+                                <button type="button" data-crowd-tier="qps_300" aria-pressed="false">
+                                    <span>涟漪</span><strong>300 卷轴/秒</strong><small>目标 QPS 300</small>
                                 </button>
-                                <button class="is-active" type="button" data-crowd-tier="crowd" aria-pressed="true">
-                                    <span>人潮涌入</span><strong>1500 req/s</strong><small>64 条连接</small>
+                                <button type="button" data-crowd-tier="qps_800" aria-pressed="false">
+                                    <span>浪潮</span><strong>800 卷轴/秒</strong><small>目标 QPS 800</small>
                                 </button>
-                                <button type="button" data-crowd-tier="boiling_city" aria-pressed="false">
-                                    <span>王城沸腾</span><strong>3000 req/s</strong><small>96 条连接</small>
+                                <button class="is-active" type="button" data-crowd-tier="qps_1500" aria-pressed="true">
+                                    <span>满潮</span><strong>1500 卷轴/秒</strong><small>目标 QPS 1500</small>
                                 </button>
                             </div>
-                            <div class="crowd-tier-selection"><small>当前挡位</small><output id="crowd-size-value">人潮涌入 · 1500 req/s · 64 连接</output></div>
-                            <small id="crowd-size-note">固定运行 20 秒。批量实验会先重置数据；所有参数由 Runner 白名单决定。</small>
+                            <div class="conduit-mode-control">
+                                <div>
+                                    <small>魔法通路</small>
+                                    <div class="conduit-mode-options" role="group" aria-label="魔法通路配置方式">
+                                        <button class="is-active" type="button" data-connection-mode="auto" aria-pressed="true">自动配置</button>
+                                        <button type="button" data-connection-mode="manual" aria-pressed="false">手动配置</button>
+                                    </div>
+                                </div>
+                                <div id="manual-conduit-options" class="manual-conduit-options" role="group" aria-label="手动选择魔法通路数量" hidden>
+                                    <button type="button" data-connection-count="70" aria-pressed="false">70</button>
+                                    <button type="button" data-connection-count="140" aria-pressed="false">140</button>
+                                    <button class="is-active" type="button" data-connection-count="300" aria-pressed="true">300</button>
+                                    <button type="button" data-connection-count="500" aria-pressed="false">500</button>
+                                    <small>条通路</small>
+                                </div>
+                            </div>
+                            <div class="crowd-tier-selection"><small>当前实验参数</small><output id="crowd-size-value">查询潮汐 1500 卷轴/秒 · 通路自动配置</output></div>
+                            <p class="query-tide-explainer">查询潮汐表示每秒产生的 HTTP 请求数量，并非法师人数。魔法通路表示压测器保持的 HTTP 连接数量。一条通路可以连续处理多张卷轴，但通常需要等待上一张卷轴返回后才能继续。</p>
+                            <small id="crowd-size-note">固定运行 30 秒。自动模式会依据目标 QPS 与已保存的真实响应历史选择足够通路；手动模式用于观察固定通路下的周转与入口积压。</small>
                         </fieldset>
                         <div class="crowd-run-actions">
-                            <button id="start-crowd-test" class="event-primary" type="button">带人潮进入实验室</button>
+                            <button id="start-crowd-test" class="event-primary" type="button">带查询卷轴进入实验室</button>
                             <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入店内查看</button>
                         </div>
                         <div class="crowd-status" role="status" aria-live="polite">
                             <i></i>
-                            <span><strong id="crowd-status-title">等待选择人数</strong><small id="crowd-status-copy">人数在门口决定；读取路径与实验启动放在实验室。</small></span>
-                            <time id="crowd-clock">00:00 / 00:20</time>
+                            <span><strong id="crowd-status-title">等待配置查询潮汐</strong><small id="crowd-status-copy">这里配置卷轴速率与通路；读取路径与实验启动放在实验室。</small></span>
+                            <time id="crowd-clock">00:00 / 00:30</time>
                         </div>
                         <details id="equivalent-command" class="crowd-command-details" hidden>
                             <summary>查看等价命令</summary>
@@ -232,7 +252,7 @@
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260729-door-tier-2"></script>
+    <script src="/js/market.js?v=20260729-query-tide-2"></script>
 </body>
 
 </html>

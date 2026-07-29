@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -22,10 +23,14 @@ import (
 )
 
 const (
-	maxStoredTasks  = 24
-	maxStoredEvents = 180
-	maxTaskLogs     = 32
+	maxStoredTasks         = 24
+	maxStoredEvents        = 180
+	maxTaskLogs            = 32
+	autoConnectionHeadroom = 1.25
+	unknownReadPathP95MS   = 200
 )
+
+var autoConnectionOptions = [...]int{70, 140, 300, 500}
 
 type RunnerOptions struct {
 	AppBaseURL string
@@ -98,6 +103,24 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 		return Task{}, apiError(http.StatusConflict, CodeAlreadyRunning, "已有压测正在运行", active.Task.ID)
 	}
 
+	connectionMode := request.ConnectionMode
+	requestedConnections := 0
+	connectionLog := ""
+	if request.Rate > 0 {
+		if connectionMode == "" {
+			connectionMode = ConnectionModeAuto
+		}
+		if connectionMode == ConnectionModeManual {
+			requestedConnections = request.Connections
+			tier.Connections = request.Connections
+			connectionLog = fmt.Sprintf("手动开启 %d 条魔法通路", tier.Connections)
+		} else {
+			var reason string
+			tier.Connections, reason = r.resolveAutoConnectionsLocked(request, tier.Rate)
+			connectionLog = fmt.Sprintf("自动开启 %d 条魔法通路：%s", tier.Connections, reason)
+		}
+	}
+
 	now := time.Now().UTC()
 	id := newTaskID(now)
 	// 任务不绑定创建它的 HTTP 请求，但仍有 Runner 级硬超时。
@@ -105,14 +128,16 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 	runContext, cancel := context.WithTimeout(context.Background(), time.Duration(tier.DurationSeconds+10)*time.Second)
 	record := &taskRecord{
 		Task: Task{
-			ID:               id,
-			Experiment:       request.Experiment,
-			ArchiveID:        request.ArchiveID,
-			Mode:             request.Mode,
-			Tier:             tier,
-			Status:           StatusStarting,
-			CreatedAt:        now,
-			RemainingSeconds: tier.DurationSeconds,
+			ID:                   id,
+			Experiment:           request.Experiment,
+			ArchiveID:            request.ArchiveID,
+			Mode:                 request.Mode,
+			Tier:                 tier,
+			ConnectionMode:       connectionMode,
+			RequestedConnections: requestedConnections,
+			Status:               StatusStarting,
+			CreatedAt:            now,
+			RemainingSeconds:     tier.DurationSeconds,
 		},
 		Cancel:      cancel,
 		Done:        make(chan struct{}),
@@ -122,15 +147,144 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 	r.order = append(r.order, id)
 	r.activeID = id
 	r.appendLogLocked(record, "info", "准备实验")
+	if connectionLog != "" {
+		r.appendLogLocked(record, "info", connectionLog)
+	}
 	r.publishLocked(record, EventTaskStarted, "压测任务已创建，正在准备实验", nil)
 	r.pruneLocked()
 	r.persistLocked()
 	task := cloneTask(record.Task)
 	r.mu.Unlock()
 
-	slog.Info("loadtest task created", "task_id", id, "archive_id", request.ArchiveID, "mode", request.Mode, "tier", request.Tier)
+	slog.Info(
+		"loadtest task created",
+		"task_id", id,
+		"archive_id", request.ArchiveID,
+		"mode", request.Mode,
+		"target_qps", tier.Rate,
+		"connections", tier.Connections,
+		"connection_mode", connectionMode,
+	)
 	go r.runTask(runContext, id)
 	return task, nil
+}
+
+// resolveAutoConnectionsLocked 根据同一份材料的历史实际请求延迟估算 Little's Law
+// 所需在途请求数，再增加 25% 周转余量并落到受控通路档位。相同材料和目标速率
+// 已经产生过自动任务时沿用其连接数，使 Direct 与 Cache-Aside 的对比不会因为
+// 第二次运行获得了更多历史数据而偷偷改变并发条件。
+func (r *Runner) resolveAutoConnectionsLocked(request CreateRequest, rate int) (int, string) {
+	latencyMS, knownPaths := r.historicalRequestP95Locked(request.ArchiveID, rate)
+	// 只跑过一条路径时，另一条路径必须沿用它的通路数，才能形成第一组公平对比；
+	// 两条路径都有历史后则重新按较慢路径估算，让后续实验能够吸收新的真实数据，
+	// 避免自动配置永久粘在第一次选择上。
+	if knownPaths == 1 {
+		for index := len(r.order) - 1; index >= 0; index-- {
+			record := r.records[r.order[index]]
+			if record == nil || record.Task.Status != StatusCompleted {
+				continue
+			}
+			task := record.Task
+			if task.ArchiveID == request.ArchiveID &&
+				task.Tier.Rate == rate &&
+				task.ConnectionMode == ConnectionModeAuto &&
+				task.Tier.Connections > 0 &&
+				ValidManualConnections(task.Tier.Connections) {
+				return task.Tier.Connections, "沿用首条路径的公平对比配置"
+			}
+		}
+	}
+	if latencyMS <= 0 {
+		latencyMS = unknownReadPathP95MS
+	}
+	// 只见过一条读取路径时，未知路径仍按 Direct 的保守基线兜底；否则先跑到的
+	// Cache-Aside 低延迟会让随后 Direct 获得不够用的连接数。
+	if knownPaths < 2 && latencyMS < unknownReadPathP95MS {
+		latencyMS = unknownReadPathP95MS
+	}
+	required := int(math.Ceil(float64(rate) * latencyMS / 1000 * autoConnectionHeadroom))
+	for _, connections := range autoConnectionOptions {
+		if connections >= required {
+			return connections, fmt.Sprintf("按历史 P95 %.1f ms 与目标 %d QPS 估算", latencyMS, rate)
+		}
+	}
+	return autoConnectionOptions[len(autoConnectionOptions)-1],
+		fmt.Sprintf("历史 P95 %.1f ms 需要更多在途请求，已使用安全上限", latencyMS)
+}
+
+// historicalRequestP95Locked 读取两条路径各自最新的真实请求 P95，并返回较慢值。
+// 新任务使用 wrk2 uncorrected histogram；旧任务没有该字段时，仅在未达目标速率时
+// 用 connections/actualQPS 估算在途占用时间，避免把 corrected 发送欠账误当 SQL 延迟。
+func (r *Runner) historicalRequestP95Locked(archiveID, rate int) (float64, int) {
+	latestByMode := make(map[string]float64, 2)
+	collect := func(exactRate bool) {
+		for index := len(r.order) - 1; index >= 0 && len(latestByMode) < 2; index-- {
+			record := r.records[r.order[index]]
+			if record == nil || record.Task.Status != StatusCompleted {
+				continue
+			}
+			task := record.Task
+			if task.ArchiveID != archiveID || (exactRate && task.Tier.Rate != rate) {
+				continue
+			}
+			if _, exists := latestByMode[task.Mode]; exists {
+				continue
+			}
+			if latencyMS := historicalTaskRequestP95(task); latencyMS > 0 {
+				latestByMode[task.Mode] = latencyMS
+			}
+		}
+	}
+	collect(true)
+	if len(latestByMode) == 0 {
+		collect(false)
+	}
+	slowest := float64(0)
+	for _, latencyMS := range latestByMode {
+		if latencyMS > slowest {
+			slowest = latencyMS
+		}
+	}
+	return slowest, len(latestByMode)
+}
+
+func historicalTaskRequestP95(task Task) float64 {
+	latencyMS := task.Metrics.RequestP95MS
+	completionRate := task.Metrics.ActualQPS / float64(task.Tier.Rate)
+	if task.Metrics.ActualQPS > 0 && task.Tier.Rate > 0 &&
+		(completionRate < .9 || task.Metrics.SocketErrors > 0) &&
+		task.Tier.Connections > 0 {
+		// 完成率不足或出现 Socket Errors 时，已完成请求的 P95 可能只代表幸存样本。
+		// connections/actualQPS 给出通路的平均周转占用下界，取较大值避免低估。
+		occupancyMS := float64(task.Tier.Connections) / task.Metrics.ActualQPS * 1000
+		if occupancyMS > latencyMS {
+			latencyMS = occupancyMS
+		}
+	}
+	if latencyMS > 0 {
+		return latencyMS
+	}
+	if task.Metrics.ActualQPS <= 0 || task.Tier.Rate <= 0 {
+		return 0
+	}
+	if completionRate >= .9 && task.Metrics.P95MS > 0 {
+		return task.Metrics.P95MS
+	}
+	if task.Tier.Connections > 0 {
+		return float64(task.Tier.Connections) / task.Metrics.ActualQPS * 1000
+	}
+	return 0
+}
+
+func targetCompletionRate(actualQPS float64, targetQPS int) float64 {
+	if actualQPS <= 0 || targetQPS <= 0 {
+		return 0
+	}
+	rate := actualQPS * 100 / float64(targetQPS)
+	if rate > 100 {
+		return 100
+	}
+	return rate
 }
 
 // Get 返回任务权威快照，供页面首次加载和 SSE 断线恢复。
@@ -230,17 +384,7 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 	// Cache-Aside 命中时延可低于 2ms。wrk2 上游在多线程共享极低延迟直方图时会偶发
 	// counts_index 断言崩溃；单线程仍能用 96 条连接稳定产生 3000 req/s，且避免该采样器缺陷。
 	// 这里的线程数同样是 Runner 固定参数，前端不能覆盖。
-	threads := 1
-	args := []string{
-		"-t" + strconv.Itoa(threads),
-		"-c" + strconv.Itoa(task.Tier.Connections),
-		"-d" + strconv.Itoa(task.Tier.DurationSeconds) + "s",
-		"-R" + strconv.Itoa(task.Tier.Rate),
-		"--latency",
-		"--timeout", "2s",
-		"-s", r.scriptPath,
-		targetURL,
-	}
+	args := wrkArguments(task, r.scriptPath, targetURL)
 	command := exec.Command(r.wrk2Path, args...)
 	configureProcess(command)
 	var output bytes.Buffer
@@ -309,6 +453,21 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 	}
 }
 
+func wrkArguments(task Task, scriptPath, targetURL string) []string {
+	const threads = 1
+	return []string{
+		"-t" + strconv.Itoa(threads),
+		"-c" + strconv.Itoa(task.Tier.Connections),
+		"-d" + strconv.Itoa(task.Tier.DurationSeconds) + "s",
+		"-R" + strconv.Itoa(task.Tier.Rate),
+		"--latency",
+		"--u_latency",
+		"--timeout", "2s",
+		"-s", scriptPath,
+		targetURL,
+	}
+}
+
 func (r *Runner) collectAndComplete(taskContext context.Context, id, output string) {
 	if !r.transition(id, StatusCollecting, "wrk2 已结束，正在收集结果") {
 		return
@@ -331,6 +490,10 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 		r.finish(id, StatusFailed, CodeRunnerFailure, "wrk2 未产生有效请求", EventFailed)
 		return
 	}
+	if parsed.P50MS <= 0 || parsed.RequestP50MS <= 0 {
+		r.finish(id, StatusFailed, CodeRunnerFailure, "wrk2 未返回完整的 corrected / uncorrected 延迟直方图", EventFailed)
+		return
+	}
 	metrics.ActualRequests = parsed.Requests
 	metrics.ActualQPS = parsed.QPS
 	metrics.DurationSeconds = parsed.Duration
@@ -338,15 +501,27 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 	metrics.P90MS = parsed.P90MS
 	metrics.P95MS = parsed.P95MS
 	metrics.P99MS = parsed.P99MS
+	metrics.RequestP50MS = parsed.RequestP50MS
+	metrics.RequestP90MS = parsed.RequestP90MS
+	metrics.RequestP95MS = parsed.RequestP95MS
+	metrics.RequestP99MS = parsed.RequestP99MS
+	metrics.TargetCompletionRate = targetCompletionRate(parsed.QPS, task.Tier.Rate)
 	metrics.Timeouts = parsed.Timeouts
-	metrics.ErrorRate = float64(parsed.ErrorCount) * 100 / float64(parsed.Requests)
+	metrics.SocketErrors = parsed.SocketErrors
+	// Socket Errors 是连接层事件计数，可能与请求不是一一对应，因此必须单列；
+	// ErrorRate 只使用收到 HTTP 响应后的 non-2xx/3xx 数量，避免复合计数超过 100%。
+	metrics.ErrorRate = float64(parsed.Non2xxResponses) * 100 / float64(parsed.Requests)
 
 	r.mu.Lock()
 	if record := r.records[id]; record != nil && record.Task.Status == StatusCollecting {
 		record.Task.Metrics = metrics
 		r.appendLogLocked(record, "info", "wrk2 结束")
-		if parsed.Timeouts > 0 || parsed.ErrorCount > 0 {
-			r.appendLogLocked(record, "warning", fmt.Sprintf("检测到 %d 个错误，其中超时 %d 个", parsed.ErrorCount, parsed.Timeouts))
+		if parsed.SocketErrors > 0 || parsed.Non2xxResponses > 0 {
+			r.appendLogLocked(record, "warning", fmt.Sprintf(
+				"检测到 Socket Errors %d 个、HTTP 非成功响应 %d 个",
+				parsed.SocketErrors,
+				parsed.Non2xxResponses,
+			))
 		}
 		r.appendLogLocked(record, "success", "指标解析完成")
 		r.persistLocked()
@@ -430,11 +605,12 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, mode string) (TaskMetrics,
 	if path.TotalRequests > 0 {
 		errorRate = float64(path.Errors) * 100 / float64(path.TotalRequests)
 	}
+	// 应用快照的 P95/P99 只描述服务端处理，不含压测器到应用的 HTTP 往返。
+	// RequestP* 必须留给 wrk2 uncorrected histogram 在任务结束后填写，避免运行期
+	// 把服务端延迟临时标成“实际请求延迟”，结算时又静默切换统计口径。
 	return TaskMetrics{
 		ActualRequests: path.TotalRequests,
 		ActualQPS:      float64(path.QPS),
-		P95MS:          float64(path.P95),
-		P99MS:          float64(path.P99),
 		ErrorRate:      errorRate,
 		RedisHits:      path.CacheHits,
 		MySQLFallbacks: mysqlFallbacks,
@@ -487,6 +663,7 @@ func (r *Runner) updateProgress(id string, now time.Time, metrics TaskMetrics) {
 	if record == nil || record.Task.Status != StatusRunning {
 		return
 	}
+	metrics.TargetCompletionRate = targetCompletionRate(metrics.ActualQPS, record.Task.Tier.Rate)
 	record.Task.Metrics = metrics
 	r.updateClockLocked(record, now)
 	r.publishLocked(record, EventProgress, "压测运行中", nil)
