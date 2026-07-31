@@ -17,6 +17,7 @@ const maxCreateBodyBytes = 4 << 10
 func (r *Runner) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", r.handleHealth)
+	mux.HandleFunc("/internal/loadtests/connection-plan", r.handleConnectionPlan)
 	mux.HandleFunc("/internal/loadtests", r.handleCollection)
 	mux.HandleFunc("/internal/loadtests/", r.handleTask)
 	return mux
@@ -60,7 +61,43 @@ func (r *Runner) handleCollection(writer http.ResponseWriter, request *http.Requ
 		writeRunnerError(writer, apiErr)
 		return
 	}
-	writeRunnerJSON(writer, http.StatusAccepted, CreateResponse{TaskID: task.ID, Status: task.Status})
+	writeRunnerJSON(writer, http.StatusAccepted, CreateResponse{
+		TaskID:           task.ID,
+		Status:           task.Status,
+		ConnectionMode:   task.ConnectionMode,
+		Connections:      task.Tier.Connections,
+		ConnectionReason: task.ConnectionReason,
+	})
+}
+
+// handleConnectionPlan 在不创建任务的前提下预估本轮 wrk2 -c。
+// 这只是启动前快照；创建任务时 Runner 会再次计算并在 CreateResponse 中返回最终值。
+func (r *Runner) handleConnectionPlan(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writer.Header().Set("Allow", http.MethodPost)
+		writeRunnerError(writer, apiError(http.StatusMethodNotAllowed, CodeInvalidRequest, "请求方法不受支持", request.Method))
+		return
+	}
+
+	request.Body = http.MaxBytesReader(writer, request.Body, maxCreateBodyBytes)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	var input CreateRequest
+	if err := decoder.Decode(&input); err != nil {
+		writeRunnerError(writer, apiError(http.StatusBadRequest, CodeInvalidRequest, "通路预估请求不是有效 JSON", err.Error()))
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		writeRunnerError(writer, apiError(http.StatusBadRequest, CodeInvalidRequest, "请求体只能包含一个 JSON 对象", ""))
+		return
+	}
+
+	plan, apiErr := r.PlanConnections(input)
+	if apiErr != nil {
+		writeRunnerError(writer, apiErr)
+		return
+	}
+	writeRunnerJSON(writer, http.StatusOK, plan)
 }
 
 func (r *Runner) handleTask(writer http.ResponseWriter, request *http.Request) {

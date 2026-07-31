@@ -2,6 +2,7 @@
     "use strict";
 
     var STORAGE_KEY = "silas.cache-aside.material-id";
+    var ACTIVE_TASK_KEY = "silas.cache-aside.active-loadtest.v1";
     var experimentState = window.SilasExperimentState;
     var experimentResults = window.SilasExperimentResults;
     var profiles = {
@@ -40,6 +41,11 @@
         loadtestResultSaved: false,
         loadtestLastActiveStatus: "starting",
         loadtestRecordLoaded: false,
+        loadtestStartRequested: false,
+        loadtestCreateInFlight: false,
+        labSceneReady: false,
+        metricsObservationReady: false,
+        metricsSnapshotRecoveryAt: 0,
         crowdHandoff: null,
         snapshot: null,
         previousRead: null,
@@ -60,11 +66,34 @@
         metricsReplayFrames: [],
         metricsReplayIndex: 0,
         metricsReplayTimer: null,
+        connectionPlan: null,
+        connectionPlanError: "",
+        connectionPlanRequest: 0,
+        tideTrace: {
+            taskId: "",
+            sequence: 0,
+            requestHighWater: 0,
+            hitHighWater: 0,
+            fallbackHighWater: 0,
+            coalescedHighWater: 0,
+            refillHitFloor: 0,
+            refillPending: false,
+            refillEvidence: false,
+            responseBaseline: 0,
+            responseResetObserved: false,
+            responseEvidence: false,
+            queue: [],
+            active: null,
+            animations: [],
+            timer: null,
+            lastStartedAt: 0
+        },
         reducedMotion: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
     };
     var metricAnimations = new WeakMap();
     // 查询潮汐是目标 QPS，魔法通路是 wrk2 保持的 HTTP 持久连接；二者都不是用户人数。
-    // 运行前自动通路数只显示“待 Runner 决定”，避免前端用猜测值冒充真实执行参数。
+    // 运行前通过 Runner 的同源预估接口显示 -c；创建任务后必须用 CreateResponse/Task 的最终值覆盖，
+    // 避免前端复制自动算法，也避免把配置连接数误称为成功建立的 socket 数。
     var crowdTiers = Object.freeze({
         qps_100: Object.freeze({ label: "涓流", rate: 100, duration: 30 }),
         qps_300: Object.freeze({ label: "涟漪", rate: 300, duration: 30 }),
@@ -278,6 +307,15 @@
         return new URLSearchParams(window.location.search).get("task") || "";
     }
 
+    function incomingCrowdMode() {
+        var mode = new URLSearchParams(window.location.search).get("mode");
+        return mode === "cached" ? "cached" : (mode === "direct" ? "direct" : "");
+    }
+
+    function incomingLaunchWhenObserved() {
+        return new URLSearchParams(window.location.search).get("launch") === "when-observed";
+    }
+
     function crowdTierForRate(rate) {
         var matched = Object.keys(crowdTiers).find(function (key) {
             return crowdTiers[key].rate === Number(rate);
@@ -336,7 +374,10 @@
             }
         }
         if (!response.ok) {
-            throw new Error((body && body.message) || "请求失败（" + response.status + "）");
+            var requestError = new Error((body && body.message) || "请求失败（" + response.status + "）");
+            requestError.status = response.status;
+            requestError.code = body && body.code || "";
+            throw requestError;
         }
         return { response: response, body: body };
     }
@@ -379,38 +420,116 @@
     function renderCrowdSetup() {
         var panel = byId("lab-crowd-settings");
         var stage = byId("query-tide-stage");
+        var taskBoard = byId("lab-loadtest");
         panel.hidden = !isCrowdEntry();
         stage.hidden = !isCrowdEntry();
+        taskBoard.hidden = !isCrowdEntry();
         if (!isCrowdEntry()) {
             return;
         }
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
-        var taskTier = state.loadtestTask && state.loadtestTask.tier || null;
-        var taskMode = state.loadtestTask && state.loadtestTask.connectionMode || "";
+        var taskMatchesMode = Boolean(state.loadtestTask &&
+            state.loadtestTask.mode === currentExperiment().mode);
+        var pendingPlanMatchesMode = Boolean(!state.loadtestTask &&
+            state.pendingRun && state.pendingRun.mode === currentExperiment().mode);
+        var recoveringTask = Boolean(!state.loadtestTask && state.loadtestTaskId);
+        var pendingMatchesMode = pendingPlanMatchesMode || recoveringTask;
+        var pending = state.pendingRun || {};
+        var pendingTask = pendingMatchesMode ? {
+            taskId: state.loadtestTaskId,
+            status: state.loadtestTaskId && state.pendingRun ? "starting" : "waiting",
+            mode: pending.mode || currentExperiment().mode,
+            connectionMode: pending.connectionMode || connectionMode,
+            connectionReason: pending.connectionReason || "",
+            plannedConnections: Number(pending.plannedConnections || 0),
+            tier: {
+                rate: Number(pending.expectedRate || tier.rate),
+                durationSeconds: Number(pending.expectedDurationSeconds || tier.duration),
+                connections: state.loadtestTaskId ?
+                    Number(pending.connections || 0) : 0
+            }
+        } : null;
+        var taskAttached = taskMatchesMode || pendingMatchesMode;
+        document.body.dataset.taskAttached = taskAttached ? "true" : "false";
+        byId("query-title").textContent = taskAttached ?
+            "观察本轮查询压测任务" : "确定本轮读取路径";
+        var taskTier = taskMatchesMode && state.loadtestTask.tier ||
+            pendingTask && pendingTask.tier || null;
+        var taskMode = taskMatchesMode && state.loadtestTask.connectionMode ||
+            pendingTask && pendingTask.connectionMode || "";
         var displayRate = Number(taskTier && taskTier.rate || tier.rate);
         var displayDuration = Number(taskTier && taskTier.durationSeconds || tier.duration);
-        var matchedTierID = crowdTierForRate(displayRate);
-        var displayLabel = matchedTierID ? crowdTiers[matchedTierID].label : "兼容旧任务";
+        var plan = matchingLabConnectionPlan();
+        var handoffConnections = Number(pendingMatchesMode &&
+            pending.plannedConnections || 0);
+        var plannedConnections = connectionMode === "manual" ? manualConnections :
+            Number(plan && plan.connections || handoffConnections || 0);
         var resolvedConnections = Number(taskTier && taskTier.connections || 0);
         var connectionCopy = taskTier && !taskMode ?
-            (resolvedConnections.toLocaleString("zh-CN") + " 条通路（旧固定配置）") :
-            (connectionMode === "manual" ?
-            manualConnections.toLocaleString("zh-CN") + " 条通路（手动）" :
+            ("旧任务 · -c " + resolvedConnections.toLocaleString("zh-CN")) :
             (resolvedConnections > 0 ?
-                resolvedConnections.toLocaleString("zh-CN") + " 条通路（自动）" :
-                "通路自动配置 · 由 Runner 决定"));
-        byId("lab-crowd-summary").textContent = displayLabel + " · " +
-            displayRate.toLocaleString("zh-CN") + " 卷轴/秒 · " + connectionCopy;
-        byId("query-endpoint").textContent = displayRate.toLocaleString("zh-CN") +
-            " 卷轴/秒 · " + displayDuration + "s";
-        byId("tide-target-rate").textContent = displayRate.toLocaleString("zh-CN") + " 卷轴/秒";
-        byId("tide-conduit-count").textContent = resolvedConnections > 0 ?
-            resolvedConnections.toLocaleString("zh-CN") + " 条通路" :
-            (connectionMode === "manual" ? manualConnections + " 条通路" : "自动配置");
+                (taskMode === "manual" ? "手动" : "自动") + " · -c " +
+                    resolvedConnections.toLocaleString("zh-CN") + " · 已锁定" :
+                (connectionMode === "manual" ?
+                    "手动 · -c " + manualConnections.toLocaleString("zh-CN") + " · 计划" :
+                    (plannedConnections > 0 ?
+                        "自动 · -c " + plannedConnections.toLocaleString("zh-CN") + " · 计划" :
+                        "自动 · 计划计算中")));
         var cached = currentExperiment().mode === "cached";
-        byId("tide-backend-icon").textContent = cached ? "REDIS" : "SQL";
-        byId("tide-kitchen-title").textContent = cached ?
-            "Go 服务 → Redis / MySQL" : "Go 服务 → MySQL";
+        var pathLabel = cached ? "Redis Cache-Aside" : "MySQL Direct";
+        byId("lab-crowd-summary").textContent =
+            "目标 " + displayRate.toLocaleString("zh-CN") + " req/s · " + connectionCopy;
+        byId("query-endpoint").textContent = cached ? "via /cached" : "via /direct";
+        byId("tide-target-rate").textContent = displayRate.toLocaleString("zh-CN") + " req/s";
+        byId("tide-conduit-count").textContent = resolvedConnections > 0 ?
+            "-c " + resolvedConnections.toLocaleString("zh-CN") + " · 已锁定" :
+            (plannedConnections > 0 ? "-c " + plannedConnections.toLocaleString("zh-CN") + " · 计划" : "计划计算中");
+        renderLabConnectionPlan(taskMatchesMode ? state.loadtestTask :
+            (state.loadtestTaskId ? pendingTask : null));
+        byId("query-tide-stage").dataset.backendMode = cached ? "cached" : "direct";
+        byId("tide-kitchen-title").textContent = cached ? "Redis 优先 · MISS 回源" : "MySQL";
+
+        if (!taskMatchesMode) {
+            var waitingForObservation = Boolean(pendingTask && !state.loadtestTaskId);
+            var waitingStatus = pendingTask ? pendingTask.status : "draft";
+            taskBoard.dataset.status = waitingStatus;
+            byId("lab-loadtest-title").textContent = waitingForObservation ?
+                (state.loadtestCreateInFlight ? "正在创建 Runner 任务" :
+                    (!state.labSceneReady ? "实验现场正在就绪" :
+                        (!state.metricsObservationReady ? "正在建立指标观测" : "观测已经就绪"))) :
+                (pendingTask ? "正在恢复任务状态" : "任务尚未创建");
+            byId("lab-loadtest-copy").textContent = waitingForObservation ?
+                (state.loadtestCreateInFlight ?
+                    "页面和指标观测均已就绪，正在锁定最终 Runner 配置。" :
+                    "Runner 尚未创建，当前没有连接启用，也没有真实请求发送。") :
+                (pendingTask ? "正在通过任务快照恢复 Runner 状态；此时不会播放请求动画。" :
+                "创建后，Runner " + (plannedConnections > 0 ?
+                    "按 -c " + plannedConnections.toLocaleString("zh-CN") + " 启用连接配置" :
+                    "按最终 -c 启用连接配置") + "，再发送请求。");
+            byId("lab-loadtest-clock").textContent =
+                "00:00 / " + formatLoadtestClock(displayDuration);
+            byId("lab-stop-loadtest").hidden = true;
+            byId("lab-load-path").textContent = pathLabel;
+            byId("lab-load-target").textContent = displayRate.toLocaleString("zh-CN") + " req/s";
+            byId("lab-load-connections").textContent = connectionCopy;
+            byId("lab-load-runner-state").textContent =
+                state.loadtestTaskId ? "状态同步中" : "尚未创建";
+            byId("lab-load-qps").textContent = "—";
+            byId("lab-load-completion").textContent = "—";
+            byId("lab-load-timeouts").textContent =
+                state.loadtestTaskId ? "结算后可见" : "—";
+            byId("lab-load-requests").textContent = "—";
+            byId("lab-load-request-p50").textContent = "—";
+            byId("lab-load-request-p95").textContent = "—";
+            byId("lab-load-p50").textContent = "—";
+            byId("lab-load-p95").textContent = "—";
+            byId("lab-load-errors").textContent = "—";
+            byId("lab-load-hits").textContent = "—";
+            byId("lab-load-fallbacks").textContent = "—";
+            renderLoadtestStages({ status: waitingStatus });
+            renderLoadtestLogs([]);
+            renderQueryTideStage(pendingTask);
+        }
     }
 
     function renderExperimentState(next) {
@@ -448,22 +567,39 @@
 
     function updateControlState() {
         var loadtestLocked = loadtestIsActive(state.loadtestTask);
+        var readinessLocked = state.loadtestStartRequested || state.loadtestCreateInFlight;
         var legacyTask = Boolean(state.loadtestTask && state.loadtestTask.tier &&
             !crowdTierForRate(state.loadtestTask.tier.rate));
-        var locked = state.isRequesting || state.isReplaying || loadtestLocked;
+        var locked = state.isRequesting || state.isReplaying || loadtestLocked ||
+            state.loadtestCreateInFlight;
         byId("query-archive").disabled = locked;
         ["mode-direct", "mode-cached"].forEach(function (id) {
-            byId(id).disabled = locked;
+            byId(id).disabled = locked || readinessLocked;
         });
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
             radio.disabled = locked;
         });
-        byId("query-archive").querySelector("span").textContent = isCrowdEntry() ?
-            (loadtestLocked ? "查询潮汐进行中" :
-                (legacyTask ? "返回门口配置新查询潮汐" :
-                    (state.loadtestTask ? "再次启动查询潮汐" : "启动查询潮汐"))) :
-            (state.isRequesting ? "正在等待真实响应" :
-                (state.lastResponse ? "再次启动读取实验" : "启动读取实验"));
+        if (isCrowdEntry() && state.loadtestStartRequested &&
+            (!state.labSceneReady || !state.metricsObservationReady)) {
+            byId("query-archive").disabled = true;
+        }
+        var queryButtonCopy = "启动读取实验";
+        if (!isCrowdEntry()) {
+            queryButtonCopy = state.isRequesting ? "正在等待真实响应" :
+                (state.lastResponse ? "再次启动读取实验" : "启动读取实验");
+        } else if (state.loadtestCreateInFlight) {
+            queryButtonCopy = "正在创建 Runner 任务";
+        } else if (state.loadtestStartRequested &&
+            (!state.labSceneReady || !state.metricsObservationReady)) {
+            queryButtonCopy = "等待店内观测就绪";
+        } else if (loadtestLocked) {
+            queryButtonCopy = "查询潮汐进行中";
+        } else if (legacyTask) {
+            queryButtonCopy = "返回门口配置新查询潮汐";
+        } else {
+            queryButtonCopy = state.loadtestTask ? "再次启动查询潮汐" : "启动查询潮汐";
+        }
+        byId("query-archive").querySelector("span").textContent = queryButtonCopy;
         byId("reset-lab").disabled = loadtestLocked;
         byId("clear-comparison").disabled = loadtestLocked;
     }
@@ -600,6 +736,82 @@
         return Number(metrics[key] || 0);
     }
 
+    function matchingLabConnectionPlan() {
+        var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
+        var mode = currentExperiment().mode;
+        var plan = state.connectionPlan;
+        if (!plan || plan.rate !== tier.rate || plan.requestMode !== mode ||
+            plan.connectionMode !== connectionMode) {
+            return null;
+        }
+        if (connectionMode === "manual" && plan.connections !== manualConnections) {
+            return null;
+        }
+        return plan;
+    }
+
+    function renderLabConnectionPlan(task) {
+        var taskMatchesMode = Boolean(task && task.mode === currentExperiment().mode);
+        var previousConnections = Number(taskMatchesMode && task.tier && task.tier.connections || 0);
+        var resolvedConnections = taskMatchesMode ? previousConnections : 0;
+        if (resolvedConnections > 0) {
+            var resolvedMode = task.connectionMode === "manual" ? "手动指定" :
+                (task.connectionMode === "auto" ? "自动选择" : "旧固定配置");
+            byId("lab-connection-plan-value").textContent =
+                "已锁定 · wrk2 -c " + resolvedConnections.toLocaleString("zh-CN");
+            byId("lab-connection-plan-copy").textContent =
+                resolvedMode + (task.connectionReason ? " · " + task.connectionReason : "");
+            return;
+        }
+        var plan = matchingLabConnectionPlan();
+        var plannedConnections = connectionMode === "manual" ? manualConnections :
+            Number(plan && plan.connections || 0);
+        byId("lab-connection-plan-value").textContent = plannedConnections > 0 ?
+            (connectionMode === "manual" ? "计划 · wrk2 -c " : "自动计划 · wrk2 -c ") +
+                plannedConnections.toLocaleString("zh-CN") :
+            "自动计划计算中";
+        byId("lab-connection-plan-copy").textContent = state.connectionPlanError ?
+            "计划暂不可用；任务创建时由 Runner 返回最终配置。" :
+            "任务尚未创建" + (plan && plan.reason ? " · " + plan.reason : "");
+    }
+
+    async function refreshLabConnectionPlan() {
+        if (!isCrowdEntry() || loadtestIsActive(state.loadtestTask) || !state.id) {
+            return;
+        }
+        var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
+        var mode = currentExperiment().mode;
+        var requestID = ++state.connectionPlanRequest;
+        state.connectionPlan = null;
+        state.connectionPlanError = "";
+        renderCrowdSetup();
+        try {
+            var result = await requestJSON("/api/loadtests/connection-plan", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    experiment: "cache-aside-read",
+                    archiveId: state.id,
+                    mode: mode,
+                    rate: tier.rate,
+                    connectionMode: connectionMode,
+                    connections: connectionMode === "manual" ? manualConnections : 0
+                })
+            });
+            if (requestID !== state.connectionPlanRequest) {
+                return;
+            }
+            state.connectionPlan = Object.assign({}, result.body, { requestMode: mode });
+            renderCrowdSetup();
+        } catch (error) {
+            if (requestID !== state.connectionPlanRequest) {
+                return;
+            }
+            state.connectionPlanError = error.message;
+            renderCrowdSetup();
+        }
+    }
+
     function hasResultMetric(result, key) {
         return Boolean(result && result.metrics &&
             Object.prototype.hasOwnProperty.call(result.metrics, key));
@@ -637,6 +849,16 @@
         return Number(result && result.connections || 0);
     }
 
+    function formatConnectionConfig(result) {
+        var connections = resultConnections(result);
+        if (connections <= 0) {
+            return "—";
+        }
+        var mode = result && result.connectionMode;
+        var modeCopy = mode === "auto" ? "自动" : (mode === "manual" ? "手动" : "旧配置");
+        return "-c " + formatNumber(connections) + " · " + modeCopy;
+    }
+
     function resultCompletionRate(result) {
         var metrics = result && result.metrics || {};
         if (metrics.completionRate !== undefined) {
@@ -659,7 +881,8 @@
     function latestWrk2Result(mode) {
         var results = experimentResults.list();
         for (var index = results.length - 1; index >= 0; index -= 1) {
-            if (results[index].mode === mode && results[index].entry === "crowd") {
+            if (results[index].mode === mode && results[index].entry === "crowd" &&
+                state.profile && results[index].materialCode === state.profile.code) {
                 return results[index];
             }
         }
@@ -676,8 +899,8 @@
             formatResultQPS(resultMetric(result, "qps")) : "—";
         byId(mode + "-completion-rate").textContent = isCrowdResult ?
             formatCompletionRate(resultCompletionRate(result)) : "—";
-        byId(mode + "-connections").textContent = isCrowdResult && resultConnections(result) > 0 ?
-            formatNumber(resultConnections(result)) + " 条" : "—";
+        byId(mode + "-connections").textContent = isCrowdResult ?
+            formatConnectionConfig(result) : "—";
         byId(mode + "-duration").textContent = isCrowdResult ?
             formatResultDuration(resultMetric(result, "durationSeconds")) : "—";
         byId(mode + "-request-p50").textContent = isCrowdResult ?
@@ -717,7 +940,7 @@
         var temperature = mode === "cached" ?
             " · " + (result.cacheTemperature === "hot" ? "热缓存" : "冷缓存") : "";
         var runKind = result.entry === "crowd" ?
-            "查询潮汐" + (result.expectedRate ? " · " + result.expectedRate + " 卷轴/秒" : "") +
+            "查询潮汐" + (result.expectedRate ? " · " + result.expectedRate + " req/s" : "") +
             (result.expectedDurationSeconds ? " · " + result.expectedDurationSeconds + "s" : "") : "单次检索";
         card.querySelector("[data-result-context]").textContent =
             (result.materialCode || "材料未标记") + " · " + (result.materialName || "") + temperature + " · " + runKind;
@@ -732,8 +955,7 @@
             } else if (key === "completionRate") {
                 node.textContent = formatCompletionRate(resultCompletionRate(result));
             } else if (key === "connections") {
-                node.textContent = resultConnections(result) > 0 ?
-                    formatNumber(resultConnections(result)) + " 条" : "—";
+                node.textContent = formatConnectionConfig(result);
             } else if (key === "socketErrors" && !hasResultMetric(result, key)) {
                 node.textContent = "本轮未采集";
             } else if (key === "errorRate") {
@@ -851,8 +1073,8 @@
         var qpsTieTolerance = Math.max(resultMetric(direct, "qps"), resultMetric(cached, "qps")) * .02;
         setContextComparisonRow("target", formatResultQPS(resultTargetRate(direct)),
             formatResultQPS(resultTargetRate(cached)), fair, "同条件");
-        setContextComparisonRow("connections", formatNumber(resultConnections(direct)) + " 条",
-            formatNumber(resultConnections(cached)) + " 条", fair, "同条件");
+        setContextComparisonRow("connections", formatConnectionConfig(direct),
+            formatConnectionConfig(cached), fair, "同条件");
         setComparisonRow("qps", formatResultQPS(resultMetric(direct, "qps")),
             formatResultQPS(resultMetric(cached, "qps")), resultMetric(direct, "qps"),
             resultMetric(cached, "qps"), "higher", fair, qpsTieTolerance);
@@ -880,10 +1102,10 @@
 
         if (!fair) {
             byId("frozen-comparison-title").textContent =
-                "材料、目标速率、通路模式、实际通路数或时长不同，仅并列展示";
+                "材料、目标速率、wrk2 -c 配置或时长不同，仅并列展示";
             byId("frozen-overall-winner").textContent = "NOT COMPARABLE";
             byId("wrk2-summary").textContent =
-                "两轮配置不同，页面不会据此裁定路径差异；请使用相同潮汐和相同实际通路数重新实验。";
+                "两轮配置不同，页面不会据此裁定路径差异；请使用相同潮汐和相同 wrk2 -c 配置重新实验。";
             return;
         }
         byId("frozen-comparison-title").textContent = direct.materialCode + " · 同条件结果已冻结";
@@ -926,6 +1148,64 @@
         return Boolean(task && ["starting", "resetting", "running", "collecting"].indexOf(task.status) >= 0);
     }
 
+    var loadtestStatusRank = Object.freeze({
+        waiting: 0,
+        starting: 1,
+        resetting: 2,
+        running: 3,
+        collecting: 4,
+        completed: 5,
+        failed: 5,
+        stopped: 5
+    });
+
+    // GET、轮询和 SSE 会并行返回。这里按同一任务的单调状态与 elapsedSeconds
+    // 合并，避免较慢的旧快照或首次 SSE 历史回放把 running/completed 画面倒退。
+    // SSE 增量没有 tier/mode 等完整字段，因此必须保留已有锁定配置。
+    function mergeLoadtestTask(current, incoming) {
+        if (!incoming) {
+            return current;
+        }
+        if (!current || current.taskId !== incoming.taskId) {
+            return Object.assign({}, incoming, {
+                tier: Object.assign({}, incoming.tier || {}),
+                metrics: Object.assign({}, incoming.metrics || {}),
+                logs: Array.isArray(incoming.logs) ? incoming.logs.slice() : []
+            });
+        }
+        var merged = Object.assign({}, current, incoming, {
+            tier: Object.assign({}, current.tier || {}, incoming.tier || {}),
+            metrics: Object.assign({}, current.metrics || {}, incoming.metrics || {}),
+            logs: Array.isArray(incoming.logs) ? incoming.logs.slice() :
+                (Array.isArray(current.logs) ? current.logs.slice() : [])
+        });
+        var currentRank = loadtestStatusRank[current.status] || 0;
+        var incomingRank = loadtestStatusRank[incoming.status] || 0;
+        var currentElapsed = Number(current.elapsedSeconds || 0);
+        var incomingElapsed = Number(incoming.elapsedSeconds || 0);
+        var currentRequests = Number(current.metrics && current.metrics.actualRequests || 0);
+        var incomingRequests = Number(incoming.metrics && incoming.metrics.actualRequests || 0);
+        var currentTerminal = ["completed", "failed", "stopped"].indexOf(current.status) >= 0;
+        var incomingTerminal = ["completed", "failed", "stopped"].indexOf(incoming.status) >= 0;
+        var stale = (currentTerminal &&
+                (!incomingTerminal || incoming.status !== current.status)) ||
+            incomingRank < currentRank ||
+            (incomingRank === currentRank &&
+                (incomingElapsed < currentElapsed ||
+                    (incomingElapsed === currentElapsed && incomingRequests < currentRequests)));
+        if (stale) {
+            merged.status = current.status;
+            merged.elapsedSeconds = current.elapsedSeconds;
+            merged.remainingSeconds = current.remainingSeconds;
+            merged.metrics = Object.assign({}, current.metrics || {});
+            merged.startedAt = current.startedAt;
+            merged.endedAt = current.endedAt;
+            merged.errorCode = current.errorCode;
+            merged.errorMessage = current.errorMessage;
+        }
+        return merged;
+    }
+
     function formatLoadtestClock(value) {
         var seconds = Math.max(0, Math.floor(Number(value || 0)));
         return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" +
@@ -939,28 +1219,73 @@
 
     function loadtestStatusCopy(status) {
         var copies = {
-            starting: ["准备实验", "Runner 已接单，正在准备受控压测。"],
-            resetting: ["重置数据", "正在清空缓存和本章指标，保证本轮结果独立。"],
-            running: ["查询潮汐正在运行", "wrk2 正在按目标速率持续产生并投递真实 HTTP 查询卷轴。"],
-            collecting: ["收集结果", "压测已结束，正在解析输出并汇总指标。"],
-            completed: ["实验已完成", "结果已经冻结，并已进入下方路径比对。"],
-            failed: ["实验失败", "Runner 未能完成本轮实验，请查看关键事件。"],
-            stopped: ["实验已停止", "wrk2 子进程已回收，本轮不会冻结为有效结果。"]
+            starting: ["任务已创建", "Runner 已接单，准备本轮运行环境。"],
+            resetting: ["正在重置运行环境", "Runner 正在清空缓存与本章指标；wrk2 尚未启动。"],
+            running: ["请求发送与系统处理进行中", "实际速率与完成率由 Runner 持续回传。"],
+            collecting: ["正在输出结果", "请求已停止发送，Runner 正在解析最终指标。"],
+            completed: ["实验结果", "本轮配置与实测结果已经冻结。"],
+            failed: ["任务执行失败", "查看 Runner 事件定位失败阶段。"],
+            stopped: ["任务已停止", "本轮没有形成完整结算。"]
         };
-        return copies[status] || ["连接实验任务", "正在恢复 Runner 的权威任务状态。"];
+        return copies[status] || ["正在连接任务", "正在恢复 Runner 的任务状态。"];
+    }
+
+    function inferLoadtestFailureStatus(task) {
+        var messages = (Array.isArray(task && task.logs) ? task.logs : [])
+            .map(function (entry) { return entry.message || ""; })
+            .concat(task && task.errorMessage || "")
+            .join("\n");
+        if (/收集|指标解析|指标收集|wrk2 结束|结果/.test(messages)) {
+            return "collecting";
+        }
+        if (Number(task && task.metrics && task.metrics.actualRequests || 0) > 0 ||
+            Number(task && task.elapsedSeconds || 0) > 0 ||
+            /wrk2 已启动|wrk2 异常退出|子进程/.test(messages)) {
+            return "running";
+        }
+        if (/数据重置完成|wrk2 启动失败|启动阶段/.test(messages)) {
+            return "launching";
+        }
+        if (/重置/.test(messages)) {
+            return "resetting";
+        }
+        return state.loadtestLastActiveStatus || "starting";
     }
 
     function renderLoadtestStages(task) {
-        var order = ["starting", "resetting", "running", "collecting", "completed"];
-        var effectiveStatus = task.status;
-        if (task.status === "failed" || task.status === "stopped") {
-            effectiveStatus = state.loadtestLastActiveStatus || "starting";
+        var status = task && task.status || "draft";
+        var failed = status === "failed" || status === "stopped";
+        var effectiveStatus = failed ? inferLoadtestFailureStatus(task) : status;
+        var completed = [];
+        var current = [];
+        if (effectiveStatus === "draft") {
+            current = ["intent"];
+        } else if (effectiveStatus === "waiting") {
+            completed = ["intent"];
+            current = ["task"];
+        } else if (effectiveStatus === "starting") {
+            completed = ["intent"];
+            current = ["task"];
+        } else if (effectiveStatus === "resetting") {
+            completed = ["intent"];
+            current = ["task"];
+        } else if (effectiveStatus === "launching") {
+            completed = ["intent", "task"];
+            current = ["connections"];
+        } else if (effectiveStatus === "running") {
+            completed = ["intent", "task"];
+            current = ["connections", "delivery", "backend"];
+        } else if (effectiveStatus === "collecting") {
+            completed = ["intent", "task", "connections", "delivery", "backend"];
+            current = ["result"];
+        } else if (effectiveStatus === "completed") {
+            completed = ["intent", "task", "connections", "delivery", "backend", "result"];
         }
-        var currentIndex = Math.max(0, order.indexOf(effectiveStatus));
-        Array.prototype.forEach.call(byId("lab-loadtest-stages").children, function (item, index) {
-            item.classList.toggle("is-complete", task.status === "completed" || index < currentIndex);
-            item.classList.toggle("is-current", task.status !== "completed" && index === currentIndex);
-            item.classList.toggle("is-failed", (task.status === "failed" || task.status === "stopped") && index === currentIndex);
+        Array.prototype.forEach.call(byId("lab-loadtest-stages").children, function (item) {
+            var phase = item.dataset.loadStage;
+            item.classList.toggle("is-complete", completed.indexOf(phase) >= 0);
+            item.classList.toggle("is-current", current.indexOf(phase) >= 0);
+            item.classList.toggle("is-failed", failed && current.indexOf(phase) >= 0);
         });
     }
 
@@ -1080,6 +1405,498 @@
         return target > 0 ? Math.min(100, Number(metrics.actualQps || 0) * 100 / target) : 0;
     }
 
+    // 查询潮汐没有逐请求 trace。这里固定复用一对卷轴，只用聚合指标授权有限的“代表性配对”；
+    // Sxx 是视觉编号，不写回任务、日志或结果，也不声称对应服务端某一条真实请求。
+    function tideTraceRawPath(task) {
+        var chapter = state.metricsLatest && state.metricsLatest.archiveRead;
+        if (!chapter) {
+            return null;
+        }
+        return task && task.mode === "cached" ? chapter.cached : chapter.direct;
+    }
+
+    function clearTideTraceTimer() {
+        if (state.tideTrace.timer) {
+            window.clearTimeout(state.tideTrace.timer);
+            state.tideTrace.timer = null;
+        }
+    }
+
+    function stopTideTraceMotion() {
+        var sampler = state.tideTrace;
+        clearTideTraceTimer();
+        sampler.animations.forEach(function (animation) {
+            try {
+                animation.cancel();
+            } catch (_) {
+                // 已经结束的视觉动画无需额外恢复。
+            }
+        });
+        sampler.animations = [];
+        sampler.queue = [];
+        sampler.active = null;
+        ["tide-trace-request", "tide-trace-response", "tide-trace-refill"].forEach(function (id) {
+            var token = byId(id);
+            if (!token) {
+                return;
+            }
+            token.style.opacity = "0";
+            token.style.transform = "translate3d(-80px, -80px, 0)";
+        });
+        var stage = byId("query-tide-stage");
+        if (stage) {
+            stage.removeAttribute("data-trace-route");
+            stage.removeAttribute("data-trace-phase");
+        }
+    }
+
+    function resetTideTraceSampler(task) {
+        var sampler = state.tideTrace;
+        var rawPath = tideTraceRawPath(task) || {};
+        stopTideTraceMotion();
+        sampler.taskId = task && task.taskId || "";
+        sampler.sequence = 0;
+        sampler.requestHighWater = 0;
+        sampler.hitHighWater = 0;
+        sampler.fallbackHighWater = 0;
+        sampler.coalescedHighWater = Number(rawPath.coalesced || 0);
+        sampler.refillHitFloor = 0;
+        sampler.refillPending = false;
+        sampler.refillEvidence = false;
+        sampler.responseBaseline = Number(rawPath.totalRequests || 0);
+        sampler.responseResetObserved = sampler.responseBaseline === 0;
+        sampler.responseEvidence = false;
+        sampler.lastStartedAt = 0;
+        var stage = byId("query-tide-stage");
+        if (stage) {
+            stage.dataset.hasResponse = "false";
+            stage.dataset.cacheRefillObserved = "false";
+        }
+    }
+
+    function updateTideResponseEvidence(task) {
+        var sampler = state.tideTrace;
+        var rawPath = tideTraceRawPath(task);
+        if (!rawPath) {
+            return;
+        }
+        var total = Number(rawPath.totalRequests || 0);
+        if (total === 0 || total < sampler.responseBaseline) {
+            sampler.responseBaseline = 0;
+            sampler.responseResetObserved = true;
+        }
+        var hasNewRunSample = sampler.responseResetObserved ?
+            total > 0 : total > sampler.responseBaseline;
+        // P99 只有 RecordArchiveLatency 已经收到完成样本后才会大于零。
+        // errors 为零时可确认本轮至少已有一次成功处理完成，再允许紫色响应出现。
+        if (task && task.status === "running" && hasNewRunSample &&
+            Number(rawPath.p99 || 0) > 0 && Number(rawPath.errors || 0) === 0) {
+            sampler.responseEvidence = true;
+        }
+        byId("query-tide-stage").dataset.hasResponse =
+            sampler.responseEvidence ? "true" : "false";
+    }
+
+    function tideTracePoint(layer, anchor, token) {
+        var layerBounds = layer.getBoundingClientRect();
+        var anchorBounds = anchor.getBoundingClientRect();
+        return {
+            x: anchorBounds.left - layerBounds.left +
+                (anchorBounds.width - token.offsetWidth) / 2,
+            y: anchorBounds.top - layerBounds.top +
+                (anchorBounds.height - token.offsetHeight) / 2
+        };
+    }
+
+    function animateTideToken(token, anchors, duration, fadeAtEnd) {
+        var layer = document.querySelector(".tide-trace-layer");
+        if (!layer || !token || !token.animate) {
+            return { animation: null, finished: Promise.resolve(false) };
+        }
+        var points = anchors.filter(Boolean).map(function (anchor) {
+            return tideTracePoint(layer, anchor, token);
+        });
+        if (points.length < 2) {
+            return { animation: null, finished: Promise.resolve(false) };
+        }
+        var travelEnd = fadeAtEnd ? .9 : 1;
+        var frames = points.map(function (point, index) {
+            return {
+                offset: points.length === 1 ? 0 :
+                    index * travelEnd / (points.length - 1),
+                opacity: 1,
+                transform: "translate3d(" + point.x + "px, " + point.y + "px, 0)"
+            };
+        });
+        if (fadeAtEnd) {
+            var last = points[points.length - 1];
+            frames.push({
+                offset: 1,
+                opacity: 0,
+                transform: "translate3d(" + last.x + "px, " + last.y + "px, 0) scale(.82)"
+            });
+        }
+        token.style.opacity = "1";
+        var animation = token.animate(frames, {
+            duration: duration,
+            easing: "linear",
+            fill: "forwards"
+        });
+        state.tideTrace.animations.push(animation);
+        return {
+            animation: animation,
+            finished: animation.finished.then(function () {
+                return true;
+            }, function () {
+                return false;
+            })
+        };
+    }
+
+    function tideTraceTempo(task, route) {
+        var qps = Number(task && task.metrics && task.metrics.actualQps || 0);
+        var fast = qps >= 700;
+        var medium = qps >= 250;
+        return {
+            request: (fast ? 1450 : (medium ? 1700 : 2000)) +
+                (route === "cache-miss" ? 420 : 0),
+            response: fast ? 1350 : (medium ? 1550 : 1800),
+            pause: fast ? 240 : (medium ? 420 : 700)
+        };
+    }
+
+    function tideTraceRequestAnchors(route) {
+        var anchors = [
+            document.querySelector(".tide-scroll-maker"),
+            document.querySelector(".tide-backlog-scrolls"),
+            document.querySelector(".tide-conduit-bank"),
+            document.querySelector(".tide-service-icon")
+        ];
+        if (route === "direct") {
+            anchors.push(byId("tide-mysql-device"));
+        } else {
+            anchors.push(byId("tide-redis-device"));
+            if (route === "cache-miss") {
+                anchors.push(byId("tide-mysql-device"));
+            }
+        }
+        return anchors;
+    }
+
+    function tideTraceResponseAnchors(route) {
+        return [
+            route === "direct" || route === "cache-miss" ?
+                byId("tide-mysql-device") : byId("tide-redis-device"),
+            document.querySelector(".tide-service-icon"),
+            document.querySelector(".tide-conduit-bank"),
+            document.querySelector(".tide-scroll-maker"),
+            byId("tide-response-archive")
+        ];
+    }
+
+    function tideTraceRefillAnchors() {
+        return [
+            byId("tide-mysql-device"),
+            byId("tide-redis-device")
+        ];
+    }
+
+    function finishTideTraceSample(sample) {
+        var sampler = state.tideTrace;
+        if (sampler.active !== sample) {
+            return;
+        }
+        sampler.animations.forEach(function (animation) {
+            try {
+                animation.cancel();
+            } catch (_) {
+                // 完成态动画已经自然释放。
+            }
+        });
+        sampler.animations = [];
+        byId("tide-trace-request").style.opacity = "0";
+        byId("tide-trace-response").style.opacity = "0";
+        byId("tide-trace-refill").style.opacity = "0";
+        sampler.active = null;
+        var stage = byId("query-tide-stage");
+        stage.removeAttribute("data-trace-route");
+        stage.removeAttribute("data-trace-phase");
+        if (!state.loadtestTask || state.loadtestTask.status !== "running" ||
+            sampler.queue.length === 0) {
+            return;
+        }
+        clearTideTraceTimer();
+        sampler.timer = window.setTimeout(function () {
+            sampler.timer = null;
+            pumpTideTrace();
+        }, sample.tempo.pause);
+    }
+
+    function releaseTideTraceResponse(sample) {
+        var sampler = state.tideTrace;
+        if (sampler.active !== sample || sample.phase !== "waiting" ||
+            !sampler.responseEvidence || !state.loadtestTask ||
+            state.loadtestTask.status !== "running") {
+            return;
+        }
+        sample.phase = "response";
+        byId("query-tide-stage").dataset.tracePhase = "response";
+        if (sample.requestMotion && sample.requestMotion.animation) {
+            sample.requestMotion.animation.cancel();
+        }
+        if (sample.refillMotion && sample.refillMotion.animation) {
+            sample.refillMotion.animation.cancel();
+        }
+        byId("tide-trace-request").style.opacity = "0";
+        byId("tide-trace-refill").style.opacity = "0";
+        var response = byId("tide-trace-response");
+        response.style.opacity = "1";
+        sample.responseMotion = animateTideToken(
+            response,
+            tideTraceResponseAnchors(sample.route),
+            sample.tempo.response,
+            true
+        );
+        sample.responseMotion.finished.then(function (completed) {
+            if (completed) {
+                finishTideTraceSample(sample);
+            }
+        });
+    }
+
+    function startTideCacheRefill(sample) {
+        var sampler = state.tideTrace;
+        if (sampler.active !== sample || sample.phase !== "waiting-refill" ||
+            !sampler.refillEvidence || !state.loadtestTask ||
+            state.loadtestTask.status !== "running") {
+            return false;
+        }
+        sample.phase = "refill";
+        var stage = byId("query-tide-stage");
+        stage.dataset.tracePhase = "refill";
+        stage.dataset.cacheRefillObserved = "true";
+        if (sample.requestMotion && sample.requestMotion.animation) {
+            sample.requestMotion.animation.cancel();
+        }
+        byId("tide-trace-request").style.opacity = "0";
+        var refill = byId("tide-trace-refill");
+        refill.querySelector("b").textContent = sample.id;
+        refill.dataset.pairId = sample.id;
+        refill.style.opacity = "1";
+        sample.refillMotion = animateTideToken(
+            refill,
+            tideTraceRefillAnchors(),
+            760,
+            true
+        );
+        sample.refillMotion.finished.then(function (completed) {
+            if (!completed || sampler.active !== sample ||
+                !state.loadtestTask || state.loadtestTask.status !== "running") {
+                return;
+            }
+            refill.style.opacity = "0";
+            sample.phase = "waiting";
+            stage.dataset.tracePhase = "processing";
+            releaseTideTraceResponse(sample);
+        });
+        return true;
+    }
+
+    function advanceTideTraceSample(sample) {
+        var sampler = state.tideTrace;
+        if (sampler.active !== sample) {
+            return;
+        }
+        if (sample.phase === "waiting-refill") {
+            if (startTideCacheRefill(sample)) {
+                return;
+            }
+            sample.refillChecks += 1;
+            // MISS 只证明开始回源。若下一次观测仍没有后续命中证据，
+            // 允许真实完成响应返回，但不补画“MySQL 已成功回填 Redis”。
+            if (sample.refillChecks > 1 && sampler.responseEvidence) {
+                sample.phase = "waiting";
+                releaseTideTraceResponse(sample);
+            }
+            return;
+        }
+        if (sample.phase === "waiting") {
+            releaseTideTraceResponse(sample);
+        }
+    }
+
+    function startTideTraceSample(route) {
+        var sampler = state.tideTrace;
+        var task = state.loadtestTask;
+        if (!task || task.status !== "running") {
+            return;
+        }
+        sampler.sequence = sampler.sequence % 99 + 1;
+        var pairID = "S" + String(sampler.sequence).padStart(2, "0");
+        var request = byId("tide-trace-request");
+        var response = byId("tide-trace-response");
+        request.querySelector("b").textContent = pairID;
+        response.querySelector("b").textContent = pairID;
+        request.dataset.pairId = pairID;
+        response.dataset.pairId = pairID;
+        response.style.opacity = "0";
+        var sample = {
+            id: pairID,
+            route: route,
+            phase: "request",
+            tempo: tideTraceTempo(task, route),
+            requestMotion: null,
+            refillMotion: null,
+            refillChecks: 0,
+            responseMotion: null
+        };
+        sampler.active = sample;
+        sampler.lastStartedAt = Date.now();
+        var stage = byId("query-tide-stage");
+        stage.dataset.traceRoute = route;
+        stage.dataset.tracePhase = "request";
+        sample.requestMotion = animateTideToken(
+            request,
+            tideTraceRequestAnchors(route),
+            sample.tempo.request,
+            false
+        );
+        sample.requestMotion.finished.then(function (completed) {
+            if (!completed || sampler.active !== sample ||
+                !state.loadtestTask || state.loadtestTask.status !== "running") {
+                return;
+            }
+            sample.phase = route === "cache-miss" ? "waiting-refill" : "waiting";
+            stage.dataset.tracePhase = "processing";
+            advanceTideTraceSample(sample);
+        });
+    }
+
+    function pumpTideTrace() {
+        var sampler = state.tideTrace;
+        if (sampler.active || sampler.queue.length === 0 ||
+            !state.loadtestTask || state.loadtestTask.status !== "running") {
+            return;
+        }
+        startTideTraceSample(sampler.queue.shift());
+    }
+
+    function observeTideTrace(task) {
+        if (!task || state.entry !== "crowd") {
+            stopTideTraceMotion();
+            return;
+        }
+        var sampler = state.tideTrace;
+        var taskID = task.taskId || "";
+        if (sampler.taskId !== taskID) {
+            resetTideTraceSampler(task);
+        }
+        updateTideResponseEvidence(task);
+        if (task.status !== "running") {
+            stopTideTraceMotion();
+            return;
+        }
+
+        var metrics = task.metrics || {};
+        var requests = Math.max(sampler.requestHighWater,
+            Number(metrics.actualRequests || 0));
+        var hits = Math.max(sampler.hitHighWater,
+            Number(metrics.redisHits || 0));
+        var fallbacks = Math.max(sampler.fallbackHighWater,
+            Number(metrics.mysqlFallbacks || 0));
+        var rawPath = tideTraceRawPath(task) || {};
+        var coalesced = Math.max(sampler.coalescedHighWater,
+            Number(rawPath.coalesced || 0));
+        var requestDelta = requests - sampler.requestHighWater;
+        var hitDelta = hits - sampler.hitHighWater;
+        var fallbackDelta = fallbacks - sampler.fallbackHighWater;
+        var coalescedDelta = coalesced - sampler.coalescedHighWater;
+        if (task.mode === "cached" && fallbackDelta > 0) {
+            sampler.refillPending = true;
+            sampler.refillHitFloor = sampler.hitHighWater;
+        }
+        sampler.requestHighWater = requests;
+        sampler.hitHighWater = hits;
+        sampler.fallbackHighWater = fallbacks;
+        sampler.coalescedHighWater = coalesced;
+        if (task.mode === "cached" && sampler.refillPending &&
+            (coalescedDelta > 0 || hits > sampler.refillHitFloor)) {
+            sampler.refillPending = false;
+            sampler.refillEvidence = true;
+            byId("query-tide-stage").dataset.cacheRefillObserved = "true";
+        }
+
+        if (state.reducedMotion) {
+            return;
+        }
+        var observedQPS = Number(metrics.actualQps || 0);
+        var sampleLimit = observedQPS >= 700 ? 2 : 1;
+        var routes = [];
+        if (task.mode === "cached") {
+            if (fallbackDelta > 0) {
+                routes.push("cache-miss");
+            }
+            if (hitDelta > 0) {
+                routes.push("cache-hit");
+            }
+            if (routes.length === 1 && sampleLimit > 1 &&
+                hitDelta + fallbackDelta > 1) {
+                routes.push(routes[0]);
+            }
+        } else if (requestDelta > 0) {
+            routes.push("direct");
+            if (sampleLimit > 1 && requestDelta > 1) {
+                routes.push("direct");
+            }
+        }
+        routes.slice(0, sampleLimit).forEach(function (route) {
+            if (sampler.queue.length < 2) {
+                sampler.queue.push(route);
+            }
+        });
+        if (sampler.active &&
+            (sampler.active.phase === "waiting" ||
+                sampler.active.phase === "waiting-refill")) {
+            advanceTideTraceSample(sampler.active);
+        }
+        pumpTideTrace();
+    }
+
+    function tideLaunchPhase(task, actualRequests) {
+        if (state.loadtestTaskId && !state.loadtestTask) {
+            return "recovering";
+        }
+        if (state.loadtestCreateInFlight) {
+            return "creating";
+        }
+        if (state.loadtestStartRequested && !state.loadtestTaskId) {
+            if (!state.labSceneReady) {
+                return "arriving";
+            }
+            if (!state.metricsObservationReady) {
+                return "observing";
+            }
+            return "creating";
+        }
+        var status = task && task.status || "draft";
+        if (status === "starting" || status === "resetting") {
+            return "locked";
+        }
+        if (status === "running") {
+            return Number(actualRequests || 0) > 0 ? "running" : "armed";
+        }
+        if (status === "collecting") {
+            return "collecting";
+        }
+        if (status === "completed") {
+            return "completed";
+        }
+        if (status === "failed" || status === "stopped") {
+            return "stopped";
+        }
+        return "planned";
+    }
+
     function renderQueryTideStage(task) {
         var stage = byId("query-tide-stage");
         if (!isCrowdEntry()) {
@@ -1088,8 +1905,11 @@
         }
         stage.hidden = false;
         var metrics = task && task.metrics || {};
-        var status = task && task.status || "waiting";
+        var status = task && task.status || "draft";
         var isRunning = status === "running";
+        var actualRequests = Number(metrics.actualRequests || 0);
+        var hasObservedRequests = actualRequests > 0;
+        stage.dataset.launchPhase = tideLaunchPhase(task, actualRequests);
         var completion = taskCompletionRate(task);
         var elapsed = Number(task && task.elapsedSeconds || 0);
         var overloaded = (status === "completed" || (isRunning && elapsed >= 3)) &&
@@ -1098,65 +1918,127 @@
         var flowState = failed ? "failed" :
             (overloaded ? "backlogged" :
                 (status === "completed" ? "completed" :
-                    (isRunning ? "flowing" :
-                        (status === "collecting" ? "collecting" : "waiting"))));
+                    (isRunning ? (hasObservedRequests ? "flowing" : "armed") :
+                        (status === "collecting" ? "collecting" :
+                            (status === "starting" || status === "resetting" ? "starting" : "waiting")))));
         stage.dataset.flowState = flowState;
+        var newProtocol = task &&
+            (task.connectionMode === "auto" || task.connectionMode === "manual");
+        var socketErrorsAvailable = Boolean(newProtocol && status === "completed");
+        var socketErrors = Number(metrics.socketErrors || 0);
+        stage.dataset.faultLayer = socketErrorsAvailable && socketErrors > 0 ? "connections" :
+            (status === "completed" && Number(metrics.errorRate || 0) > 0 ? "response" : "none");
         byId("tide-backlog-node").classList.toggle("is-backlogged", overloaded);
         byId("tide-target-rate").textContent =
-            taskTargetRate(task).toLocaleString("zh-CN") + " 卷轴/秒";
+            taskTargetRate(task).toLocaleString("zh-CN") + " req/s";
         var resolvedConnections = Number(task && task.tier && task.tier.connections || 0);
+        var plan = matchingLabConnectionPlan();
+        var plannedConnections = connectionMode === "manual" ? manualConnections :
+            Number(task && task.plannedConnections ||
+                plan && plan.connections ||
+                state.pendingRun && state.pendingRun.plannedConnections || 0);
+        var plannedConduitCount = plannedConnections > 0 ?
+            Math.max(1, Math.ceil(Math.min(500, plannedConnections) / 500 * 8)) : 0;
+        var resolvedConduitCount = resolvedConnections > 0 ?
+            Math.max(1, Math.ceil(Math.min(500, resolvedConnections) / 500 * 8)) : 0;
+        Array.prototype.forEach.call(
+            document.querySelectorAll(".tide-conduit-bank i"),
+            function (conduit, index) {
+                conduit.classList.toggle("is-planned", index < plannedConduitCount);
+                conduit.classList.toggle("is-configured", index < resolvedConduitCount);
+            });
+        stage.dataset.conduitLevel = String(resolvedConduitCount || plannedConduitCount);
+        stage.dataset.resolvedConduitLevel = String(resolvedConduitCount);
         byId("tide-conduit-count").textContent = resolvedConnections > 0 ?
-            resolvedConnections.toLocaleString("zh-CN") + " 条通路" :
-            (connectionMode === "manual" ? manualConnections + " 条通路" : "自动配置");
-        var cached = task && task.mode === "cached";
-        byId("tide-backend-icon").textContent = cached ? "REDIS" : "SQL";
-        byId("tide-kitchen-title").textContent = cached ?
-            "Go 服务 → Redis / MySQL" : "Go 服务 → MySQL";
+            "-c " + resolvedConnections.toLocaleString("zh-CN") + " · 已锁定" :
+            (plannedConnections > 0 ?
+                "-c " + plannedConnections.toLocaleString("zh-CN") + " · 计划" : "计划计算中");
+        var cached = task ? task.mode === "cached" : currentExperiment().mode === "cached";
+        var planConnections = resolvedConnections || plannedConnections;
+        byId("tide-plan-token-copy").textContent =
+            taskTargetRate(task).toLocaleString("zh-CN") + " req/s · " +
+            (planConnections > 0 ?
+                "-c " + planConnections.toLocaleString("zh-CN") :
+                "自动 -c 待锁定") + " · " + (cached ? "CACHE" : "DIRECT");
+        stage.dataset.backendMode = cached ? "cached" : "direct";
+        stage.dataset.cacheFallbackObserved =
+            cached && Number(metrics.mysqlFallbacks || 0) > 0 ? "true" : "false";
+        byId("tide-kitchen-title").textContent =
+            cached ? "Redis 命中返回 · MISS 下探 MySQL" : "MySQL 直读";
         var requestP95 = Number(metrics.requestP95Ms || 0);
         byId("tide-occupancy-copy").textContent = requestP95 > 0 ?
-            "实际请求 P95 占用约 " + formatLoadtestLatency(requestP95) :
-            "通路占用时间等待实测";
+            "请求 P95 · " + formatLoadtestLatency(requestP95) :
+            "连接占用时间等待实测";
+        var actualQPS = Number(metrics.actualQps || 0);
+        observeTideTrace(task);
+        var responseObserved = state.tideTrace.responseEvidence;
+        byId("tide-response-rate").textContent = status === "completed" ?
+            actualQPS.toLocaleString("zh-CN", { maximumFractionDigits: 1 }) + " req/s · 最终" :
+            (status === "collecting" ? "正在结算" :
+                (responseObserved ? "完成样本已观察" : "等待完成样本"));
+        byId("tide-response-copy").textContent = status === "completed" ?
+            "本轮完成速率已经冻结" :
+            (responseObserved ? "紫色卷轴沿原连接回流" :
+                (isRunning ? "处理完成后沿原连接返回" : "通路尚未承载请求"));
 
         if (failed) {
             byId("query-tide-badge").textContent = status === "stopped" ? "已停止" : "执行失败";
             byId("tide-backlog-title").textContent = "通路入口";
-            byId("tide-backlog-copy").textContent = "投递已经停止";
+            byId("tide-backlog-copy").textContent = "通路已经停止";
             byId("query-tide-explanation").textContent =
                 "本轮任务没有形成有效结算；入口动画已停止，请从关键事件查看原因。";
             return;
         }
         if (overloaded) {
-            byId("query-tide-badge").textContent = "入口出现投递欠账";
-            byId("tide-backlog-title").textContent = "通路入口 · 卷轴积压";
+            byId("query-tide-badge").textContent = "目标未跟上";
+            byId("tide-backlog-title").textContent = "通路入口";
             byId("tide-backlog-copy").textContent =
-                "完成率 " + formatCompletionRate(completion) + " · 不显示伪造的欠账数量";
+                "投递欠账 · 完成率 " + formatCompletionRate(completion);
             byId("query-tide-explanation").textContent =
                 "查询卷轴产生速度超过当前通路的周转能力，部分卷轴未能按计划及时投递。";
             return;
         }
-        byId("tide-backlog-title").textContent = "通路入口";
-        byId("tide-backlog-copy").textContent = isRunning ? "卷轴按计划进入可用通路" :
+        byId("tide-backlog-title").textContent = "待发卷轴";
+        byId("tide-backlog-copy").textContent = isRunning ?
+            (hasObservedRequests ? "卷轴正在通过连接通路" : "卷轴就绪 · 等待首个样本") :
             (status === "completed" ? "本轮投递已经完成" : "等待卷轴投递");
         if (status === "collecting") {
             byId("query-tide-badge").textContent = "正在结算";
-            byId("tide-backlog-copy").textContent = "投递已停止 · 正在解析结果";
+            byId("tide-backlog-copy").textContent = "已停止产生新请求";
             byId("query-tide-explanation").textContent =
-                "wrk2 已停止产生卷轴；当前只整理双延迟直方图和完成速率，不再播放投递动画。";
+                "Runner 已停止发送请求，正在整理实际速率、延迟与连接错误。";
             return;
         }
         if (status === "completed") {
             byId("query-tide-badge").textContent = "结算完成";
             byId("query-tide-explanation").textContent = cached ?
                 "缓存命中缩短了通路占用时间，相同数量的魔法通路能够完成更多查询。" :
-                "本轮查询潮汐已完成；实际请求延迟与包含投递节奏的需求侧延迟分别展示。";
+                "本轮请求已经完成，目标速率与实际完成速率可直接对照。";
+        } else if (isRunning && !hasObservedRequests) {
+            byId("query-tide-badge").textContent = "通路已启用";
+            byId("query-tide-explanation").textContent =
+                "wrk2 已按锁定配置启动；等待应用入口观察到首个真实请求样本。";
         } else if (isRunning) {
-            byId("query-tide-badge").textContent = "卷轴流动中";
+            byId("query-tide-badge").textContent = "请求已进入系统";
             byId("query-tide-explanation").textContent =
-                "一条通路通常等待上一张卷轴返回后再处理下一张；入口是否积压由实时完成率驱动。";
+                "蓝色请求经连接进入 Go API 与后端；紫色响应沿同一连接返回 Runner。";
+        } else if (status === "starting" || status === "resetting") {
+            byId("query-tide-badge").textContent =
+                status === "starting" ? "连接配置已锁定" : "正在重置数据";
+            byId("tide-backlog-copy").textContent =
+                status === "starting" ? "最终 -c 已确认 · 通路待启用" : "wrk2 尚未启动";
+            byId("query-tide-explanation").textContent = status === "starting" ?
+                "门阵列按 Runner 返回的最终 -c 标出运行配置；此时仍没有 HTTP 请求。" :
+                "Runner 正在清空缓存与指标；门阵列只是锁定配置，尚未发送 HTTP 请求。";
+        } else if (status === "waiting") {
+            byId("query-tide-badge").textContent = "观测准备中";
+            byId("tide-backlog-copy").textContent = "Runner 尚未创建";
+            byId("query-tide-explanation").textContent =
+                "店内正在建立指标观测；准备完成前不会启用连接，也不会发送真实请求。";
         } else {
-            byId("query-tide-badge").textContent = "等待启动";
+            byId("query-tide-badge").textContent = "尚未启动";
             byId("query-tide-explanation").textContent =
-                "卷轴尚未开始投递。积压只会显示在通路入口，不会伪装成已经进入 MySQL 后的处理时间。";
+                "创建任务后，Runner 会按锁定的 -c 启动连接配置，再按目标速率发送请求。";
         }
     }
 
@@ -1165,6 +2047,7 @@
             return;
         }
         var previousStatus = state.loadtestTask && state.loadtestTask.status;
+        task = mergeLoadtestTask(state.loadtestTask, task);
         state.loadtestTask = task;
         if (task.tier && task.tier.rate) {
             crowdTierID = crowdTierForRate(task.tier.rate) || crowdTierID;
@@ -1179,6 +2062,19 @@
         renderCrowdSetup();
         if (loadtestIsActive(task)) {
             state.loadtestLastActiveStatus = task.status;
+            try {
+                window.localStorage.setItem(ACTIVE_TASK_KEY, task.taskId);
+            } catch (_) {
+                // URL、pending run 与任务 GET 仍可恢复当前页面。
+            }
+        } else if (["completed", "failed", "stopped"].indexOf(task.status) >= 0) {
+            try {
+                if (window.localStorage.getItem(ACTIVE_TASK_KEY) === task.taskId) {
+                    window.localStorage.removeItem(ACTIVE_TASK_KEY);
+                }
+            } catch (_) {
+                // 本地键仅用于跨页面发现，不影响 Runner 权威状态。
+            }
         }
         var panel = byId("lab-loadtest");
         var copy = loadtestStatusCopy(task.status);
@@ -1187,6 +2083,7 @@
         panel.hidden = false;
         panel.dataset.status = task.status || "starting";
         byId("lab-loadtest-title").textContent = copy[0];
+        var resolvedConnections = Number(task.tier && task.tier.connections || 0);
         byId("lab-loadtest-copy").textContent = task.errorMessage || copy[1];
         byId("request-status").textContent = copy[0];
         var replayStatus = "SSE 正在接收任务状态";
@@ -1204,23 +2101,53 @@
         byId("lab-stop-loadtest").hidden = !loadtestIsActive(task);
         byId("lab-stop-loadtest").disabled = false;
         byId("lab-stop-loadtest").textContent = "停止实验";
-        byId("lab-load-target").textContent = taskTargetRate(task).toLocaleString("zh-CN") + " QPS";
-        byId("lab-load-requests").textContent = formatNumber(metrics.actualRequests);
-        byId("lab-load-qps").textContent = Number(metrics.actualQps || 0).toLocaleString("zh-CN",
-            { maximumFractionDigits: 1 }) + " QPS";
-        byId("lab-load-completion").textContent = formatCompletionRate(taskCompletionRate(task));
-        byId("lab-load-connections").textContent = Number(task.tier && task.tier.connections || 0) > 0 ?
-            formatNumber(task.tier.connections) + " 条" : "待 Runner 决定";
+        var hasObservedRequests = Number(metrics.actualRequests || 0) > 0;
+        var hasObservedSample = hasObservedRequests || task.status === "completed" ||
+            (Number(task.elapsedSeconds || 0) > 0 &&
+                ["running", "collecting", "failed", "stopped"].indexOf(task.status) >= 0);
+        byId("lab-load-path").textContent =
+            task.mode === "cached" ? "Redis Cache-Aside" : "MySQL Direct";
+        byId("lab-load-target").textContent = taskTargetRate(task).toLocaleString("zh-CN") + " req/s";
+        byId("lab-load-requests").textContent = hasObservedSample ?
+            formatNumber(metrics.actualRequests) : "—";
+        byId("lab-load-qps").textContent = hasObservedSample ?
+            Number(metrics.actualQps || 0).toLocaleString("zh-CN",
+                { maximumFractionDigits: 1 }) + " req/s" : "等待首个采样";
+        byId("lab-load-completion").textContent = hasObservedSample ?
+            formatCompletionRate(taskCompletionRate(task)) : "等待首个采样";
+        byId("lab-load-connections").textContent = resolvedConnections > 0 ?
+            "-c " + formatNumber(resolvedConnections) +
+                (task.connectionMode === "manual" ? " · 手动 · 已锁定" :
+                    (task.connectionMode === "auto" ? " · 自动 · 已锁定" : " · 旧配置")) :
+            "Runner 决定中";
+        var runnerStates = {
+            starting: "任务已创建",
+            resetting: "正在重置数据",
+            running: "运行中",
+            collecting: "正在结算",
+            completed: "已完成",
+            failed: "执行失败",
+            stopped: "已停止"
+        };
+        byId("lab-load-runner-state").textContent =
+            runnerStates[task.status] || "状态同步中";
         byId("lab-load-request-p50").textContent = formatLoadtestLatency(metrics.requestP50Ms);
         byId("lab-load-request-p95").textContent = formatLoadtestLatency(metrics.requestP95Ms);
         byId("lab-load-p50").textContent = formatLoadtestLatency(metrics.p50Ms);
         byId("lab-load-p95").textContent = formatLoadtestLatency(metrics.p95Ms);
-        byId("lab-load-errors").textContent = Number(metrics.errorRate || 0).toFixed(2) + "%";
-        byId("lab-load-timeouts").textContent =
-            (task.connectionMode === "auto" || task.connectionMode === "manual") ?
-                formatNumber(metrics.socketErrors) : "本轮未采集";
-        byId("lab-load-hits").textContent = formatNumber(metrics.redisHits);
-        byId("lab-load-fallbacks").textContent = formatNumber(metrics.mysqlFallbacks);
+        byId("lab-load-errors").textContent = hasObservedSample ?
+            Number(metrics.errorRate || 0).toFixed(2) + "%" : "—";
+        var socketMetricsSupported =
+            task.connectionMode === "auto" || task.connectionMode === "manual";
+        byId("lab-load-timeouts").textContent = task.status === "completed" ?
+            (socketMetricsSupported ? formatNumber(metrics.socketErrors) : "本轮未采集") :
+            ((task.status === "failed" || task.status === "stopped") ?
+                "未形成完整结算" :
+                (task.status === "collecting" ? "正在结算" : "结算后可见"));
+        byId("lab-load-hits").textContent = hasObservedSample ?
+            formatNumber(metrics.redisHits) : "—";
+        byId("lab-load-fallbacks").textContent = hasObservedSample ?
+            formatNumber(metrics.mysqlFallbacks) : "—";
         renderLoadtestStages(task);
         renderLoadtestLogs(task.logs);
         renderQueryTideStage(task);
@@ -1239,12 +2166,16 @@
                 loadCrowdMaterialRecord(task);
                 stopLoadtestConnections();
             }
+            if (previousStatus !== task.status) {
+                refreshLabConnectionPlan();
+            }
         } else if (task.status === "failed" || task.status === "stopped") {
             experimentResults.clearPending();
             state.pendingRun = null;
             byId("freeze-status").textContent = task.status === "failed" ? "本轮压测失败 · 未冻结结果" : "本轮压测已停止 · 未冻结结果";
             if (previousStatus !== task.status) {
                 showToast(task.errorMessage || (task.status === "failed" ? "压测执行失败。" : "压测已停止。"), task.status === "failed" ? "danger" : "");
+                refreshLabConnectionPlan();
             }
             stopLoadtestConnections();
         }
@@ -1258,16 +2189,74 @@
             var result = await requestJSON("/api/loadtests/" + encodeURIComponent(state.loadtestTaskId));
             renderLoadtestTask(result.body);
         } catch (error) {
+            if (error.status === 404) {
+                var missingTaskID = state.loadtestTaskId;
+                stopLoadtestConnections();
+                state.loadtestTaskId = "";
+                state.loadtestTask = null;
+                if (state.pendingRun && state.pendingRun.taskId === missingTaskID) {
+                    experimentResults.clearPending();
+                    state.pendingRun = null;
+                }
+                try {
+                    if (window.localStorage.getItem(ACTIVE_TASK_KEY) === missingTaskID) {
+                        window.localStorage.removeItem(ACTIVE_TASK_KEY);
+                    }
+                } catch (_) {
+                    // 清理发现键失败不影响页面重新创建任务。
+                }
+                byId("lab-loadtest").hidden = false;
+                byId("lab-loadtest-title").textContent = "任务已不存在";
+                byId("lab-loadtest-copy").textContent = "Runner 未找到该任务，请返回店外重新配置。";
+                byId("lab-load-runner-state").textContent = "任务不存在";
+                renderLoadtestStages({ status: "draft" });
+                renderQueryTideStage({ status: "waiting", metrics: {} });
+                updateControlState();
+                return;
+            }
             byId("lab-loadtest").hidden = false;
             byId("lab-loadtest-title").textContent = "正在恢复实验连接";
             byId("lab-loadtest-copy").textContent = error.message;
         }
     }
 
-    function connectLoadtestTask(taskID) {
+    function loadtestTaskSeed(taskID) {
+        var pending = state.pendingRun || {};
+        var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
+        return {
+            taskId: taskID,
+            status: "starting",
+            mode: pending.mode || currentExperiment().mode,
+            connectionMode: pending.connectionMode || connectionMode,
+            connectionReason: pending.connectionReason || "",
+            requestedConnections: Number(pending.requestedConnections || 0),
+            elapsedSeconds: 0,
+            remainingSeconds: Number(pending.expectedDurationSeconds || tier.duration),
+            metrics: {},
+            logs: [],
+            tier: {
+                id: pending.tier || crowdTierID,
+                label: tier.label,
+                rate: Number(pending.expectedRate || tier.rate),
+                connections: Number(pending.connections || 0),
+                durationSeconds: Number(pending.expectedDurationSeconds || tier.duration)
+            }
+        };
+    }
+
+    async function connectLoadtestTask(taskID) {
+        stopLoadtestConnections();
         state.loadtestTaskId = taskID;
         byId("lab-loadtest").hidden = false;
-        fetchLoadtestTask();
+        renderCrowdSetup();
+        await fetchLoadtestTask();
+        if (state.loadtestTaskId !== taskID) {
+            return;
+        }
+        if (state.loadtestTask &&
+            ["completed", "failed", "stopped"].indexOf(state.loadtestTask.status) >= 0) {
+            return;
+        }
         state.loadtestPollTimer = window.setInterval(fetchLoadtestTask, 1500);
         if (!window.EventSource) {
             return;
@@ -1277,7 +2266,7 @@
             state.loadtestStream.addEventListener(eventName, function (event) {
                 try {
                     var update = JSON.parse(event.data);
-                    var current = state.loadtestTask || { taskId: taskID, metrics: {}, logs: [] };
+                    var current = state.loadtestTask || loadtestTaskSeed(taskID);
                     renderLoadtestTask(Object.assign({}, current, {
                         status: update.status || current.status,
                         elapsedSeconds: update.elapsedSeconds,
@@ -1297,8 +2286,68 @@
         };
     }
 
+    function renderLoadtestReadiness() {
+        if (isCrowdEntry() && !state.loadtestTaskId) {
+            renderCrowdSetup();
+            updateControlState();
+        }
+    }
+
+    function maybeStartCrowdTest() {
+        if (!state.loadtestStartRequested || state.loadtestCreateInFlight ||
+            state.loadtestTaskId || loadtestIsActive(state.loadtestTask) ||
+            !state.labSceneReady || !state.metricsObservationReady ||
+            document.visibilityState !== "visible") {
+            renderLoadtestReadiness();
+            return;
+        }
+        startCrowdTest();
+    }
+
+    function requestCrowdTestStart() {
+        if (state.loadtestTask &&
+            ["completed", "failed", "stopped"].indexOf(state.loadtestTask.status) >= 0) {
+            stopLoadtestConnections();
+            state.loadtestTaskId = "";
+            state.loadtestTask = null;
+            state.loadtestLastActiveStatus = "starting";
+        }
+        state.loadtestStartRequested = true;
+        renderLoadtestReadiness();
+        maybeStartCrowdTest();
+    }
+
+    function markLabSceneReady() {
+        if (document.visibilityState !== "visible") {
+            return;
+        }
+        if (state.labSceneReady) {
+            maybeStartCrowdTest();
+            return;
+        }
+        // requestAnimationFrame 只确认当前 DOM 已获得一次可见绘制机会，不参与压测计时。
+        window.requestAnimationFrame(function () {
+            if (document.visibilityState !== "visible") {
+                return;
+            }
+            state.labSceneReady = true;
+            maybeStartCrowdTest();
+        });
+    }
+
+    function markMetricsObservationReady() {
+        if (!state.metricsObservationReady) {
+            state.metricsObservationReady = true;
+            maybeStartCrowdTest();
+        }
+    }
+
     async function startCrowdTest() {
-        if (loadtestIsActive(state.loadtestTask)) {
+        if (!state.loadtestStartRequested || state.loadtestCreateInFlight ||
+            state.loadtestTaskId || loadtestIsActive(state.loadtestTask) ||
+            !state.labSceneReady || !state.metricsObservationReady ||
+            document.visibilityState !== "visible") {
+            renderLoadtestReadiness();
             return;
         }
         if (state.loadtestTask && state.loadtestTask.tier &&
@@ -1309,8 +2358,10 @@
         var experiment = currentExperiment();
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
         var button = byId("query-archive");
+        state.loadtestCreateInFlight = true;
+        renderLoadtestReadiness();
         button.disabled = true;
-        button.querySelector("span").textContent = "正在启动查询潮汐";
+        button.querySelector("span").textContent = "正在创建 Runner 任务";
         try {
             if (experiment.cacheTemperature !== "cold") {
                 experiment = experimentState.set({ cacheTemperature: "cold" });
@@ -1328,9 +2379,13 @@
                 })
             });
             var created = result.body;
+            var finalConnectionMode = created.connectionMode || connectionMode;
+            var finalConnections = Number(created.connections || 0);
+            var finalConnectionReason = created.connectionReason || "";
             var pending = {
                 taskId: created.taskId,
                 entry: "crowd",
+                launchWhenObserved: false,
                 materialCode: state.profile.code,
                 materialName: state.profile.name,
                 mode: experiment.mode,
@@ -1338,7 +2393,11 @@
                 tier: crowdTierID,
                 expectedRate: tier.rate,
                 expectedDurationSeconds: tier.duration,
-                connectionMode: connectionMode,
+                connectionMode: finalConnectionMode,
+                connectionReason: finalConnectionReason,
+                plannedConnections: Number(state.pendingRun &&
+                    state.pendingRun.plannedConnections || finalConnections),
+                connections: finalConnections,
                 requestedConnections: connectionMode === "manual" ? manualConnections : 0,
                 armedAt: new Date().toISOString()
             };
@@ -1346,6 +2405,7 @@
             state.pendingRun = pending;
             state.entry = "crowd";
             state.loadtestTaskId = created.taskId;
+            state.loadtestStartRequested = false;
             state.loadtestResultSaved = false;
             state.loadtestRecordLoaded = false;
             document.body.dataset.entryMode = "crowd";
@@ -1360,12 +2420,13 @@
                 nextURL.searchParams.delete("connections");
             }
             window.history.replaceState(null, "", nextURL.toString());
-            stopLoadtestConnections();
+            state.loadtestTask = null;
             renderLoadtestTask({
                 taskId: created.taskId,
                 status: created.status || "starting",
                 mode: experiment.mode,
-                connectionMode: connectionMode,
+                connectionMode: finalConnectionMode,
+                connectionReason: finalConnectionReason,
                 requestedConnections: connectionMode === "manual" ? manualConnections : 0,
                 elapsedSeconds: 0,
                 metrics: {},
@@ -1374,15 +2435,19 @@
                     id: crowdTierID,
                     label: tier.label,
                     rate: tier.rate,
-                    connections: connectionMode === "manual" ? manualConnections : 0,
+                    connections: finalConnections,
                     durationSeconds: tier.duration
                 }
             });
             connectLoadtestTask(created.taskId);
-            showToast(tier.label + "查询潮汐已经受理，真实 HTTP 请求即将开始。", "success");
+            showToast("Runner 任务已创建，最终 -c 已锁定，正在准备运行。", "success");
         } catch (error) {
+            state.loadtestStartRequested = false;
             showToast(error.message, "danger");
             updateControlState();
+        } finally {
+            state.loadtestCreateInFlight = false;
+            renderLoadtestReadiness();
         }
     }
 
@@ -1551,9 +2616,9 @@
         byId("crowd-scroll-count").textContent = formatNumber(completedRequests);
         byId("crowd-actual-rate").textContent =
             Number(task.metrics.actualQps || 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + " QPS";
-        byId("purchase-entry").textContent = "进入独立购买实验";
+        byId("purchase-entry").textContent = "配置购买实验";
         byId("purchase-entry-note").textContent =
-            "购买实验固定发出 150 个唯一购买请求，与本轮查询 QPS、完成请求数和通路数量都不做人数换算。";
+            "先回到店外选择缓存失效路径；购买实验固定发出 150 个唯一请求，不复用本轮 QPS 或连接配置。";
     }
 
     async function loadCrowdMaterialRecord(task) {
@@ -1585,11 +2650,8 @@
             showToast("请先完成一次真实材料查询。", "danger");
             return;
         }
-        var target = "/purchase-lab?material=" + encodeURIComponent(state.profile.code);
-        if (state.crowdHandoff) {
-            target += "&sourceTask=" + encodeURIComponent(state.crowdHandoff.taskId);
-        }
-        window.location.href = target;
+        window.location.href =
+            "/material-shop?experiment=purchase&material=" + encodeURIComponent(state.profile.code);
     }
 
     async function prepareColdCache() {
@@ -1874,6 +2936,9 @@
         if (state.metricsHistory.length > 90) {
             state.metricsHistory.shift();
         }
+        if (state.loadtestTask) {
+            observeTideTrace(state.loadtestTask);
+        }
 
         var loadActive = false;
         if (state.entry === "crowd") {
@@ -1907,7 +2972,11 @@
         try {
             var result = await requestJSON("/api/metrics/snapshot");
             acceptMetricsSnapshot(result.body);
-            setConnection(true);
+            if (!window.EventSource) {
+                // 不支持 SSE 时，以成功快照加持续轮询作为观测就绪事实。
+                setConnection(true);
+                markMetricsObservationReady();
+            }
         } catch (_) {
             setConnection(false);
         }
@@ -1923,11 +2992,20 @@
             try {
                 acceptMetricsSnapshot(JSON.parse(event.data));
                 setConnection(true);
+                // 服务端在 SSE 建立后立即发送权威快照；收到它才说明持续观测链路可用。
+                markMetricsObservationReady();
             } catch (_) {
                 setConnection(false);
             }
         });
-        state.stream.onerror = function () { setConnection(false); };
+        state.stream.onerror = function () {
+            setConnection(false);
+            var now = Date.now();
+            if (now - state.metricsSnapshotRecoveryAt >= 1000) {
+                state.metricsSnapshotRecoveryAt = now;
+                fetchSnapshot();
+            }
+        };
     }
 
     async function resetLab() {
@@ -2023,9 +3101,11 @@
     function bindEvents() {
         byId("mode-direct").addEventListener("click", function () {
             experimentState.set({ mode: "direct" });
+            refreshLabConnectionPlan();
         });
         byId("mode-cached").addEventListener("click", function () {
             experimentState.set({ mode: "cached" });
+            refreshLabConnectionPlan();
         });
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
             radio.addEventListener("change", function () {
@@ -2036,7 +3116,7 @@
         });
         byId("query-archive").addEventListener("click", function () {
             if (isCrowdEntry()) {
-                startCrowdTest();
+                requestCrowdTestStart();
             } else {
                 readArchive();
             }
@@ -2071,12 +3151,51 @@
         crowdTierID = incomingConfig.tierID;
         connectionMode = incomingConfig.connectionMode;
         manualConnections = incomingConfig.connections;
+        var incomingMode = incomingCrowdMode();
+        if (isCrowdEntry() && incomingMode &&
+            currentExperiment().mode !== incomingMode) {
+            experimentState.set({ mode: incomingMode });
+        }
         if (isCrowdEntry() && currentExperiment().cacheTemperature !== "cold") {
             experimentState.set({ cacheTemperature: "cold" });
         }
-        state.pendingRun = entry === "crowd" ? experimentResults.pending() : null;
+        var pendingRun = entry === "crowd" ? experimentResults.pending() : null;
+        if (!pendingRun && entry === "crowd" && incomingLaunchWhenObserved()) {
+            var incomingTier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
+            pendingRun = {
+                taskId: "",
+                entry: "crowd",
+                launchWhenObserved: true,
+                materialCode: state.profile.code,
+                materialName: state.profile.name,
+                mode: incomingMode || currentExperiment().mode,
+                cacheTemperature: "cold",
+                tier: crowdTierID,
+                expectedRate: incomingTier.rate,
+                expectedDurationSeconds: incomingTier.duration,
+                connectionMode: connectionMode,
+                plannedConnections: connectionMode === "manual" ? manualConnections : 0,
+                requestedConnections: connectionMode === "manual" ? manualConnections : 0,
+                armedAt: new Date().toISOString()
+            };
+            experimentResults.arm(pendingRun);
+        }
+        state.pendingRun = pendingRun && pendingRun.materialCode === state.profile.code ? pendingRun : null;
+        if (state.pendingRun && Number(state.pendingRun.plannedConnections || 0) > 0) {
+            state.connectionPlan = {
+                rate: Number(state.pendingRun.expectedRate || 0),
+                connectionMode: state.pendingRun.connectionMode || connectionMode,
+                connections: Number(state.pendingRun.plannedConnections || 0),
+                reason: state.pendingRun.connectionReason || "",
+                requestMode: state.pendingRun.mode
+            };
+        }
         state.loadtestTaskId = entry === "crowd" ? (incomingLoadtestTaskID() ||
             (state.pendingRun && state.pendingRun.taskId) || "") : "";
+        state.loadtestStartRequested = Boolean(entry === "crowd" &&
+            !state.loadtestTaskId &&
+            state.pendingRun &&
+            (state.pendingRun.launchWhenObserved || incomingLaunchWhenObserved()));
         document.body.dataset.entryMode = entry;
         renderExperimentState(currentExperiment());
         experimentState.subscribe(renderExperimentState);
@@ -2087,20 +3206,30 @@
         updateMetricsPlaybackControls();
         if (entry === "crowd") {
             byId("request-status").textContent = "正在连接查询潮汐实验";
-            byId("replay-status").textContent = "等待 SSE 捕获真实请求";
+            byId("replay-status").textContent = state.loadtestTaskId ?
+                "正在恢复任务观测" : "正在建立店内指标观测";
             if (state.loadtestTaskId) {
                 connectLoadtestTask(state.loadtestTaskId);
+            } else {
+                renderLoadtestReadiness();
+                if (!matchingLabConnectionPlan()) {
+                    refreshLabConnectionPlan();
+                }
             }
         } else if (entry === "crowd-setup") {
             byId("request-status").textContent = "查询潮汐与通路模式已锁定，选择读取路径";
             byId("replay-status").textContent = "等待启动实验";
+            refreshLabConnectionPlan();
         }
-        fetchSnapshot();
         connectMetrics();
+        fetchSnapshot();
+        markLabSceneReady();
+        document.addEventListener("visibilitychange", markLabSceneReady);
     });
 
     window.addEventListener("beforeunload", function () {
         clearRouteTimers();
+        stopTideTraceMotion();
         if (state.stream) {
             state.stream.close();
         }

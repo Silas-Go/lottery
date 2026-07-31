@@ -38,8 +38,9 @@ const (
 )
 
 // TierConfig 是 Runner 唯一信任的压测参数白名单。
-// Rate 是每秒计划产生的 HTTP 请求数，Connections 是本轮实际启用的 HTTP 持久连接数；
-// 二者都不是在线人数。Duration 仍由 Runner 固定，避免任意压力参数进入子进程。
+// Rate 是每秒计划产生的 HTTP 请求数，Connections 是传给 wrk2 -c、计划保持的
+// HTTP 持久连接数，不代表成功建立的 Socket 数；二者都不是在线人数。
+// Duration 仍由 Runner 固定，避免任意压力参数进入子进程。
 type TierConfig struct {
 	ID              TierID `json:"id"`
 	Label           string `json:"label"`
@@ -244,6 +245,7 @@ type Task struct {
 	Tier                 TierConfig     `json:"tier"`
 	ConnectionMode       ConnectionMode `json:"connectionMode,omitempty"`
 	RequestedConnections int            `json:"requestedConnections,omitempty"`
+	ConnectionReason     string         `json:"connectionReason,omitempty"`
 	Status               TaskStatus     `json:"status"`
 	CreatedAt            time.Time      `json:"createdAt"`
 	StartedAt            *time.Time     `json:"startedAt,omitempty"`
@@ -269,10 +271,23 @@ type Event struct {
 	Metrics          *TaskMetrics `json:"metrics,omitempty"`
 }
 
-// CreateResponse 是异步创建任务后的最小响应。
+// ConnectionPlanResponse 是启动前的只读通路预估。
+// Connections 表示将传给 wrk2 -c 的配置值，不保证每个 TCP socket 都成功建立。
+type ConnectionPlanResponse struct {
+	Rate           int            `json:"rate"`
+	ConnectionMode ConnectionMode `json:"connectionMode"`
+	Connections    int            `json:"connections"`
+	Reason         string         `json:"reason"`
+}
+
+// CreateResponse 是异步创建任务后的响应。
+// Runner 在返回前已经锁定 wrk2 -c，因此前端无需等待下一次 GET 才能显示关键连接配置。
 type CreateResponse struct {
-	TaskID string     `json:"taskId"`
-	Status TaskStatus `json:"status"`
+	TaskID           string         `json:"taskId"`
+	Status           TaskStatus     `json:"status"`
+	ConnectionMode   ConnectionMode `json:"connectionMode,omitempty"`
+	Connections      int            `json:"connections"`
+	ConnectionReason string         `json:"connectionReason,omitempty"`
 }
 
 // APIError 是 Runner 和主应用客户端之间的稳定错误协议。

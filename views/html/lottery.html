@@ -8,8 +8,8 @@
     <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
     <title>Cache-Aside 材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260729-query-tide-2" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260729-query-tide-2" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260730-task-handoff-v1" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260730-task-handoff-v1" />
 </head>
 
 <body class="lab-page query-focus" data-lab-mode="direct" data-route-state="idle">
@@ -23,7 +23,7 @@
 
         <div class="current-material" aria-label="当前实验材料">
             <small>CURRENT MATERIAL</small>
-            <strong><span id="lab-current-code">—</span> · <span id="lab-current-name">尚未选择材料</span></strong>
+            <strong><span id="lab-current-code">ARC-004</span> · <span id="lab-current-name">星髓</span></strong>
             <a href="/material-shop">回到材料店门口</a>
         </div>
 
@@ -36,8 +36,8 @@
     <main class="lab-main">
         <section id="empty-state" class="lab-empty" hidden>
             <span>MATERIAL CONTEXT REQUIRED</span>
-            <h1>尚未选择材料</h1>
-            <p>实验室只接收从材料情报店门口选中的档案片。</p>
+            <h1>尚未载入星髓实验</h1>
+            <p>请先回到材料情报店，开启星髓档案。</p>
             <a href="/material-shop">返回材料情报店</a>
         </section>
 
@@ -48,134 +48,195 @@
                     <strong>ARCHIVE QUERY RUN</strong>
                     <small>路径与数字只由真实 HTTP、响应头和 SSE 驱动</small>
                 </div>
-                <aside id="rare-query-brief" class="rare-query-brief" aria-label="星髓热点查询事件">
+                <aside id="rare-query-brief" class="rare-query-brief query-task-context" aria-label="星髓查询任务">
                     <img src="/img/star-marrow-relic.png" alt="深蓝晶体中流动着金色星光的星髓" />
                     <div>
-                        <small>RARE MATERIAL ALERT</small>
-                        <strong>星髓档案正在成为查询热点</strong>
-                        <p>法师公会持续生成查询卷轴。查询潮汐描述每秒计划请求数，并不代表法师人数。</p>
+                        <small>QUERY LOAD TEST · ARC-004</small>
+                        <strong>星髓档案读取实验</strong>
+                        <p>真实 HTTP · 固定运行 30 秒</p>
                     </div>
-                    <dl>
-                        <div><dt>查询潮汐</dt><dd>最高 1500/s</dd></div>
-                        <div><dt>魔法通路</dt><dd>自动 / 手动</dd></div>
-                        <div><dt>首批配额</dt><dd>100</dd></div>
-                    </dl>
                 </aside>
-            <section class="query-console lab-panel" aria-labelledby="query-title">
-                <div class="panel-heading">
-                    <div>
-                        <span>01 / REAL HTTP REQUEST</span>
-                        <h1 id="query-title">在读取器上选择路径，检索当前材料档案</h1>
-                    </div>
-                    <span class="endpoint-label">GET /api/archives/:id/{direct|cached}</span>
-                </div>
 
-                <section id="lab-loadtest" class="lab-loadtest" aria-labelledby="lab-loadtest-title" hidden>
-                    <header>
+                <section class="query-console lab-panel" aria-labelledby="query-title">
+                    <div class="panel-heading">
                         <div>
-                            <small>ACTIVE QUERY TIDE</small>
-                            <strong id="lab-loadtest-title">查询卷轴正在进入通路</strong>
-                            <span id="lab-loadtest-copy">正在连接 Runner 任务。</span>
+                            <span>01 / TASK CONFIGURATION</span>
+                            <h1 id="query-title">确定本轮读取路径</h1>
                         </div>
-                        <time id="lab-loadtest-clock">00:00 / 00:30</time>
-                        <button id="lab-stop-loadtest" type="button">停止实验</button>
-                    </header>
-                    <ol id="lab-loadtest-stages" class="lab-loadtest-stages" aria-label="压测阶段">
-                        <li data-load-stage="starting">准备实验</li>
-                        <li data-load-stage="resetting">重置数据</li>
-                        <li data-load-stage="running">压测运行中</li>
-                        <li data-load-stage="collecting">收集结果</li>
-                        <li data-load-stage="completed">完成</li>
-                    </ol>
-                    <div class="lab-loadtest-metrics" aria-label="Runner 实时指标">
-                        <span><small>目标速率</small><strong id="lab-load-target">0 QPS</strong></span>
-                        <span><small>实际速率</small><strong id="lab-load-qps">0 QPS</strong></span>
-                        <span><small>目标完成率</small><strong id="lab-load-completion">0%</strong></span>
-                        <span><small>通路数量</small><strong id="lab-load-connections">—</strong></span>
-                        <span><small>完成请求</small><strong id="lab-load-requests">0</strong></span>
-                        <span><small>实际请求 P50</small><strong id="lab-load-request-p50">—</strong></span>
-                        <span><small>实际请求 P95</small><strong id="lab-load-request-p95">—</strong></span>
-                        <span><small>需求侧 P50</small><strong id="lab-load-p50">—</strong></span>
-                        <span><small>需求侧 P95</small><strong id="lab-load-p95">—</strong></span>
-                        <span><small>错误率</small><strong id="lab-load-errors">0%</strong></span>
-                        <span><small>Socket Errors</small><strong id="lab-load-timeouts">0</strong></span>
-                        <span><small>Redis 命中</small><strong id="lab-load-hits">0</strong></span>
-                        <span><small>MySQL 回源</small><strong id="lab-load-fallbacks">0</strong></span>
+                        <span class="endpoint-label">GET /api/archives/:id/{direct|cached}</span>
                     </div>
-                    <ol id="lab-loadtest-log" class="lab-loadtest-log" aria-label="压测关键事件">
-                        <li>等待任务状态</li>
-                    </ol>
-                </section>
 
-                <div class="archive-reader-control">
-                    <header class="archive-reader-heading">
-                        <div><small>ARCHIVE READER</small><strong>读取路径拨杆</strong></div>
-                        <output id="lab-shared-strategy">MySQL Direct</output>
-                    </header>
-                    <div class="query-controls">
-                        <div class="reader-route-settings">
-                            <div class="mode-switch" role="group" aria-label="选择实验读取路径">
-                                <button id="mode-direct" class="is-active" type="button" aria-pressed="true">
-                                    <small>PATH A</small><strong>MySQL 直查</strong><span>每次读取权威数据</span>
-                                </button>
-                                <button id="mode-cached" type="button" aria-pressed="false">
-                                    <small>PATH B</small><strong>Redis 旁路缓存</strong><span>MISS 后再回源</span>
-                                </button>
+                    <div class="archive-reader-control">
+                        <header class="archive-reader-heading">
+                            <div><small>ARCHIVE READER</small><strong>读取路径</strong></div>
+                            <output id="lab-shared-strategy">MySQL Direct</output>
+                        </header>
+                        <div class="query-controls">
+                            <div class="reader-route-settings">
+                                <div class="mode-switch" role="group" aria-label="选择实验读取路径">
+                                    <button id="mode-direct" class="is-active" type="button" aria-pressed="true">
+                                        <small>PATH A</small><strong>MySQL 直查</strong><span>Go API → MySQL</span>
+                                    </button>
+                                    <button id="mode-cached" type="button" aria-pressed="false">
+                                        <small>PATH B</small><strong>Redis 旁路缓存</strong><span>Go API → Redis → MySQL on MISS</span>
+                                    </button>
+                                </div>
+                                <fieldset id="lab-cache-settings" class="lab-cache-settings" hidden>
+                                    <legend>缓存起点</legend>
+                                    <label>
+                                        <input type="radio" name="lab-cache-temperature" value="cold" />
+                                        <span><strong>冷缓存</strong><small>先清空缓存</small></span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="lab-cache-temperature" value="hot" />
+                                        <span><strong>热缓存</strong><small>保留已有副本</small></span>
+                                    </label>
+                                </fieldset>
+                                <aside id="lab-crowd-settings" class="lab-crowd-settings" hidden>
+                                    <div>
+                                        <small>本轮任务草案</small>
+                                        <strong id="lab-crowd-summary">目标与连接计划载入中</strong>
+                                    </div>
+                                    <details class="lab-runner-plan-detail">
+                                        <summary>Runner 连接策略</summary>
+                                        <div class="lab-connection-plan" role="status" aria-live="polite">
+                                            <small>wrk2 connections</small>
+                                            <strong id="lab-connection-plan-value">计划计算中</strong>
+                                            <span id="lab-connection-plan-copy">创建任务时锁定最终配置</span>
+                                        </div>
+                                    </details>
+                                    <a href="/material-shop">返回任务配置</a>
+                                </aside>
                             </div>
-                            <fieldset id="lab-cache-settings" class="lab-cache-settings" hidden>
-                                <legend>缓存起点</legend>
-                                <label>
-                                    <input type="radio" name="lab-cache-temperature" value="cold" />
-                                    <span><strong>冷缓存</strong><small>先清空缓存</small></span>
-                                </label>
-                                <label>
-                                    <input type="radio" name="lab-cache-temperature" value="hot" />
-                                    <span><strong>热缓存</strong><small>保留已有副本</small></span>
-                                </label>
-                            </fieldset>
-                            <aside id="lab-crowd-settings" class="lab-crowd-settings" hidden>
-                                <div><small>查询潮汐与魔法通路</small><strong id="lab-crowd-summary">1500 卷轴/秒 · 通路自动配置</strong></div>
-                                <p>查询潮汐是目标 QPS，魔法通路是 HTTP 持久连接；两者都不是用户人数。<a href="/material-shop">重新配置</a></p>
-                            </aside>
+                            <button id="query-archive" class="query-button" type="button">
+                                <span>启动读取实验</span><small id="query-endpoint">via /direct</small>
+                            </button>
                         </div>
-                        <button id="query-archive" class="query-button" type="button">
-                            <span>启动读取实验</span><small id="query-endpoint">via /direct</small>
-                        </button>
+                        <p id="lab-strategy-explanation" class="lab-strategy-explanation">Redis 不参与；每次请求都会产生 MySQL DB Read。</p>
                     </div>
-                    <p id="lab-strategy-explanation" class="lab-strategy-explanation">Redis 不参与；每次请求都会产生 MySQL DB Read。</p>
-                </div>
 
-                <section id="query-tide-stage" class="query-tide-stage" data-flow-state="waiting" aria-labelledby="query-tide-heading" hidden>
-                    <header>
-                        <div><small>QUERY DELIVERY MODEL</small><strong id="query-tide-heading">卷轴、通路与后厨处理</strong></div>
-                        <span id="query-tide-badge" role="status" aria-live="polite">等待启动</span>
-                    </header>
-                    <div class="query-tide-diagram">
-                        <div class="tide-guild-node">
-                            <div class="tide-guild-casters" aria-hidden="true"><i></i><i></i><i></i></div>
-                            <strong>法师公会</strong><small>请求来源 · 不对应具体人数</small>
+                    <section id="lab-loadtest" class="lab-loadtest query-task-board" aria-labelledby="lab-loadtest-title" hidden>
+                        <header class="query-task-board-heading">
+                            <div>
+                                <small>TASK LIFECYCLE</small>
+                                <strong id="lab-loadtest-title">任务尚未创建</strong>
+                                <span id="lab-loadtest-copy">确认路径、目标速率与 Runner 配置后创建任务。</span>
+                            </div>
+                            <div class="query-task-board-actions">
+                                <time id="lab-loadtest-clock">00:00 / 00:30</time>
+                                <button id="lab-stop-loadtest" type="button" hidden>停止实验</button>
+                            </div>
+                        </header>
+                        <ol id="lab-loadtest-stages" class="lab-loadtest-stages" aria-label="压测任务流程">
+                            <li data-load-stage="intent"><i>1</i><span>配置意图</span></li>
+                            <li data-load-stage="task"><i>2</i><span>创建任务</span></li>
+                            <li data-load-stage="connections"><i>3</i><span>启用连接配置</span></li>
+                            <li data-load-stage="delivery"><i>4</i><span>发送请求</span></li>
+                            <li data-load-stage="backend"><i>5</i><span>系统处理</span></li>
+                            <li data-load-stage="result"><i>6</i><span>输出结果</span></li>
+                        </ol>
+                        <div class="query-task-facts" aria-label="本轮任务稳定事实">
+                            <section class="query-fact-lane is-intent">
+                                <header><small>INTENT</small><strong>实验意图</strong></header>
+                                <span><small>请求路径</small><strong id="lab-load-path">MySQL Direct</strong></span>
+                                <span><small>目标速率</small><strong id="lab-load-target">—</strong></span>
+                            </section>
+                            <section class="query-fact-lane is-config">
+                                <header><small>RUNNER CONFIG</small><strong>执行配置</strong></header>
+                                <span><small>连接配置</small><strong id="lab-load-connections">—</strong></span>
+                                <span><small>任务状态</small><strong id="lab-load-runner-state">尚未创建</strong></span>
+                            </section>
+                            <section class="query-fact-lane is-observed">
+                                <header><small>OBSERVED</small><strong>运行事实</strong></header>
+                                <span><small>实际速率</small><strong id="lab-load-qps">—</strong></span>
+                                <span><small>目标完成率</small><strong id="lab-load-completion">—</strong></span>
+                                <span><small>Socket Errors</small><strong id="lab-load-timeouts">—</strong></span>
+                            </section>
                         </div>
-                        <div class="tide-generator-node">
-                            <div class="tide-scroll-maker" aria-hidden="true"><i></i><i></i><i></i></div>
-                            <strong id="tide-target-rate">1500 卷轴/秒</strong><small>查询潮汐 · 目标 QPS</small>
+                        <details class="query-observation-details">
+                            <summary>查看延迟、请求数与 Runner 事件</summary>
+                            <div class="lab-loadtest-metrics" aria-label="Runner 详细指标">
+                                <span><small>完成请求</small><strong id="lab-load-requests">—</strong></span>
+                                <span><small>实际请求 P50</small><strong id="lab-load-request-p50">—</strong></span>
+                                <span><small>实际请求 P95</small><strong id="lab-load-request-p95">—</strong></span>
+                                <span><small>需求侧 P50</small><strong id="lab-load-p50">—</strong></span>
+                                <span><small>需求侧 P95</small><strong id="lab-load-p95">—</strong></span>
+                                <span><small>错误率</small><strong id="lab-load-errors">—</strong></span>
+                                <span><small>Redis 命中</small><strong id="lab-load-hits">—</strong></span>
+                                <span><small>MySQL 回源</small><strong id="lab-load-fallbacks">—</strong></span>
+                            </div>
+                            <ol id="lab-loadtest-log" class="lab-loadtest-log" aria-label="压测关键事件">
+                                <li>等待任务创建</li>
+                            </ol>
+                        </details>
+                    </section>
+
+                    <section id="query-tide-stage" class="query-tide-stage" data-flow-state="waiting" data-backend-mode="direct" aria-labelledby="query-tide-heading" hidden>
+                        <header>
+                            <div><small>REQUEST MECHANISM</small><strong id="query-tide-heading">请求如何被产生、承载、处理并返回</strong></div>
+                            <span id="query-tide-badge" role="status" aria-live="polite">尚未启动</span>
+                        </header>
+                        <div class="query-tide-diagram">
+                            <article class="tide-guild-node">
+                                <div class="tide-guild-casters" aria-hidden="true"><i></i><i></i><i></i></div>
+                                <small>请求来源</small><strong>法师公会</strong>
+                            </article>
+                            <article class="tide-generator-node">
+                                <div class="tide-scroll-maker" aria-hidden="true"><i></i><i></i><i></i></div>
+                                <small>产生 HTTP 请求</small><strong id="tide-target-rate">—</strong>
+                            </article>
+                            <article id="tide-backlog-node" class="tide-backlog-node">
+                                <div class="tide-backlog-scrolls" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                                <small id="tide-backlog-title">通路入口</small><strong id="tide-backlog-copy">尚无请求</strong>
+                            </article>
+                            <article class="tide-conduit-node">
+                                <div class="tide-conduit-bank" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                                <span class="tide-conduit-directions" aria-hidden="true"><b>REQ →</b><b>← RES</b></span>
+                                <small>同一组 HTTP 持久连接</small><strong id="tide-conduit-count">—</strong>
+                            </article>
+                            <article class="tide-service-node">
+                                <div class="tide-service-icon" aria-hidden="true">GO</div>
+                                <small>请求路由与组装</small><strong>Go API</strong>
+                            </article>
+                            <article class="tide-kitchen-node">
+                                <div class="tide-kitchen-icons" aria-hidden="true">
+                                    <i id="tide-redis-device"><small>缓存层</small><b>REDIS</b></i>
+                                    <span class="tide-cache-bridge">
+                                        <b class="tide-cache-miss">MISS ↓</b>
+                                        <b class="tide-cache-refill">↑ 回填</b>
+                                    </span>
+                                    <i id="tide-mysql-device"><small>权威数据源</small><b>MYSQL</b></i>
+                                </div>
+                                <small>后端读取</small><strong id="tide-kitchen-title">MySQL</strong>
+                                <span id="tide-occupancy-copy">等待实测</span>
+                            </article>
+                            <article class="tide-response-node">
+                                <div class="tide-response-orb" aria-hidden="true"></div>
+                                <small>完成响应样本</small><strong id="tide-response-rate">等待观察</strong>
+                                <span id="tide-response-copy">生成后沿原通路返回</span>
+                            </article>
+                            <div class="tide-return-lane" aria-label="响应沿同一组 HTTP 连接返回 Runner，连接释放后继续承载下一次请求">
+                                <span id="tide-response-archive" class="tide-response-archive"><small>RUNNER SIDE</small><strong>响应归档</strong></span>
+                                <strong>同门回流</strong><i aria-hidden="true"></i><span>连接释放 · 继续承载</span>
+                            </div>
+                            <span class="tide-trace-layer" aria-hidden="true">
+                                <span id="tide-trace-request" class="tide-trace-scroll tide-trace-request">
+                                    <b>S01</b><em>REQ →</em>
+                                </span>
+                                <span id="tide-trace-response" class="tide-trace-scroll tide-trace-response">
+                                    <b>S01</b><em>← RES</em>
+                                </span>
+                                <span id="tide-trace-refill" class="tide-refill-token">
+                                    <b>S01</b><em>回填 ↑</em>
+                                </span>
+                                <span id="tide-plan-token" class="tide-plan-token">
+                                    <b>任务指令</b><em id="tide-plan-token-copy">等待计划</em>
+                                </span>
+                            </span>
                         </div>
-                        <div id="tide-backlog-node" class="tide-backlog-node">
-                            <div class="tide-backlog-scrolls" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                            <strong id="tide-backlog-title">通路入口</strong><small id="tide-backlog-copy">等待卷轴投递</small>
-                        </div>
-                        <div class="tide-conduit-node">
-                            <div class="tide-conduit-bank" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                            <strong id="tide-conduit-count">自动配置</strong><small>魔法通路 · HTTP connections</small>
-                        </div>
-                        <div class="tide-kitchen-node">
-                            <div class="tide-kitchen-icons" aria-hidden="true"><i>GO</i><i id="tide-backend-icon">SQL</i></div>
-                            <strong id="tide-kitchen-title">Go 服务 → MySQL</strong><small id="tide-occupancy-copy">通路占用时间等待实测</small>
-                        </div>
-                    </div>
-                    <p id="query-tide-explanation">卷轴尚未开始投递。积压只会显示在通路入口，不会伪装成已经进入 MySQL 后的处理时间。</p>
+                        <p id="query-tide-explanation">创建任务后，Runner 会按锁定的 -c 启动连接配置，再按目标速率发送请求。</p>
+                    </section>
                 </section>
-
-            </section>
 
             <section class="route-panel lab-panel" aria-labelledby="route-heading">
                 <div class="panel-heading route-heading-row">
@@ -288,9 +349,9 @@
 
                     <article id="record-result" class="record-result" hidden>
                         <header>
-                            <span id="record-result-code">ARC-002</span>
-                            <div><small>MATERIAL ARCHIVE</small><h3 id="record-result-name">雾银</h3></div>
-                            <i id="record-result-sigil">Ⅱ</i>
+                            <span id="record-result-code">ARC-004</span>
+                            <div><small>MATERIAL ARCHIVE</small><h3 id="record-result-name">星髓</h3></div>
+                            <i id="record-result-sigil">Ⅳ</i>
                         </header>
                         <dl>
                             <div><dt>稀有度</dt><dd id="record-rarity">—</dd></div>
@@ -318,8 +379,8 @@
                             </div>
                         </section>
                         <p>当前只读取材料资料，不会占用或扣减真实库存。</p>
-                        <button id="purchase-entry" type="button">进入购买实验</button>
-                        <small id="purchase-entry-note">购买实验会重新校验并真实扣减同一份材料库存；可比较同步失效与 Outbox + MQ 异步失效。</small>
+                        <button id="purchase-entry" type="button">配置购买实验</button>
+                        <small id="purchase-entry-note">先回到店外选择失效路径，再进入采购实验室；不会复用本轮查询参数。</small>
                     </article>
                 </section>
 
@@ -345,7 +406,7 @@
                         <div class="metrics-row" role="row"><span>实际速率</span><strong id="direct-actual-qps">—</strong><strong id="cached-actual-qps">—</strong></div>
                         <div class="metrics-row" role="row"><span>目标完成率</span><strong id="direct-completion-rate">—</strong><strong id="cached-completion-rate">—</strong></div>
                         <div class="metrics-row" role="row"><span>完成请求</span><strong id="direct-total">—</strong><strong id="cached-total">—</strong></div>
-                        <div class="metrics-row" role="row"><span>魔法通路</span><strong id="direct-connections">—</strong><strong id="cached-connections">—</strong></div>
+                        <div class="metrics-row" role="row"><span>wrk2 -c（配置连接数）</span><strong id="direct-connections">—</strong><strong id="cached-connections">—</strong></div>
                         <div class="metrics-row" role="row"><span>实际时长</span><strong id="direct-duration">—</strong><strong id="cached-duration">—</strong></div>
                         <div class="metrics-row" role="row"><span>实际请求 P50</span><strong id="direct-request-p50">—</strong><strong id="cached-request-p50">—</strong></div>
                         <div class="metrics-row" role="row"><span>实际请求 P95</span><strong id="direct-request-p95">—</strong><strong id="cached-request-p95">—</strong></div>
@@ -361,7 +422,7 @@
                     <div class="engineering-notes">
                         <div><strong>两种延迟口径</strong><span>实际请求延迟从真正发出开始；需求侧延迟从计划投递时刻开始，并包含连接不足造成的发送欠账。</span></div>
                         <div><strong>不混入应用快照</strong><span>SQL、连接池与缓存命中率只在上方 SSE 区域实时观察。</span></div>
-                        <div><strong>卷轴不是用户</strong><span>目标 QPS、完成请求和 HTTP connections 都不会换算成法师人数。</span></div>
+                        <div><strong>连接结算</strong><span>wrk2 -c 是 Runner 配置；Socket Errors 单独呈现连接层异常。</span></div>
                     </div>
                 </section>
                 </details>
@@ -392,7 +453,7 @@
                             <div><dt>目标 / 实际速率</dt><dd data-result="ratePair">—</dd></div>
                             <div><dt>目标完成率</dt><dd data-result="completionRate">—</dd></div>
                             <div><dt>完成请求</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>魔法通路</dt><dd data-result="connections">—</dd></div>
+                            <div><dt>wrk2 -c 配置</dt><dd data-result="connections">—</dd></div>
                             <div><dt>实际请求 P50</dt><dd data-result="requestP50">—</dd></div>
                             <div><dt>实际请求 P95</dt><dd data-result="requestP95">—</dd></div>
                             <div><dt>需求侧 P50</dt><dd data-result="p50">—</dd></div>
@@ -410,7 +471,7 @@
                             <div><dt>目标 / 实际速率</dt><dd data-result="ratePair">—</dd></div>
                             <div><dt>目标完成率</dt><dd data-result="completionRate">—</dd></div>
                             <div><dt>完成请求</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>魔法通路</dt><dd data-result="connections">—</dd></div>
+                            <div><dt>wrk2 -c 配置</dt><dd data-result="connections">—</dd></div>
                             <div><dt>实际请求 P50</dt><dd data-result="requestP50">—</dd></div>
                             <div><dt>实际请求 P95</dt><dd data-result="requestP95">—</dd></div>
                             <div><dt>需求侧 P50</dt><dd data-result="p50">—</dd></div>
@@ -434,7 +495,7 @@
                         <div id="compare-target-row" class="frozen-comparison-row" role="row"><span>目标速率</span><strong id="compare-target-direct">—</strong><strong id="compare-target-cached">—</strong><em id="compare-target-winner">等待</em></div>
                         <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>实际速率</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
                         <div id="compare-completion-row" class="frozen-comparison-row" role="row"><span>目标完成率</span><strong id="compare-completion-direct">—</strong><strong id="compare-completion-cached">—</strong><em id="compare-completion-winner">等待</em></div>
-                        <div id="compare-connections-row" class="frozen-comparison-row" role="row"><span>魔法通路</span><strong id="compare-connections-direct">—</strong><strong id="compare-connections-cached">—</strong><em id="compare-connections-winner">等待</em></div>
+                        <div id="compare-connections-row" class="frozen-comparison-row" role="row"><span>wrk2 -c 配置</span><strong id="compare-connections-direct">—</strong><strong id="compare-connections-cached">—</strong><em id="compare-connections-winner">等待</em></div>
                         <div id="compare-request-p50-row" class="frozen-comparison-row" role="row"><span>实际请求 P50</span><strong id="compare-request-p50-direct">—</strong><strong id="compare-request-p50-cached">—</strong><em id="compare-request-p50-winner">等待</em></div>
                         <div id="compare-request-p95-row" class="frozen-comparison-row" role="row"><span>实际请求 P95</span><strong id="compare-request-p95-direct">—</strong><strong id="compare-request-p95-cached">—</strong><em id="compare-request-p95-winner">等待</em></div>
                         <div id="compare-p50-row" class="frozen-comparison-row" role="row"><span>需求侧 P50</span><strong id="compare-p50-direct">—</strong><strong id="compare-p50-cached">—</strong><em id="compare-p50-winner">等待</em></div>
@@ -442,7 +503,7 @@
                         <div id="compare-timeout-row" class="frozen-comparison-row" role="row"><span>Socket Errors</span><strong id="compare-timeout-direct">—</strong><strong id="compare-timeout-cached">—</strong><em id="compare-timeout-winner">等待</em></div>
                         <div id="compare-error-row" class="frozen-comparison-row" role="row"><span>Error Rate</span><strong id="compare-error-direct">—</strong><strong id="compare-error-cached">—</strong><em id="compare-error-winner">等待</em></div>
                     </div>
-                    <p>只有材料、目标速率、实际通路数和时长一致时才比较。实际请求延迟与需求侧延迟分别裁决；不会把连接数、QPS 或请求数换算成用户人数。</p>
+                    <p>只有材料、目标速率、wrk2 -c 配置值和时长一致时才比较。实际请求延迟与需求侧延迟分别裁决；不会把连接数、QPS 或请求数换算成用户人数。</p>
                 </div>
             </section>
             </details>
@@ -493,7 +554,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/seckill-lab.js?v=20260729-query-tide-2"></script>
+    <script src="/js/seckill-lab.js?v=20260731-purchase-plan-v1"></script>
 </body>
 
 </html>

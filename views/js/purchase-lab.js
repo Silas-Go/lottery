@@ -311,6 +311,38 @@
         }
     }
 
+    function incomingPurchasePlan() {
+        var query = new URLSearchParams(window.location.search);
+        var strategy = query.get("strategy") || "";
+        var validStrategy = Object.prototype.hasOwnProperty.call(strategyNames, strategy) ?
+            strategy : "";
+        return {
+            strategy: validStrategy,
+            fresh: Boolean(validStrategy && query.get("intent") === "new")
+        };
+    }
+
+    function updateFreshPurchasePlanStrategy(strategy) {
+        var nextURL = new URL(window.location.href);
+        if (nextURL.searchParams.get("intent") !== "new") {
+            return;
+        }
+        nextURL.searchParams.set("strategy", strategy);
+        window.history.replaceState(null, "", nextURL.toString());
+    }
+
+    function consumeFreshPurchasePlan() {
+        var nextURL = new URL(window.location.href);
+        if (nextURL.searchParams.get("intent") !== "new") {
+            return;
+        }
+        nextURL.searchParams.delete("intent");
+        if (state.strategy) {
+            nextURL.searchParams.set("strategy", state.strategy);
+        }
+        window.history.replaceState(null, "", nextURL.toString());
+    }
+
     function rememberMaterial(profile) {
         try {
             window.sessionStorage.setItem(MATERIAL_STORAGE_KEY, profile.code);
@@ -604,7 +636,7 @@
         byId("start-purchase-run").disabled = busy || !state.strategy;
         byId("start-purchase-run").textContent = busy ? "后端正在真实执行…" : "开始 150 人购买实验";
         byId("prepare-action-hint").textContent = state.strategy ?
-            ("本轮将真实执行“" + strategyNames[state.strategy] + "”；完成后自动按 trace 回放。") :
+            ("本轮将真实执行“" + strategyNames[state.strategy] + "”；完成后自动按 trace 回放。请先结束其他标签页中的查询压测。") :
             "请先选择一种缓存失效方案。";
         byId("replay-previous").disabled = !ready || busy || state.replay.index <= 0;
         byId("replay-next").disabled = !ready || busy || state.replay.index >= stageNames.length - 1;
@@ -1772,6 +1804,8 @@
             }
             return;
         }
+        // 店外计划只负责预选方案；用户在店内明确点击后才消费该计划并调用真实购买接口。
+        consumeFreshPurchasePlan();
         clearReplayTimer();
         resetIdleVisuals();
         setExecutionMode("executing",
@@ -1847,6 +1881,7 @@
             return;
         }
         setSelectedStrategy(strategy);
+        updateFreshPurchasePlanStrategy(strategy);
         resetIdleVisuals();
     }
 
@@ -2373,7 +2408,7 @@
         byId("purchase-current-code").textContent = material.profile.code;
         byId("purchase-current-name").textContent = material.profile.name;
         byId("story-material-name").textContent = material.profile.name;
-        byId("purchase-query-link").href = "/lab?material=" + encodeURIComponent(material.profile.code);
+        byId("purchase-shop-link").href = "/material-shop";
         byId("back-to-query").href = "/lab?material=" + encodeURIComponent(material.profile.code);
         byId("purchase-empty").hidden = true;
         byId("purchase-content").hidden = false;
@@ -2409,18 +2444,23 @@
     }
 
     async function init() {
+        var incomingPlan = incomingPurchasePlan();
         if (!showContext(incomingMaterial())) {
             return;
         }
         migrateLatestResultsToArchive();
         bindEvents();
+        if (incomingPlan.strategy) {
+            setSelectedStrategy(incomingPlan.strategy);
+        }
         try {
             await fetchStockState();
         } catch (error) {
             byId("purchase-stock-summary").textContent = "库存读取失败";
             showToast(error.message, "error");
         }
-        if (!restoreSavedReplay()) {
+        // 显式的新计划优先于旧回放位置；否则旧报告会覆盖刚从店外带入的方案。
+        if (incomingPlan.fresh || !restoreSavedReplay()) {
             resetIdleVisuals();
         }
         renderSavedResults();

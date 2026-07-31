@@ -90,6 +90,42 @@ func NewRunner(options RunnerOptions) (*Runner, error) {
 	return runner, nil
 }
 
+// PlanConnections 使用与 Start 完全相同的历史数据和自动估算器返回只读预估。
+// 预估不会创建任务或启动 wrk2；真正执行时仍以 Start 返回的最终 -c 为准。
+func (r *Runner) PlanConnections(request CreateRequest) (ConnectionPlanResponse, *APIError) {
+	tier, validationMessage := ValidateCreateRequest(request)
+	if validationMessage != "" {
+		return ConnectionPlanResponse{}, apiError(
+			http.StatusBadRequest,
+			CodeInvalidRequest,
+			"压测请求不符合白名单",
+			validationMessage,
+		)
+	}
+
+	connectionMode := request.ConnectionMode
+	reason := "旧协议固定配置"
+	if request.Rate > 0 {
+		if connectionMode == "" {
+			connectionMode = ConnectionModeAuto
+		}
+		if connectionMode == ConnectionModeManual {
+			tier.Connections = request.Connections
+			reason = "用户手动指定"
+		} else {
+			r.mu.Lock()
+			tier.Connections, reason = r.resolveAutoConnectionsLocked(request, tier.Rate)
+			r.mu.Unlock()
+		}
+	}
+	return ConnectionPlanResponse{
+		Rate:           tier.Rate,
+		ConnectionMode: connectionMode,
+		Connections:    tier.Connections,
+		Reason:         reason,
+	}, nil
+}
+
 // Start 校验白名单输入并异步启动任务，HTTP 请求结束不会取消压测。
 func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 	tier, validationMessage := ValidateCreateRequest(request)
@@ -106,6 +142,7 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 	connectionMode := request.ConnectionMode
 	requestedConnections := 0
 	connectionLog := ""
+	connectionReason := ""
 	if request.Rate > 0 {
 		if connectionMode == "" {
 			connectionMode = ConnectionModeAuto
@@ -113,11 +150,11 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 		if connectionMode == ConnectionModeManual {
 			requestedConnections = request.Connections
 			tier.Connections = request.Connections
-			connectionLog = fmt.Sprintf("手动开启 %d 条魔法通路", tier.Connections)
+			connectionReason = "用户手动指定"
+			connectionLog = fmt.Sprintf("配置 wrk2 -c %d（手动指定）", tier.Connections)
 		} else {
-			var reason string
-			tier.Connections, reason = r.resolveAutoConnectionsLocked(request, tier.Rate)
-			connectionLog = fmt.Sprintf("自动开启 %d 条魔法通路：%s", tier.Connections, reason)
+			tier.Connections, connectionReason = r.resolveAutoConnectionsLocked(request, tier.Rate)
+			connectionLog = fmt.Sprintf("配置 wrk2 -c %d（自动）：%s", tier.Connections, connectionReason)
 		}
 	}
 
@@ -135,6 +172,7 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 			Tier:                 tier,
 			ConnectionMode:       connectionMode,
 			RequestedConnections: requestedConnections,
+			ConnectionReason:     connectionReason,
 			Status:               StatusStarting,
 			CreatedAt:            now,
 			RemainingSeconds:     tier.DurationSeconds,

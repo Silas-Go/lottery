@@ -8,7 +8,7 @@
     <meta name="description" content="用真实 MySQL、Redis、Outbox 与 RocketMQ 比较同步和异步缓存失效。" />
     <title>材料购买实验 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260724-independent-reports" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260730-experiment-foyer-v1" />
     <link rel="stylesheet" href="/css/purchase-lab.css?v=20260728-star-marrow" />
 </head>
 
@@ -17,12 +17,13 @@
 
     <header class="lab-header purchase-lab-header">
         <div class="purchase-brand-area">
-            <a class="lab-brand" id="purchase-query-link" href="/lab" aria-label="返回查询实验">
+            <a class="lab-brand" id="purchase-shop-link" href="/material-shop" aria-label="返回材料店前厅">
                 <span>S</span>
                 <div><strong>SILAS</strong><small>PURCHASE OBSERVATORY</small></div>
             </a>
             <nav aria-label="购买实验导航">
-                <a id="back-to-query" href="/lab">返回材料查询</a>
+                <a id="back-to-shop" href="/material-shop">返回材料店前厅</a>
+                <a id="back-to-query" href="/lab">前往材料查询</a>
                 <a href="/">返回暖潮街</a>
             </nav>
         </div>
@@ -40,9 +41,9 @@
     <main class="lab-main purchase-main">
         <section id="purchase-empty" class="lab-empty" hidden>
             <span>PRODUCT CONTEXT REQUIRED</span>
-            <h1>尚未选择材料</h1>
-            <p>请先在材料情报店完成一次查询，再进入这轮独立的购买实验。</p>
-            <a href="/lab">返回材料查询</a>
+            <h1>尚未载入星髓实验</h1>
+            <p>请先在材料情报店选择一份材料；购买实验不要求先完成查询实验。</p>
+            <a href="/material-shop">返回材料店前厅</a>
         </section>
 
         <div id="purchase-content" class="purchase-observatory-content" hidden>
@@ -59,8 +60,8 @@
                 </figure>
                 <div>
                     <small>INDEPENDENT PURCHASE LOAD</small>
-                    <h1 id="purchase-title">查询实验已经结束；接下来独立发出 <span>150</span> 个唯一购买请求，争购<span id="story-material-name">月盐</span>。</h1>
-                    <p>这 150 个请求与查询潮汐的目标 QPS、实际完成量和魔法通路数没有换算关系。</p>
+                    <h1 id="purchase-title">本轮将独立发出 <span>150</span> 个唯一购买请求，争购<span id="story-material-name">星髓</span>。</h1>
+                    <p>无需先运行查询实验；两项实验共享库存与缓存，请勿并行运行。20 QPS 查询探针只观察本轮购买期间的一致性。</p>
                 </div>
                 <dl aria-label="实验固定负载">
                     <div><dt>唯一购买请求</dt><dd>150</dd></div>
@@ -92,7 +93,7 @@
             <section id="purchase-running-bar" class="purchase-running-bar" aria-label="实验执行与回放控制">
                 <div class="purchase-running-summary">
                     <span id="running-phase">准备实验</span>
-                    <strong><span id="running-material">月盐</span> · <span id="running-strategy">—</span></strong>
+                    <strong><span id="running-material">星髓</span> · <span id="running-strategy">—</span></strong>
                     <small id="execution-boundary-copy">真实执行完成后才会开始回放；回放不会再次修改库存。</small>
                 </div>
                 <div class="purchase-running-progress">
@@ -526,7 +527,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
-    <script src="/js/purchase-lab.js?v=20260728-star-marrow"></script>
+    <script src="/js/purchase-lab.js?v=20260731-purchase-plan-v1"></script>
 </body>
 
 </html>

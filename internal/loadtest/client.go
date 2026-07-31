@@ -43,6 +43,13 @@ func (c *Client) Start(ctx context.Context, input CreateRequest) (CreateResponse
 	return output, apiErr
 }
 
+// PlanConnections 读取 Runner 当前历史并预估 wrk2 -c，不创建任务。
+func (c *Client) PlanConnections(ctx context.Context, input CreateRequest) (ConnectionPlanResponse, *APIError) {
+	var output ConnectionPlanResponse
+	apiErr := c.doJSON(ctx, http.MethodPost, "/internal/loadtests/connection-plan", input, &output)
+	return output, apiErr
+}
+
 // Get 读取 Runner 权威任务快照。
 func (c *Client) Get(ctx context.Context, taskID string) (Task, *APIError) {
 	var output Task

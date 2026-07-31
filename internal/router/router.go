@@ -88,6 +88,7 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/api/metrics/stream", handler.StreamMetrics)
 	engine.POST("/api/lab/reset", handlers.Lab.ResetLab)
 	engine.POST("/api/loadtests", handlers.Loadtest.Create)
+	engine.POST("/api/loadtests/connection-plan", handlers.Loadtest.PlanConnections)
 	engine.GET("/api/loadtests/:id", handlers.Loadtest.Get)
 	engine.GET("/api/loadtests/:id/events", handlers.Loadtest.Events)
 	engine.POST("/api/loadtests/:id/stop", handlers.Loadtest.Stop)

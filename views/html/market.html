@@ -8,8 +8,8 @@
     <meta name="description" content="星髓现世：在材料情报店查验实物，并进入真实 Cache-Aside 查询与限量购买实验。" />
     <title>Silas 炼金市 · 材料情报店</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/lottery.css?v=20260729-query-tide" />
-    <link rel="stylesheet" href="/css/world-style.css?v=20260729-query-tide" />
+    <link rel="stylesheet" href="/css/lottery.css?v=20260731-outbox-rationale-v1" />
+    <link rel="stylesheet" href="/css/world-style.css?v=20260730-experiment-foyer-v1" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -24,7 +24,7 @@
     </header>
 
     <main class="market-event" aria-labelledby="event-title">
-        <h1 id="event-title" class="sr-only">魔法潮汐前的材料查询</h1>
+        <h1 id="event-title" class="sr-only">星髓材料实验前厅</h1>
 
         <section class="market-scene" aria-label="阳光下的炼金市场材料店铺">
             <div class="market-sky" aria-hidden="true">
@@ -74,25 +74,6 @@
                 <i class="visitor-satchel"></i>
             </div>
 
-            <div id="query-guild" class="query-guild" aria-hidden="true">
-                <div class="query-guild-members" aria-hidden="true"><i></i><i></i><i></i></div>
-                <div class="query-scroll-press" aria-hidden="true">
-                    <span data-crowd-ticket>ARC-004</span><i></i>
-                </div>
-                <small>法师公会</small>
-                <strong>请求来源</strong>
-            </div>
-            <div id="query-ingress" class="query-ingress" aria-hidden="true">
-                <div class="query-scroll-stream" aria-hidden="true">
-                    <i></i><i></i><i></i><i></i><i></i><i></i>
-                </div>
-                <div class="query-conduit-gate" aria-hidden="true">
-                    <i></i><i></i><i></i><i></i><i></i>
-                </div>
-                <span>通路入口 · 图标为通路组示意</span>
-                <strong id="market-conduit-count">自动配置</strong>
-            </div>
-
             <div class="stone-street" aria-hidden="true"></div>
             <div class="sun-shade" aria-hidden="true"></div>
             <div class="dust-field" aria-hidden="true">
@@ -118,34 +99,19 @@
                     <div>
                         <small>LEGENDARY · 首批发售</small>
                         <strong>ARC-004 · 星髓</strong>
-                        <p>“法师公会正在持续生成查询卷轴。先设置每秒卷轴数，再决定同时开启多少条魔法通路。”</p>
+                        <p>“同一枚星髓有两张独立委托：查询台研究读取路径，采购台研究写入后的缓存一致性。”</p>
                         <dl>
-                            <div><dt>查询潮汐</dt><dd>最高 1500/s</dd></div>
-                            <div><dt>通路模式</dt><dd>自动 / 手动</dd></div>
+                            <div><dt>查询实验</dt><dd>100–1500/s</dd></div>
+                            <div><dt>购买实验</dt><dd>150 请求</dd></div>
                             <div><dt>首批库存</dt><dd>100</dd></div>
                         </dl>
                     </div>
                 </div>
                 <div class="rare-material-actions">
-                    <button id="star-crowd-entry" class="event-primary" type="button">配置查询潮汐</button>
-                    <button id="show-materials" class="event-secondary" type="button">独自查验</button>
-                    <button id="browse-materials" class="event-secondary" type="button">看看普通货架</button>
+                    <button id="star-query-entry" class="event-primary" type="button">配置查询潮汐</button>
+                    <button id="star-purchase-entry" class="event-secondary event-purchase" type="button">配置购买实验</button>
                 </div>
-            </div>
-
-            <div id="material-choices" class="material-choices" role="list" aria-label="选择要查询的材料">
-                <button type="button" data-material="ARC-001">
-                    <span>我想查阅月盐。</span><small>潮退后留下的苍白结晶。</small>
-                </button>
-                <button type="button" data-material="ARC-002">
-                    <span>给我看看雾银的记录。</span><small>只在晨雾浓时显露轮廓。</small>
-                </button>
-                <button type="button" data-material="ARC-003">
-                    <span>我需要龙息琥珀的资料。</span><small>内部有微弱灼热反应。</small>
-                </button>
-                <button type="button" data-material="ARC-004">
-                    <span>我在寻找星髓的线索。</span><small>从坠星残核中分离出的结晶。</small>
-                </button>
+                <small class="purchase-boundary">两项实验共享库存与缓存，请勿并行运行。</small>
             </div>
 
             <div id="record-selection" class="record-selection">
@@ -157,73 +123,182 @@
                     <em>UNREAD RECORD</em>
                 </div>
                 <div class="record-copy">
-                    <div id="delivery-prompt" class="delivery-prompt">
-                        <strong>店主</strong>
-                        <p>“你可以亲自投递一张查询卷轴，也可以让法师公会持续生成卷轴，观察通路如何周转。”</p>
-                        <div class="delivery-choice" role="group" aria-label="选择档案投递方式">
-                            <button id="single-request" type="button">
-                                <strong>查验一份档案</strong><small>先发出一次真实只读请求</small>
-                            </button>
-                            <button id="crowd-test" type="button">
-                                <strong>配置查询潮汐</strong><small>选择每秒卷轴数与魔法通路</small>
-                            </button>
-                        </div>
-                        <small class="purchase-boundary">此处不会直接扣减库存；购买时会重新校验价格与库存。</small>
-                    </div>
-
                     <div id="crowd-panel" class="crowd-panel">
-                        <header>
-                            <div><small>QUERY TIDE CONTROL</small><strong>配置查询潮汐</strong></div>
-                            <button id="leave-crowd-mode" type="button">返回方式选择</button>
-                        </header>
-                        <fieldset class="crowd-tier-control" aria-describedby="crowd-size-note">
-                            <legend>查询潮汐</legend>
-                            <div class="crowd-tier-options" role="group" aria-label="每秒计划生成的查询卷轴数量">
-                                <button type="button" data-crowd-tier="qps_100" aria-pressed="false">
-                                    <span>涓流</span><strong>100 卷轴/秒</strong><small>目标 QPS 100</small>
-                                </button>
-                                <button type="button" data-crowd-tier="qps_300" aria-pressed="false">
-                                    <span>涟漪</span><strong>300 卷轴/秒</strong><small>目标 QPS 300</small>
-                                </button>
-                                <button type="button" data-crowd-tier="qps_800" aria-pressed="false">
-                                    <span>浪潮</span><strong>800 卷轴/秒</strong><small>目标 QPS 800</small>
-                                </button>
-                                <button class="is-active" type="button" data-crowd-tier="qps_1500" aria-pressed="true">
-                                    <span>满潮</span><strong>1500 卷轴/秒</strong><small>目标 QPS 1500</small>
-                                </button>
+                        <header class="task-draft-header">
+                            <div>
+                                <small>QUERY LOAD TEST · ARC-004</small>
+                                <strong>配置查询压测计划</strong>
                             </div>
-                            <div class="conduit-mode-control">
-                                <div>
-                                    <small>魔法通路</small>
-                                    <div class="conduit-mode-options" role="group" aria-label="魔法通路配置方式">
-                                        <button class="is-active" type="button" data-connection-mode="auto" aria-pressed="true">自动配置</button>
-                                        <button type="button" data-connection-mode="manual" aria-pressed="false">手动配置</button>
+                            <button id="leave-crowd-mode" type="button">返回实验前厅</button>
+                        </header>
+
+                        <ol id="market-task-lifecycle" class="task-lifecycle" aria-label="压测任务流程">
+                            <li data-market-stage="plan" class="is-current"><i>01</i><span>店外配置</span></li>
+                            <li data-market-stage="lab"><i>02</i><span>店内执行</span></li>
+                            <li data-market-stage="result"><i>03</i><span>结果结算</span></li>
+                        </ol>
+
+                        <div class="task-contract-strip task-plan-summary" role="status" aria-live="polite" aria-label="本轮查询压测计划">
+                            <div class="is-path"><small>实验路径</small><strong id="crowd-summary-path">MySQL Direct</strong></div>
+                            <div class="is-intent"><small>目标速率</small><output id="crowd-size-value">1,500 req/s</output></div>
+                            <div class="is-config"><small>Runner 计划</small><strong id="crowd-connection-plan">计算中</strong></div>
+                            <div class="is-fact"><small>任务状态</small><strong id="crowd-connection-current">尚未创建</strong></div>
+                        </div>
+
+                        <div class="crowd-workbench">
+                            <div class="crowd-config-column">
+                                <section class="task-intent-panel" aria-labelledby="task-intent-heading">
+                                    <header>
+                                        <span>TRAFFIC INTENT</span>
+                                        <strong id="task-intent-heading">选择请求路径与发送速率</strong>
+                                    </header>
+                                    <div class="query-path-options" role="group" aria-label="查询请求路径">
+                                        <button class="is-active" type="button" data-query-path="direct" aria-pressed="true">
+                                            <small>PATH A</small><strong>MySQL Direct</strong><span>Go API → MySQL</span>
+                                        </button>
+                                        <button type="button" data-query-path="cached" aria-pressed="false">
+                                            <small>PATH B</small><strong>Redis Cache-Aside</strong><span>Go API → Redis → MySQL on MISS</span>
+                                        </button>
+                                    </div>
+                                    <div class="crowd-tier-options" role="group" aria-label="目标请求速率">
+                                        <button type="button" data-crowd-tier="qps_100" aria-pressed="false">
+                                            <span>涓流</span><strong>100 req/s</strong><small>目标速率</small>
+                                        </button>
+                                        <button type="button" data-crowd-tier="qps_300" aria-pressed="false">
+                                            <span>涟漪</span><strong>300 req/s</strong><small>目标速率</small>
+                                        </button>
+                                        <button type="button" data-crowd-tier="qps_800" aria-pressed="false">
+                                            <span>浪潮</span><strong>800 req/s</strong><small>目标速率</small>
+                                        </button>
+                                        <button class="is-active" type="button" data-crowd-tier="qps_1500" aria-pressed="true">
+                                            <span>满潮</span><strong>1500 req/s</strong><small>目标速率</small>
+                                        </button>
+                                    </div>
+                                </section>
+
+                                <section class="runner-plan-panel" aria-labelledby="runner-plan-heading">
+                                    <header>
+                                        <span>RUNNER CONFIG</span>
+                                        <strong id="runner-plan-heading">确定 wrk2 连接配置</strong>
+                                    </header>
+                                    <div class="conduit-mode-control">
+                                        <div>
+                                            <small>连接策略</small>
+                                            <div class="conduit-mode-options" role="group" aria-label="wrk2 连接配置方式">
+                                                <button class="is-active" type="button" data-connection-mode="auto" aria-pressed="true">Runner 自动</button>
+                                                <button type="button" data-connection-mode="manual" aria-pressed="false">手动指定</button>
+                                            </div>
+                                        </div>
+                                        <div id="manual-conduit-options" class="manual-conduit-options" role="group" aria-label="手动选择 wrk2 connections" hidden>
+                                            <button type="button" data-connection-count="70" aria-pressed="false">70</button>
+                                            <button type="button" data-connection-count="140" aria-pressed="false">140</button>
+                                            <button class="is-active" type="button" data-connection-count="300" aria-pressed="true">300</button>
+                                            <button type="button" data-connection-count="500" aria-pressed="false">500</button>
+                                            <small>connections</small>
+                                        </div>
+                                    </div>
+
+                                    <details class="runner-plan-detail">
+                                        <summary>连接策略依据</summary>
+                                        <p id="crowd-connection-copy">正在读取 Runner 历史。</p>
+                                        <small id="crowd-size-note">固定运行 30 秒；进入实验室并完成观测准备后，创建任务并锁定最终配置。</small>
+                                    </details>
+                                </section>
+
+                                <div class="crowd-confirmation-bar">
+                                    <div class="crowd-status" role="status" aria-live="polite">
+                                        <i></i>
+                                        <span><strong id="crowd-status-title">计划等待确认</strong><small id="crowd-status-copy">进入实验室且观测就绪后，Runner 才会启动。</small></span>
+                                        <time id="crowd-clock" hidden>00:00 / 00:30</time>
+                                    </div>
+                                    <div class="crowd-run-actions">
+                                        <button id="start-crowd-test" class="event-primary" type="button">确认计划并进入实验室</button>
+                                        <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入实验室查看</button>
                                     </div>
                                 </div>
-                                <div id="manual-conduit-options" class="manual-conduit-options" role="group" aria-label="手动选择魔法通路数量" hidden>
-                                    <button type="button" data-connection-count="70" aria-pressed="false">70</button>
-                                    <button type="button" data-connection-count="140" aria-pressed="false">140</button>
-                                    <button class="is-active" type="button" data-connection-count="300" aria-pressed="true">300</button>
-                                    <button type="button" data-connection-count="500" aria-pressed="false">500</button>
-                                    <small>条通路</small>
-                                </div>
                             </div>
-                            <div class="crowd-tier-selection"><small>当前实验参数</small><output id="crowd-size-value">查询潮汐 1500 卷轴/秒 · 通路自动配置</output></div>
-                            <p class="query-tide-explainer">查询潮汐表示每秒产生的 HTTP 请求数量，并非法师人数。魔法通路表示压测器保持的 HTTP 连接数量。一条通路可以连续处理多张卷轴，但通常需要等待上一张卷轴返回后才能继续。</p>
-                            <small id="crowd-size-note">固定运行 30 秒。自动模式会依据目标 QPS 与已保存的真实响应历史选择足够通路；手动模式用于观察固定通路下的周转与入口积压。</small>
-                        </fieldset>
-                        <div class="crowd-run-actions">
-                            <button id="start-crowd-test" class="event-primary" type="button">带查询卷轴进入实验室</button>
-                            <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入店内查看</button>
+
+                            <aside id="market-mechanism" class="market-mechanism" data-flow-state="planned" data-task-phase="planned" data-capacity-state="unknown" aria-labelledby="market-mechanism-heading">
+                                <header>
+                                    <div><small>TRAFFIC REHEARSAL</small><strong id="market-mechanism-heading">店外流量预演装置</strong></div>
+                                    <span id="market-flow-status">计划预演</span>
+                                </header>
+
+                                <div class="market-traffic-yard">
+                                    <section class="market-launch-station" aria-labelledby="market-launcher-title">
+                                        <div class="market-launcher-visual" aria-hidden="true">
+                                            <span>wrk2</span><i></i><i></i><i></i>
+                                        </div>
+                                        <div class="market-launcher-copy">
+                                            <small>SYSTEM OUTSIDE · 请求起点</small>
+                                            <strong id="market-launcher-title">Runner 发射台</strong>
+                                            <span>查询潮汐 <b id="market-source-rate">1,500 req/s</b></span>
+
+                                            <details id="market-http-scroll" class="market-http-scroll">
+                                                <summary>
+                                                    <span class="market-request-scroll-art" aria-hidden="true"><i></i><b>REQ</b></span>
+                                                    <span><small>待发 HTTP/1.1 卷轴</small><strong id="market-request-line">GET /api/archives/4/direct</strong></span>
+                                                    <em><span>摊开</span><span>收起</span></em>
+                                                </summary>
+                                                <pre><code id="market-request-preview">GET /api/archives/4/direct HTTP/1.1
+Host: app:5678
+Connection: keep-alive</code></pre>
+                                            </details>
+                                        </div>
+                                    </section>
+
+                                    <div class="market-launch-route">
+                                        <span class="market-preview-request-token" aria-hidden="true">REQ</span>
+                                        <section class="market-queue-bay" aria-label="等待投递区">
+                                            <div class="market-queue-scrolls" aria-hidden="true"><i></i><i></i><i></i></div>
+                                            <small>OUTBOUND</small>
+                                            <strong id="market-queue-state">任务尚未创建</strong>
+                                        </section>
+
+                                        <section class="market-conduit-field" aria-label="HTTP 魔法通路束">
+                                            <header>
+                                                <span><small>HTTP CONNECTIONS</small><strong id="market-conduit-count">计划计算中</strong></span>
+                                                <b id="market-conduit-mode">配置预览</b>
+                                            </header>
+                                            <div class="market-conduit-bundle" aria-hidden="true">
+                                                <i></i><i></i><i></i><i></i><i></i>
+                                                <i></i><i></i><i></i><i></i><i></i>
+                                            </div>
+                                            <small id="market-conduit-scale">光束数量随 wrk2 -c 配置增减</small>
+                                        </section>
+
+                                        <section class="market-shop-gate is-backend" aria-label="被测系统店门入口">
+                                            <div class="market-shop-door" aria-hidden="true">
+                                                <span>GO</span><b id="market-backend-icon">SQL</b>
+                                            </div>
+                                            <small>SYSTEM GATE</small>
+                                            <strong id="market-backend-name">门后 · Go API → MySQL</strong>
+                                        </section>
+                                    </div>
+
+                                    <div class="market-response-return">
+                                        <span class="market-preview-response-token" aria-hidden="true">RES</span>
+                                        <section class="market-archive-station is-response" aria-label="HTTP 响应归档台">
+                                            <div class="market-response-scroll-art" aria-hidden="true"><i></i><b>RES</b></div>
+                                            <span><small>RESPONSE ARCHIVE</small><strong id="market-response-rate">等待店内运行</strong></span>
+                                        </section>
+                                        <div class="market-return-route" aria-label="紫色 HTTP 响应从店门返回归档台">
+                                            <i aria-hidden="true"></i><span>紫色 HTTP response 返回 · 通路释放并复用</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <dl class="market-observation-strip">
+                                    <div><dt>目标</dt><dd id="market-flow-target">1,500 req/s</dd></div>
+                                    <div><dt id="market-flow-actual-label">运行事实</dt><dd id="market-flow-actual">店内观测</dd></div>
+                                    <div><dt>Socket Errors</dt><dd id="market-flow-errors">—</dd></div>
+                                </dl>
+                            </aside>
                         </div>
-                        <div class="crowd-status" role="status" aria-live="polite">
-                            <i></i>
-                            <span><strong id="crowd-status-title">等待配置查询潮汐</strong><small id="crowd-status-copy">这里配置卷轴速率与通路；读取路径与实验启动放在实验室。</small></span>
-                            <time id="crowd-clock">00:00 / 00:30</time>
-                        </div>
-                        <details id="equivalent-command" class="crowd-command-details" hidden>
-                            <summary>查看等价命令</summary>
-                            <p>仅用于学习和调试；正常使用无需复制到终端。</p>
+
+                        <details id="equivalent-command" class="crowd-command-details">
+                            <summary>技术细节 · 查看等价命令</summary>
+                            <p>用于复现实验，不参与普通操作流程。</p>
                             <div class="crowd-command-toolbar">
                                 <small>当前终端</small>
                                 <div class="crowd-shell-options" role="group" aria-label="压测命令终端类型">
@@ -236,23 +311,101 @@
                         </details>
                     </div>
 
-                    <div class="record-actions">
-                        <button id="choose-again" class="event-secondary" type="button">重新选择材料</button>
+                    <div id="purchase-plan-panel" class="purchase-plan-panel">
+                        <header class="task-draft-header">
+                            <div>
+                                <small>PURCHASE EXPERIMENT · ARC-004</small>
+                                <strong>配置购买实验计划</strong>
+                            </div>
+                            <button id="leave-purchase-mode" type="button">返回实验前厅</button>
+                        </header>
+
+                        <ol class="task-lifecycle" aria-label="购买实验流程">
+                            <li class="is-current"><i>01</i><span>店外配置</span></li>
+                            <li><i>02</i><span>店内执行</span></li>
+                            <li><i>03</i><span>报告归档</span></li>
+                        </ol>
+
+                        <div class="task-contract-strip purchase-plan-summary" role="status" aria-live="polite" aria-label="本轮购买实验计划">
+                            <div class="is-path"><small>失效路径</small><strong id="purchase-plan-summary-strategy">同步删除缓存</strong></div>
+                            <div class="is-intent"><small>购买批次</small><strong>150 个唯一请求</strong></div>
+                            <div class="is-config"><small>服务端并发</small><strong>12 个事务槽</strong></div>
+                            <div class="is-fact"><small>任务状态</small><strong>尚未执行</strong></div>
+                        </div>
+
+                        <div class="purchase-plan-workbench">
+                            <section class="purchase-plan-config-sheet task-intent-panel" aria-labelledby="purchase-plan-strategy-heading">
+                                <header>
+                                    <span>INVALIDATION PATH</span>
+                                    <strong id="purchase-plan-strategy-heading">选择缓存失效路径</strong>
+                                </header>
+                                <div class="query-path-options purchase-path-options" role="radiogroup" aria-label="购买缓存失效方案">
+                                    <button class="is-active" type="button" role="radio" aria-checked="true" data-purchase-plan-strategy="sync-invalidate">
+                                        <small>PATH A</small>
+                                        <strong>同步删除缓存</strong>
+                                        <span>COMMIT → Redis DEL → Response</span>
+                                    </button>
+                                    <button type="button" role="radio" aria-checked="false" data-purchase-plan-strategy="outbox-mq-invalidate">
+                                        <small>PATH B</small>
+                                        <strong>Outbox + MQ</strong>
+                                        <span>TX + Outbox → Response · MQ → DEL</span>
+                                    </button>
+                                </div>
+                                <aside class="purchase-outbox-rationale" aria-labelledby="purchase-outbox-rationale-title">
+                                    <header>
+                                        <small>ARCHITECTURE NOTE</small>
+                                        <strong id="purchase-outbox-rationale-title">为什么需要 Outbox？</strong>
+                                    </header>
+                                    <p><strong>事务边界：</strong>库存更新发生在 MySQL，缓存失效发生在 Redis。两者属于不同系统，无法放进同一个本地事务。</p>
+                                    <p><strong>失败窗口：</strong>如果 MySQL 已经提交，但 Redis 删除失败，数据库库存已经变化，缓存却仍可能保留旧值，并且系统可能失去后续补偿依据。</p>
+                                    <p><strong>可靠补偿：</strong>Outbox 会在更新库存的同一事务中，额外写入一条“缓存需要失效”的可靠记录。事务成功后，后台任务再通过消息队列执行缓存删除；即使首次失败，也能依据 Outbox 记录持续重试，使缓存最终恢复一致。</p>
+                                </aside>
+                                <p class="purchase-plan-fixed-copy">购买批次固定为 150 个唯一 request_id；这里配置失效路径，不把批次数伪装成 req/s。</p>
+                            </section>
+
+                            <aside id="purchase-plan-preview" class="purchase-plan-preview" data-strategy="sync-invalidate" aria-labelledby="purchase-plan-preview-heading">
+                                <small>EXECUTION PREVIEW</small>
+                                <strong id="purchase-plan-preview-heading">本轮采购路径</strong>
+                                <code id="purchase-plan-route-code">MySQL COMMIT → Redis DEL → Response</code>
+                                <p id="purchase-plan-route-copy">顾客响应会等待库存牌删除完成，路径更直接，但 Redis 位于购买请求链路中。</p>
+                                <dl>
+                                    <div><dt>初始库存</dt><dd>100</dd></div>
+                                    <div><dt>观察探针</dt><dd>20 QPS</dd></div>
+                                    <div><dt>购买发送方式</dt><dd>批次放行</dd></div>
+                                </dl>
+                            </aside>
+                        </div>
+
+                        <div class="crowd-confirmation-bar purchase-plan-confirmation">
+                            <div class="crowd-status" role="status" aria-live="polite">
+                                <i></i>
+                                <span>
+                                    <strong id="purchase-plan-status-title">购买计划等待确认</strong>
+                                    <small id="purchase-plan-status-copy">进入采购实验室后，由你点击开始，才会真实重置并修改库存。</small>
+                                </span>
+                            </div>
+                            <div class="crowd-run-actions">
+                                <button id="confirm-purchase-plan" class="event-primary" type="button">确认计划并进入采购实验室</button>
+                            </div>
+                        </div>
                     </div>
+
                 </div>
             </div>
 
-            <div id="inserting-copy" class="inserting-copy">
-                <strong id="inserting-title">档案片正在送入检索槽</strong>
-                <p>机器只识别选定的档案编号；完整资料将在内部实验室中查询。</p>
-            </div>
         </section>
     </main>
 
+    <template id="market-task-order-template">
+        <span class="market-task-order-scroll" aria-hidden="true">
+            <i></i>
+            <span><b>TASK ORDER</b><small></small></span>
+        </span>
+    </template>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260729-query-tide-2"></script>
+    <script src="/js/market.js?v=20260731-purchase-plan-v1"></script>
 </body>
 
 </html>

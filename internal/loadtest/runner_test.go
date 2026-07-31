@@ -1,6 +1,7 @@
 package loadtest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -80,6 +81,107 @@ func TestAutoConnectionsUseConservativeBaseline(t *testing.T) {
 		if got != want {
 			t.Fatalf("rate %d: expected %d connections, got %d", rate, want, got)
 		}
+	}
+}
+
+func TestConnectionPlanUsesRunnerEstimatorWithoutCreatingTask(t *testing.T) {
+	runner := &Runner{records: make(map[string]*taskRecord)}
+	plan, apiErr := runner.PlanConnections(CreateRequest{
+		Experiment:     ExperimentCacheAsideRead,
+		ArchiveID:      4,
+		Mode:           "direct",
+		Rate:           800,
+		ConnectionMode: ConnectionModeAuto,
+	})
+	if apiErr != nil {
+		t.Fatal(apiErr)
+	}
+	if plan.Connections != 300 || plan.ConnectionMode != ConnectionModeAuto || plan.Rate != 800 {
+		t.Fatalf("unexpected plan: %+v", plan)
+	}
+	if len(runner.records) != 0 || len(runner.order) != 0 || runner.activeID != "" {
+		t.Fatalf("connection preview must not create a task: %+v", runner)
+	}
+}
+
+func TestRunnerHTTPReturnsConnectionPlan(t *testing.T) {
+	runner := &Runner{records: make(map[string]*taskRecord)}
+	body, err := json.Marshal(CreateRequest{
+		Experiment:     ExperimentCacheAsideRead,
+		ArchiveID:      4,
+		Mode:           "cached",
+		Rate:           300,
+		ConnectionMode: ConnectionModeManual,
+		Connections:    140,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/internal/loadtests/connection-plan", bytes.NewReader(body))
+	recorder := httptest.NewRecorder()
+	runner.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var plan ConnectionPlanResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.Connections != 140 || plan.ConnectionMode != ConnectionModeManual || plan.Reason != "用户手动指定" {
+		t.Fatalf("unexpected plan: %+v", plan)
+	}
+}
+
+func TestRunnerHTTPCreateReturnsLockedConnectionConfiguration(t *testing.T) {
+	resetEntered := make(chan struct{}, 1)
+	app := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/chapters/cache-aside/reset" {
+			http.NotFound(writer, request)
+			return
+		}
+		select {
+		case resetEntered <- struct{}{}:
+		default:
+		}
+		<-request.Context().Done()
+	}))
+	defer app.Close()
+
+	runner, err := NewRunner(RunnerOptions{
+		AppBaseURL: app.URL,
+		StatePath:  filepath.Join(t.TempDir(), "tasks.json"),
+		Wrk2Path:   filepath.Join(t.TempDir(), "missing-wrk2"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(CreateRequest{
+		Experiment:     ExperimentCacheAsideRead,
+		ArchiveID:      4,
+		Mode:           "direct",
+		Rate:           800,
+		ConnectionMode: ConnectionModeAuto,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/internal/loadtests", bytes.NewReader(body))
+	recorder := httptest.NewRecorder()
+	runner.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response CreateResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.TaskID == "" || response.Status != StatusStarting ||
+		response.ConnectionMode != ConnectionModeAuto || response.Connections != 300 ||
+		response.ConnectionReason == "" {
+		t.Fatalf("create response omitted locked connection configuration: %+v", response)
+	}
+	if _, apiErr := runner.Stop(response.TaskID); apiErr != nil {
+		t.Fatal(apiErr)
 	}
 }
 

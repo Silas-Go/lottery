@@ -27,7 +27,36 @@ func (s *LoadtestService) Start(ctx context.Context, input loadtest.CreateReques
 	if apiErr != nil {
 		return loadtest.CreateResponse{}, loadtestAppError(apiErr)
 	}
-	slog.Info("loadtest accepted", "task_id", response.TaskID, "archive_id", input.ArchiveID, "mode", input.Mode, "tier", input.Tier)
+	slog.Info(
+		"loadtest accepted",
+		"task_id", response.TaskID,
+		"archive_id", input.ArchiveID,
+		"mode", input.Mode,
+		"tier", input.Tier,
+		"connections", response.Connections,
+		"connection_mode", response.ConnectionMode,
+	)
+	return response, nil
+}
+
+// PlanConnections 返回启动前的只读 wrk2 -c 预估；最终值仍由 Start 在任务创建时锁定。
+func (s *LoadtestService) PlanConnections(
+	ctx context.Context,
+	input loadtest.CreateRequest,
+) (loadtest.ConnectionPlanResponse, *AppError) {
+	if _, message := loadtest.ValidateCreateRequest(input); message != "" {
+		return loadtest.ConnectionPlanResponse{}, NewAppError(
+			CodeLoadtestInvalidRequest,
+			"通路预估请求不符合白名单",
+			nil,
+			"detail",
+			message,
+		)
+	}
+	response, apiErr := s.client.PlanConnections(ctx, input)
+	if apiErr != nil {
+		return loadtest.ConnectionPlanResponse{}, loadtestAppError(apiErr)
+	}
 	return response, nil
 }
 

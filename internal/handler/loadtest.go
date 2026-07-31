@@ -45,6 +45,28 @@ func (h *LoadtestHandler) Create(ctx *gin.Context) {
 	ctx.JSON(http.StatusAccepted, response)
 }
 
+// PlanConnections 返回启动前的只读 wrk2 -c 预估，不创建任务或发送查询请求。
+func (h *LoadtestHandler) PlanConnections(ctx *gin.Context) {
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxLoadtestCreateBody)
+	decoder := json.NewDecoder(ctx.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input loadtest.CreateRequest
+	if err := decoder.Decode(&input); err != nil {
+		writeAPIError(ctx, http.StatusBadRequest, service.CodeLoadtestInvalidRequest, "通路预估请求不是有效 JSON", err)
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		writeAPIError(ctx, http.StatusBadRequest, service.CodeLoadtestInvalidRequest, "请求体只能包含一个 JSON 对象", nil)
+		return
+	}
+	response, appErr := h.service.PlanConnections(ctx.Request.Context(), input)
+	if appErr != nil {
+		writeServiceError(ctx, appErr)
+		return
+	}
+	ctx.JSON(http.StatusOK, response)
+}
+
 // Get 返回任务权威快照，供刷新与 SSE 断线恢复。
 func (h *LoadtestHandler) Get(ctx *gin.Context) {
 	task, appErr := h.service.Get(ctx.Request.Context(), ctx.Param("id"))

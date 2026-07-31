@@ -408,7 +408,7 @@ html:has(.market-street-shell) {
 
 .rare-material-actions {
     display: grid;
-    grid-template-columns: minmax(150px, 1.15fr) minmax(130px, 1fr) auto;
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
     gap: 10px;
 }
 
@@ -431,12 +431,45 @@ html:has(.market-street-shell) {
     box-shadow: 3px 3px 0 #d8c9aa;
 }
 
+.market-page .rare-material-actions .event-purchase {
+    border: 2px solid #805825;
+    border-style: solid;
+    color: #4b351d;
+    background: #efd08a;
+    box-shadow: 4px 4px 0 #b48a43;
+}
+
+.market-page .rare-material-actions .event-purchase:hover,
+.market-page .rare-material-actions .event-purchase:focus-visible {
+    background: #f6dda3;
+    box-shadow: 4px 5px 0 #a77b35;
+}
+
 .market-page .crowd-tier-options button.is-active,
 .market-page .delivery-choice button:last-child {
     border: 2px solid var(--world-teal-dark);
     color: var(--world-ink);
     background: #e2f1e9;
     box-shadow: 3px 3px 0 #afc8ba;
+}
+
+.market-page .delivery-choice .is-purchase-choice {
+    border: 2px solid #805825;
+    color: #4b351d;
+    background: #f3ddb0;
+    box-shadow: 3px 3px 0 #c19a55;
+}
+
+.market-page .task-intent-panel .crowd-tier-options button.is-active strong {
+    color: #245f5b;
+}
+
+.market-page .task-intent-panel .crowd-tier-options button.is-active span {
+    color: #304844;
+}
+
+.market-page .task-intent-panel .crowd-tier-options button.is-active small {
+    color: #63746d;
 }
 
 .market-page .shop-sign {
@@ -611,11 +644,7 @@ html:has(.market-street-shell) {
 
     .rare-material-actions {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-    }
-
-    .rare-material-actions #star-crowd-entry {
-        grid-column: 1 / -1;
+        grid-template-columns: 1fr;
     }
 
     .rare-material-actions .event-primary,
