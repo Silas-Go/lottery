@@ -304,6 +304,7 @@ HTTP request
 -> COMMIT / response
 
 Outbox Worker
+-> every 1s scan pending/retry
 -> claim pending/retry event
 -> publish PURCHASE_CACHE_INVALIDATE
 -> mark published
@@ -314,23 +315,27 @@ Consumer
 -> mark completed
 ```
 
-订单、库存和 Outbox 在同一事务中提交；Outbox 唯一键失败会回滚整笔购买。Worker 使用
+订单、库存和 Outbox 在同一事务中提交；Outbox 唯一键失败会回滚整笔购买。Worker 以真实 1 秒周期扫描，批次关键路径结束后从一个完整周期重新计时；API 快照暴露 `publisherScanIntervalMs`、`publisherScanCount`、`publisherLastScanAt` 和 `publisherNextScanAt`，前端倒计时不自行推测扫描事实。Worker 使用
 `pending -> publishing -> published`，发布失败进入 `retry` 并指数退避；进程重启会把遗留
 `publishing` 恢复为 `retry`。消息可能在数据库写回前已经被 Consumer 处理，因此 Consumer 的
 `completed` 是终态，发布者不能把它倒退为 `published`。
 
 Redis 删除失败时 Consumer 不 Ack，并记录 `retry_count/last_error`；RocketMQ 重投后再次 DEL。
-DEL 天然幂等，`completed` 事件收到重复消息时直接成功返回。
+DEL 天然幂等，`completed` 事件收到重复消息时直接成功返回。SimpleConsumer 每次最多拉取 16 条消息，
+随后逐条执行业务处理与 Ack；批量拉取只消除 100 个事件被长轮询串行放大的等待，不改变单条失败不 Ack 的语义。
 
 主页面固定提交 150 个唯一购买请求，每个请求购买 1 件；服务端白名单上限同样是 150，不接受 URL、
 脚本、Topic 或任意命令。请求由服务端同时释放，但每一笔仍复用原有条件扣库存、订单幂等和
-同步 DEL / 事务内 Outbox 语义。页面另以固定 20 QPS 调用真实 Cached 查询接口作为后台库存探针，
-在响应后读取 MySQL 权威库存判断旧读并记录最大观测窗口。前端寓言动作和技术节点只读取真实
-trace、HTTP 状态及 Outbox 时间字段，不用定时器伪造业务完成。
+同步 DEL / 事务内 Outbox 语义。服务端每完成 5 个请求就保存一次有界批次进度，页面在 `/run`
+返回前轮询该快照，展示 Purchase Tasks、Purchase Service 与 MySQL Transaction 的真实推进；
+`criticalPathCompleted` 到达后才将 Response 标为完成并展开异步失效阶段。页面另以固定 20 QPS
+调用真实 Cached 查询接口作为持续库存探针，在响应后读取 MySQL 权威库存判断旧读并记录最大观测窗口。
+技术节点只读取 run 进度、trace、HTTP 状态、Publisher 扫描时钟及 Outbox 时间字段，不用定时器伪造业务完成。
 
-购买页把“真实执行”和“过程回放”明确分成两个阶段：前端先等待购买接口、Outbox / Consumer
-轮询和最终库存探针全部结束，再把服务端 trace、Outbox 时间证据、探针样本及最终指标冻结为本轮
-回放记录。六步时间线的播放、暂停、前进、后退、重新播放和结果跳转只在这份前端记录上移动游标，
+购买页把“实时执行流”和“保存 trace 回放”明确分开：实时阶段先显示同步请求关键路径，再在提交后
+显示 Outbox Publisher、MQ、Consumer、Redis DEL 的异步支线，并让 20 QPS 探针持续更新 Redis 值、
+MySQL 值、旧值标记和最大观测窗口。全部结束后，前端把 trace、Outbox 时间证据、Publisher 扫描时钟、
+探针样本及最终指标冻结为本轮回放记录。六步时间线的播放、暂停、前进、后退、重新播放和结果跳转只在这份前端记录上移动游标，
 不会重新调用 `/api/purchase-lab/:id/run`、重置库存或发送 MQ；只有“重新运行当前方案”和
 “使用另一方案运行”会开始新一轮真实执行。当前回放位置及两个方案各自的完整记录保存在
 `sessionStorage`，用于刷新前的恢复，不承担服务端账本或跨设备持久化职责。

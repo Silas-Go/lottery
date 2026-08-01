@@ -23,6 +23,7 @@ const (
 	defaultOrderTopic                = "CREATE_ORDER"
 	defaultPurchaseInvalidationTopic = "PURCHASE_CACHE_INVALIDATE"
 	defaultConsumerGroup             = "lottery"
+	defaultConsumerBatchSize         = 16
 )
 
 var (
@@ -126,7 +127,9 @@ func ReceiveOrders(createOrder CreateOrderHandler, timeout TimeoutHandler, inval
 			continue
 		}
 
-		messages, err := consumer.Receive(ctx, 1, 10*time.Second)
+		// 一次拉取一批消息，避免购买实验的 100 个失效事件被网络长轮询节拍串行放大。
+		// 业务处理和 Ack 仍逐条执行，幂等与失败不 Ack 的边界不变。
+		messages, err := consumer.Receive(ctx, defaultConsumerBatchSize, 10*time.Second)
 		if err != nil {
 			var rpcErr *rmq_client.ErrRpcStatus
 			if !errors.As(err, &rpcErr) || rpcErr.Code != 40401 {

@@ -26,6 +26,9 @@ const (
 
 	maxPurchaseBatch = 150
 	maxQueryBatch    = 20
+	// Outbox Publisher 的节拍是实验事实：页面展示的 1 秒扫描必须对应真实后端周期，
+	// 不能用前端倒计时伪造。新批次结束请求关键路径后会重置这一周期。
+	purchaseOutboxScanInterval = time.Second
 	// 同一材料只有一行权威库存。150 个事务同时争抢这把行锁会把“购买人数”
 	// 偷换成锁等待实验；12 个并发槽既保留真实竞争，也让 150 人持续请求池稳定结算。
 	maxConcurrentPurchases = 12
@@ -61,6 +64,12 @@ type PurchaseLabService struct {
 	runMu      sync.RWMutex
 	runs       map[string]*PurchaseExperimentRun
 	workerWake chan struct{}
+
+	publisherMu          sync.RWMutex
+	publisherBatchActive bool
+	publisherScanCount   uint64
+	publisherLastScanAt  time.Time
+	publisherNextScanAt  time.Time
 }
 
 func NewPurchaseLabService(store *database.Store, archives ...*ArchiveService) *PurchaseLabService {
@@ -116,6 +125,7 @@ type PurchaseExperimentRun struct {
 	FinalMySQLStock            int                   `json:"finalMySQLStock"`
 	FinalRedisStock            *int                  `json:"finalRedisStock"`
 	PurchaseRequested          int                   `json:"purchaseRequested"`
+	PurchaseProcessed          int                   `json:"purchaseProcessed"`
 	PurchaseSucceeded          int                   `json:"purchaseSucceeded"`
 	DuplicateRequests          int                   `json:"duplicateRequests"`
 	SoldOutRequests            int                   `json:"soldOutRequests"`
@@ -127,6 +137,11 @@ type PurchaseExperimentRun struct {
 	CacheInvalidationLatencyMS float64               `json:"cacheInvalidationLatencyMs"`
 	OutboxStatus               string                `json:"outboxStatus"`
 	MQStatus                   string                `json:"mqStatus"`
+	CriticalPathCompleted      bool                  `json:"criticalPathCompleted"`
+	PublisherScanIntervalMS    int64                 `json:"publisherScanIntervalMs"`
+	PublisherScanCount         uint64                `json:"publisherScanCount"`
+	PublisherLastScanAt        *time.Time            `json:"publisherLastScanAt,omitempty"`
+	PublisherNextScanAt        *time.Time            `json:"publisherNextScanAt,omitempty"`
 	RetryCount                 int                   `json:"retryCount"`
 	ErrorMessage               string                `json:"errorMessage,omitempty"`
 	ExecutedAt                 time.Time             `json:"executedAt"`
@@ -220,6 +235,16 @@ func (s *PurchaseLabService) RunExperiment(
 	}()
 
 	withOutbox := request.Strategy == PurchaseOutboxMQInvalidate
+	publisherReleased := false
+	if withOutbox {
+		s.setPublisherBatchActive(true)
+		defer func() {
+			if !publisherReleased {
+				s.setPublisherBatchActive(false)
+				s.wakePublisher()
+			}
+		}()
+	}
 	purchaseResults := make(chan purchaseExecutionResult, request.PurchaseCount)
 	purchaseSlots := make(chan struct{}, maxConcurrentPurchases)
 	var purchaseWait sync.WaitGroup
@@ -239,6 +264,9 @@ func (s *PurchaseLabService) RunExperiment(
 		fmt.Sprintf("%d 个唯一 request_id 已进入持续请求池，最多 %d 个事务同时争抢库存",
 			request.PurchaseCount, maxConcurrentPurchases),
 		"mysql", 0, run.FinalMySQLStock, run.FinalRedisStock, nil)
+	run.Trace = append([]PurchaseTraceStep(nil), recorder.steps...)
+	s.attachPublisherSnapshot(run)
+	s.storeRun(run)
 	close(startGate)
 	go func() {
 		purchaseWait.Wait()
@@ -253,6 +281,7 @@ func (s *PurchaseLabService) RunExperiment(
 	var firstExecutionError error
 	purchaseLatencies := make([]float64, 0, request.PurchaseCount)
 	for result := range purchaseResults {
+		run.PurchaseProcessed++
 		if result.transactionElapsed > maxTransactionLatency {
 			maxTransactionLatency = result.transactionElapsed
 		}
@@ -265,26 +294,29 @@ func (s *PurchaseLabService) RunExperiment(
 			if firstExecutionError == nil {
 				firstExecutionError = result.err
 			}
-			continue
-		}
-		if result.commit.SoldOut {
+		} else if result.commit.SoldOut {
 			run.SoldOutRequests++
-			continue
-		}
-		if result.commit.Duplicate {
-			run.DuplicateRequests++
 		} else {
-			run.PurchaseSucceeded++
-		}
-		if request.Strategy == PurchaseSyncInvalidate {
-			invalidationLatency += result.invalidationElapsed
-			if result.invalidationErr != nil {
-				if firstExecutionError == nil {
-					firstExecutionError = result.invalidationErr
-				}
-				continue
+			if result.commit.Duplicate {
+				run.DuplicateRequests++
+			} else {
+				run.PurchaseSucceeded++
 			}
-			successfulInvalidations++
+			if request.Strategy == PurchaseSyncInvalidate {
+				invalidationLatency += result.invalidationElapsed
+				if result.invalidationErr != nil {
+					if firstExecutionError == nil {
+						firstExecutionError = result.invalidationErr
+					}
+				} else {
+					successfulInvalidations++
+				}
+			}
+		}
+		// 发布有界真实进度，让前端在 POST 返回前看到请求池与事务的推进；
+		// 最终业务证据仍由完整 trace 和数据库状态裁决。
+		if run.PurchaseProcessed%5 == 0 || run.PurchaseProcessed == request.PurchaseCount {
+			s.storeRun(run)
 		}
 	}
 
@@ -330,10 +362,6 @@ func (s *PurchaseLabService) RunExperiment(
 			fmt.Sprintf("%d 张缓存失效凭证与订单在同一事务提交，购买响应不等待 Consumer",
 				run.PurchaseSucceeded),
 			"mysql", 0, run.FinalMySQLStock, run.FinalRedisStock, nil)
-		select {
-		case s.workerWake <- struct{}{}:
-		default:
-		}
 	}
 	for index := range run.QuerySamples {
 		if run.QuerySamples[index].Old {
@@ -365,6 +393,7 @@ func (s *PurchaseLabService) RunExperiment(
 			run.PurchaseSucceeded, run.SoldOutRequests, run.DuplicateRequests),
 		"response", purchaseLatency, run.FinalMySQLStock, run.FinalRedisStock, nil)
 	run.Trace = recorder.steps
+	run.CriticalPathCompleted = true
 	if run.Status != PurchaseRunFailed {
 		if request.Strategy == PurchaseSyncInvalidate {
 			run.Status = PurchaseRunCompleted
@@ -373,7 +402,13 @@ func (s *PurchaseLabService) RunExperiment(
 		}
 	}
 	run.ExecutedAt = time.Now()
+	s.attachPublisherSnapshot(run)
 	s.storeRun(run)
+	if withOutbox {
+		s.setPublisherBatchActive(false)
+		s.wakePublisher()
+		publisherReleased = true
+	}
 	slog.Info("purchase lab batch completed",
 		"request_id", request.RequestID, "material_id", materialID, "strategy", request.Strategy,
 		"requested", request.PurchaseCount, "succeeded", run.PurchaseSucceeded,
@@ -503,7 +538,9 @@ func (s *PurchaseLabService) GetRun(requestID string) (*PurchaseExperimentRun, *
 			stored.MaterialID = orders[0].MaterialID
 			stored.Strategy = PurchaseStrategy(orders[0].Strategy)
 			stored.PurchaseRequested = len(orders)
+			stored.PurchaseProcessed = len(orders)
 			stored.PurchaseSucceeded = len(orders)
+			stored.CriticalPathCompleted = true
 			stored.ExecutedAt = orders[0].CreatedAt
 		}
 	}
@@ -524,7 +561,10 @@ func (s *PurchaseLabService) GetRun(requestID string) (*PurchaseExperimentRun, *
 		stored.PurchaseLatencyMS = totalPurchaseLatency / float64(len(orders))
 		stored.PurchaseP99MS = percentile99(purchaseLatencies)
 	}
-	refreshRunOutboxState(stored, events)
+	if stored.CriticalPathCompleted {
+		refreshRunOutboxState(stored, events)
+	}
+	s.attachPublisherSnapshot(stored)
 	s.storeRun(stored)
 	return clonePurchaseExperimentRun(stored), nil
 }
@@ -534,18 +574,83 @@ func (s *PurchaseLabService) RunOutboxWorker(ctx context.Context) {
 	if err := s.store.RecoverPurchaseOutbox(); err != nil {
 		slog.Error("recover purchase outbox failed", "error", err)
 	}
-	ticker := time.NewTicker(250 * time.Millisecond)
+	ticker := time.NewTicker(purchaseOutboxScanInterval)
 	defer ticker.Stop()
+	s.setPublisherNextScan(time.Now().Add(purchaseOutboxScanInterval))
 	for {
-		if err := s.publishAvailableOutbox(ctx); err != nil {
-			slog.Error("publish purchase outbox failed", "error", err)
-		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-s.workerWake:
-		case <-ticker.C:
+			ticker.Reset(purchaseOutboxScanInterval)
+			s.setPublisherNextScan(time.Now().Add(purchaseOutboxScanInterval))
+		case scannedAt := <-ticker.C:
+			s.recordPublisherScan(scannedAt)
+			if s.publisherBatchIsActive() {
+				continue
+			}
+			if err := s.publishAvailableOutbox(ctx); err != nil {
+				slog.Error("publish purchase outbox failed", "error", err)
+			}
 		}
+	}
+}
+
+func (s *PurchaseLabService) setPublisherBatchActive(active bool) {
+	s.publisherMu.Lock()
+	s.publisherBatchActive = active
+	s.publisherMu.Unlock()
+}
+
+func (s *PurchaseLabService) publisherBatchIsActive() bool {
+	s.publisherMu.RLock()
+	defer s.publisherMu.RUnlock()
+	return s.publisherBatchActive
+}
+
+func (s *PurchaseLabService) wakePublisher() {
+	s.setPublisherNextScan(time.Now().Add(purchaseOutboxScanInterval))
+	select {
+	case s.workerWake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *PurchaseLabService) setPublisherNextScan(next time.Time) {
+	s.publisherMu.Lock()
+	s.publisherNextScanAt = next
+	s.publisherMu.Unlock()
+}
+
+func (s *PurchaseLabService) recordPublisherScan(scannedAt time.Time) {
+	s.publisherMu.Lock()
+	s.publisherScanCount++
+	s.publisherLastScanAt = scannedAt
+	s.publisherNextScanAt = scannedAt.Add(purchaseOutboxScanInterval)
+	s.publisherMu.Unlock()
+}
+
+// attachPublisherSnapshot 将 Publisher 的真实扫描时钟附加到 API 快照。
+// 这些字段只用于观察，不参与 Outbox 的持久化状态裁决。
+func (s *PurchaseLabService) attachPublisherSnapshot(run *PurchaseExperimentRun) {
+	if run == nil {
+		return
+	}
+	s.publisherMu.RLock()
+	defer s.publisherMu.RUnlock()
+	run.PublisherScanIntervalMS = purchaseOutboxScanInterval.Milliseconds()
+	run.PublisherScanCount = s.publisherScanCount
+	if !s.publisherLastScanAt.IsZero() {
+		last := s.publisherLastScanAt
+		run.PublisherLastScanAt = &last
+	} else {
+		run.PublisherLastScanAt = nil
+	}
+	if !s.publisherNextScanAt.IsZero() {
+		next := s.publisherNextScanAt
+		run.PublisherNextScanAt = &next
+	} else {
+		run.PublisherNextScanAt = nil
 	}
 }
 
