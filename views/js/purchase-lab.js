@@ -566,6 +566,175 @@
         return summary;
     }
 
+    // 技术节点继续使用真实名称；字幕只负责把当前动作即时翻译成白话，
+    // 并且只由真实 run / 保存 trace 驱动，不用前端计时器伪造业务进度。
+    function setSystemSubtitle(term, line, next, tone) {
+        var panel = byId("system-subtitle");
+        if (!panel) {
+            return;
+        }
+        var signature = [term, line, next, tone].join("\u0000");
+        if (panel.dataset.signature === signature) {
+            return;
+        }
+        panel.dataset.signature = signature;
+        panel.dataset.tone = tone || "idle";
+        byId("system-subtitle-term").textContent = term;
+        byId("system-subtitle-line").textContent = line;
+        byId("system-subtitle-next").textContent = "下一句：" + next;
+        panel.classList.remove("is-changing");
+        window.requestAnimationFrame(function () {
+            panel.classList.add("is-changing");
+            window.clearTimeout(setSystemSubtitle.timer);
+            setSystemSubtitle.timer = window.setTimeout(function () {
+                panel.classList.remove("is-changing");
+            }, 560);
+        });
+    }
+
+    function currentMaterialName() {
+        return state.profile ? state.profile.name : "当前材料";
+    }
+
+    function outboxInvalidationTiming(run) {
+        var events = run && Array.isArray(run.outbox) ? run.outbox : [];
+        var created = events
+            .map(function (event) { return event.createdAt; })
+            .filter(Boolean)
+            .map(function (value) { return new Date(value).getTime(); })
+            .filter(Number.isFinite)
+            .sort(function (left, right) { return left - right; });
+        var invalidated = events
+            .map(function (event) { return event.invalidatedAt; })
+            .filter(Boolean)
+            .map(function (value) { return new Date(value).getTime(); })
+            .filter(Number.isFinite)
+            .sort(function (left, right) { return left - right; });
+        if (!invalidated.length) {
+            return null;
+        }
+        // createdAt 与 invalidatedAt 都由同一批 Outbox 行持久化，避免 run 从数据库
+        // 恢复时重建 executedAt 导致“全部确认用时”被历史回放时间污染。
+        var origin = created.length ? created[0] : invalidated[0];
+        return {
+            firstMs: Math.max(0, invalidated[0] - origin),
+            allMs: Math.max(0, invalidated[invalidated.length - 1] - origin)
+        };
+    }
+
+    function renderIdleSystemSubtitle() {
+        if (state.strategy === "sync-invalidate") {
+            setSystemSubtitle(
+                "SYNC INVALIDATION · COMMIT → DEL → RESPONSE",
+                "MySQL 是真实库存。购买提交后，请求会先删除 Redis 旧副本，再把购买结果返回。",
+                "Redis 显示 MISS 只表示副本被删；下一次查询会从 MySQL 读取最新库存并回填。",
+                "critical"
+            );
+            return;
+        }
+        if (state.strategy === "outbox-mq-invalidate") {
+            setSystemSubtitle(
+                "OUTBOX PATTERN · TRANSACTIONAL EVENT",
+                "每成功一笔购买，MySQL 会同时扣库存并写一条 Outbox 待办；两件事一起提交，购买结果不等待后台删缓存。",
+                "Publisher 会扫描待办，经 RocketMQ 交给 Consumer 删除 Redis 旧副本。",
+                "async"
+            );
+            return;
+        }
+        setSystemSubtitle(
+            "MYSQL SOURCE OF TRUTH · REDIS CACHE",
+            "MySQL 保存真实库存；Redis 只是为了查询更快而保存的一份临时副本。删除副本不会删除库存。",
+            "选择方案后，字幕会随着当前技术节点继续播放。",
+            "idle"
+        );
+    }
+
+    function renderCompletedAsyncSubtitle(run, outbox) {
+        var timing = outboxInvalidationTiming(run);
+        var total = outbox.total || Number(run.purchaseSucceeded || 0);
+        var timingCopy = timing ?
+            ("首条 Outbox 写入后，首次 DEL 约 " + formatMS(timing.firstMs) +
+                "；全部 " + total + " 条消息确认用了 " + formatMS(timing.allMs) + "。") :
+            ("全部 " + total + " 条消息都已经处理并确认。");
+        setSystemSubtitle(
+            "CONSUMER · REDIS DEL · " + outbox.completed + "/" + total + " · ACK",
+            timingCopy + " 这些消息都指向" + currentMaterialName() + "的同一条 Redis 详情缓存；消息数量不等于缓存数量。",
+            "MISS 只表示查询副本暂时不在；真实库存仍在 MySQL，查询会把最新副本重新填回 Redis。",
+            "complete"
+        );
+    }
+
+    function renderLiveSystemSubtitle(run) {
+        if (!run) {
+            renderIdleSystemSubtitle();
+            return;
+        }
+        if (run.status === "failed") {
+            setSystemSubtitle(
+                "REAL EXECUTION FAILED",
+                "真实链路返回了失败状态；页面停在已有证据，不会用动画补造成功结果。",
+                "查看当前失败节点和最近关键日志。",
+                "error"
+            );
+            return;
+        }
+        var processed = Number(run.purchaseProcessed || 0);
+        var requested = Number(run.purchaseRequested || PURCHASE_COUNT);
+        var succeeded = Number(run.purchaseSucceeded || 0);
+        if (!run.criticalPathCompleted) {
+            if (processed === 0) {
+                setSystemSubtitle(
+                    "PURCHASE TASKS → PURCHASE SERVICE",
+                    requested + " 个真实购买请求正在进入服务；它们会争抢同一种材料的 MySQL 库存。",
+                    "每个成功请求都会进入一个独立的 MySQL Transaction。",
+                    "critical"
+                );
+            } else {
+                setSystemSubtitle(
+                    "MYSQL TRANSACTION · CONDITIONAL UPDATE" +
+                        (state.strategy === "outbox-mq-invalidate" ? " + OUTBOX INSERT" : ""),
+                    "已经处理 " + processed + "/" + requested + " 个请求，成功 " + succeeded +
+                        " 个；每个成功事务都把库存减 1" +
+                        (state.strategy === "outbox-mq-invalidate" ? "，并同时写下一条删缓存待办。" : "。"),
+                    "事务提交后才会到达 Response 边界。",
+                    "critical"
+                );
+            }
+            return;
+        }
+        if (state.strategy === "sync-invalidate") {
+            setSystemSubtitle(
+                "REDIS DEL → RESPONSE · SYNC PATH",
+                "购买请求已经在返回前删除 Redis 旧副本；这里删的是查询副本，不是 MySQL 库存。",
+                "20 QPS 探针遇到 MISS 后，会从 MySQL 读取最新库存并回填 Redis。",
+                run.status === "completed" ? "complete" : "critical"
+            );
+            return;
+        }
+
+        var outbox = outboxSummary(run);
+        var total = outbox.total || succeeded;
+        var brokerAccepted = outbox.published + outbox.completed;
+        if (total > 0 && outbox.completed === total) {
+            renderCompletedAsyncSubtitle(run, outbox);
+        } else if (brokerAccepted > outbox.completed) {
+            setSystemSubtitle(
+                "ROCKETMQ → CONSUMER → REDIS DEL · " + outbox.completed + "/" + total,
+                "MQ 已收到 " + brokerAccepted + "/" + total + " 条通知，Consumer 已处理 " +
+                    outbox.completed + " 条。每条通知都会尝试删除" + currentMaterialName() + "的同一条缓存副本。",
+                "探针遇到 MISS 会回填，所以这条副本可能经历 DEL → 回填 → 再次 DEL。",
+                "async"
+            );
+        } else {
+            setSystemSubtitle(
+                "OUTBOX PUBLISHER · SCAN pending/retry · 1 s",
+                "购买结果已经返回。Publisher 每 1 秒检查一次 MySQL 待办，把还没发送的删缓存通知交给 RocketMQ。",
+                "MQ 收到通知后，Consumer 才会执行 Redis DEL 并 ACK。",
+                "async"
+            );
+        }
+    }
+
     function currentConsistency(run) {
         if (!run || run.finalRedisStock === null || run.finalRedisStock === undefined) {
             return null;
@@ -838,7 +1007,7 @@
         setNode("node-worker", "idle", "等待 Outbox", "0", "—");
         setNode("node-mq", "idle", "等待发布", "0", "—");
         setNode("node-consumer", "idle", "等待消息", "0 / 150", "—");
-        setNode("node-async-redis", "idle", "等待 Consumer", "0", "—");
+        setNode("node-async-redis", "idle", "等待 Consumer", "1 key", "0 events");
         ["edge-tasks-service", "edge-service-mysql", "edge-mysql-response", "edge-worker-mq",
             "edge-mq-consumer", "edge-consumer-redis"].forEach(function (edge) {
             setFlowEdge(edge, "idle");
@@ -986,6 +1155,13 @@
         setNode("node-mysql", "waiting", "等待事务提交", "—", run.initialStock + " → ?");
         setFlowEdge("edge-tasks-service", "running");
         focusFlowNode("node-service", "critical", "Purchase Service 正在编排", "请求关键路径正在推进");
+        setSystemSubtitle(
+            "PURCHASE TASKS → PURCHASE SERVICE",
+            run.purchaseRequested + " 个真实购买请求开始争抢" + currentMaterialName() +
+                "库存；这里展示的是一整轮请求，不是一次购买。",
+            "每个成功请求都会进入一个独立的 MySQL Transaction。",
+            "critical"
+        );
     }
 
     function applyTransactionFrame(record) {
@@ -1005,6 +1181,16 @@
             setNode("node-outbox", "unused", "同步方案不写入", "—", "not used");
         }
         focusFlowNode("node-mysql", "critical", "MySQL Transaction 已提交", "事务边界已确认");
+        setSystemSubtitle(
+            "MYSQL TRANSACTION · INVENTORY" +
+                (state.strategy === "outbox-mq-invalidate" ? " + OUTBOX" : ""),
+            "成功 " + run.purchaseSucceeded + " 笔：每一笔都在 MySQL 中把库存减 1" +
+                (state.strategy === "outbox-mq-invalidate" ?
+                    "，并在同一个事务里写下一条后台删缓存待办。两件事要么一起成功，要么一起回滚。" :
+                    "；MySQL 仍然是真实库存。"),
+            "事务提交之后才到 Response；异步方案不会让用户等待 Consumer。",
+            "critical"
+        );
     }
 
     function applyResponseFrame(record) {
@@ -1022,6 +1208,16 @@
         setFlowEdge("edge-mysql-response", run.status === "failed" ? "failed" : "completed");
         focusFlowNode("node-response", "critical", "Response 边界已到达",
             state.strategy === "sync-invalidate" ? "同步 Redis DEL 已包含在关键路径" : "请求关键路径结束，异步阶段可以展开");
+        setSystemSubtitle(
+            "RESPONSE BOUNDARY · " + formatMS(run.purchaseP99Ms),
+            state.strategy === "sync-invalidate" ?
+                "购买结果已经返回；同步方案在返回前已经完成 Redis DEL，所以删除缓存的等待算在响应时间里。" :
+                "购买结果已经返回。MySQL 库存和 Outbox 待办已经保存，但 Publisher、MQ、Consumer 仍会在后台继续。",
+            state.strategy === "sync-invalidate" ?
+                "下一次查询遇到 MISS 后，从 MySQL 重新装入最新缓存。" :
+                "接下来 Publisher 每 1 秒扫描 Outbox，把删缓存通知发给 MQ。",
+            "critical"
+        );
     }
 
     function applyInvalidationFrame(record) {
@@ -1035,6 +1231,14 @@
                 formatMS(run.cacheInvalidationLatencyMs), invalidated ? "cache deleted" : "—");
             focusFlowNode(null, "complete", failedStep ? "同步失效失败" : "同步请求链路已完成",
                 failedStep ? "检查 Redis DEL 失败证据" : "没有异步支线");
+            setSystemSubtitle(
+                "REDIS DEL · SYNC INVALIDATION",
+                failedStep ?
+                    "Redis 旧副本没有成功删除；MySQL 事务可能已经提交，需要查看失败证据。" :
+                    "请求已经删除" + currentMaterialName() + "的 Redis 查询副本。DEL 不会删除 MySQL 库存；副本缺失时显示 MISS。",
+                failedStep ? "失败会直接影响本次 Response。" : "下一次查询会从 MySQL 读取最新库存并回填 Redis。",
+                failedStep ? "error" : "complete"
+            );
         } else {
             setNode("node-worker", outbox.retry ? "retry" : "success",
                 outbox.retry ? "发布失败，等待重试" : "凭证已认领发布",
@@ -1044,18 +1248,28 @@
                 String(outbox.published + outbox.completed), run.mqStatus || "—");
             setNode("node-consumer", outbox.completed === outbox.total && outbox.total ? "success" : "running",
                 outbox.completed ? "幂等失效已执行" : "正在消费消息",
-                outbox.completed + " / " + (outbox.total || PURCHASE_COUNT),
+                outbox.completed + " / " + (outbox.total || PURCHASE_COUNT) + " msgs",
                 outbox.completed ? "Redis DEL" : "—");
             setNode("node-async-redis", outbox.completed === outbox.total && outbox.total ? "success" : "running",
                 outbox.completed ? "缓存键已删除" : "等待幂等 DEL",
-                outbox.completed + " / " + (outbox.total || PURCHASE_COUNT),
-                outbox.completed ? "DEL completed" : "pending");
+                "1 key", outbox.completed + " / " + (outbox.total || PURCHASE_COUNT) + " events");
             setFlowEdge("edge-worker-mq", "completed");
             setFlowEdge("edge-mq-consumer", "completed");
             setFlowEdge("edge-consumer-redis", outbox.completed ? "completed" : "running");
             focusFlowNode(outbox.completed === outbox.total && outbox.total ? "node-async-redis" : "node-consumer",
                 "async", "异步失效链路", "Publisher → MQ → Consumer → Redis DEL");
             renderPublisherClock(run);
+            if (outbox.completed === outbox.total && outbox.total) {
+                renderCompletedAsyncSubtitle(run, outbox);
+            } else {
+                setSystemSubtitle(
+                    "OUTBOX PUBLISHER → ROCKETMQ → CONSUMER → REDIS DEL",
+                    "每条 Outbox 消息都要求 Consumer 尝试删除一次" + currentMaterialName() +
+                        "缓存；多条消息可以指向同一个 Redis Key。",
+                    "DEL 后会出现 MISS；20 QPS 探针随后可能从 MySQL 回填，后到的消息又可以再次 DEL。",
+                    "async"
+                );
+            }
         }
         byId("story-redis-stock").textContent = "MISS";
     }
@@ -1067,6 +1281,12 @@
         byId("story-redis-stock").textContent = stockText(run.finalRedisStock);
         focusFlowNode("node-probe", state.strategy === "outbox-mq-invalidate" ? "async" : "critical",
             "Consistency Probe 已冻结", probe.completed + " 个真实样本");
+        setSystemSubtitle(
+            "CONSISTENCY PROBE · 20 QPS · REDIS/MYSQL COMPARE",
+            "探针约每 50 ms 查询一次：先走 Redis 缓存路径，再读取 MySQL 真实库存进行比较。Redis MISS 时，它也会把最新值重新填回缓存。",
+            "旧值次数表示实际观察到两边不同；它不是购买请求的一部分。",
+            "probe"
+        );
     }
 
     function applyCompleteFrame(record) {
@@ -1075,6 +1295,23 @@
         byId("topology-status").textContent = String(run.status || "completed").toUpperCase();
         focusFlowNode(null, "complete", run.status === "failed" ? "实验失败" : "实验完成",
             run.status === "failed" ? "请检查失败证据" : "请求路径与失效路径均已结束");
+        if (run.status === "failed") {
+            setSystemSubtitle(
+                "EXPERIMENT FAILED · REAL TRACE PRESERVED",
+                "真实链路没有完整结束；页面保留已有证据，不会把未完成步骤显示成成功。",
+                "查看失败节点、Outbox 状态和最近关键日志。",
+                "error"
+            );
+        } else if (state.strategy === "outbox-mq-invalidate") {
+            renderCompletedAsyncSubtitle(run, outboxSummary(run));
+        } else {
+            setSystemSubtitle(
+                "EXPERIMENT COMPLETED · SYNC INVALIDATION",
+                "购买、MySQL 提交、Redis DEL 和 Response 都已经结束；最终库存以 MySQL 为准。",
+                "可以用时间线回看每个技术步骤，回放不会再次购买。",
+                "complete"
+            );
+        }
         if (run.status === "failed") {
             byId("purchase-fault-banner").hidden = false;
             byId("purchase-fault-title").textContent = "真实链路返回失败状态";
@@ -1664,6 +1901,7 @@
         byId("purchase-conclusion").textContent =
             "每次运行都会签发一份独立实验报告；完成两个不同方案后，才会解锁手动生成的方案对比。";
         setExecutionMode("idle");
+        renderIdleSystemSubtitle();
     }
 
     function probeWindowMS() {
@@ -1882,10 +2120,10 @@
                 brokerAccepted + " / " + outboxTotal, run.mqStatus || "—");
             setNode("node-consumer", consumerDone ? "success" : (brokerAccepted > outbox.completed ? "running" : "waiting"),
                 consumerDone ? "消息已幂等消费" : (brokerAccepted > outbox.completed ? "正在消费并校验事件" : "等待消息"),
-                outbox.completed + " / " + outboxTotal, "event_id dedupe");
+                outbox.completed + " / " + outboxTotal + " msgs", "event_id dedupe");
             setNode("node-async-redis", consumerDone ? "success" : (brokerAccepted > outbox.completed ? "running" : "waiting"),
                 consumerDone ? "Redis DEL 已完成" : (brokerAccepted > outbox.completed ? "正在执行幂等 DEL" : "等待 Consumer"),
-                outbox.completed + " / " + outboxTotal, consumerDone ? "cache deleted" : "pending");
+                "1 key", outbox.completed + " / " + outboxTotal + " events");
             setFlowEdge("edge-worker-mq", workerDone ? "completed" : (outbox.publishing > 0 || brokerAccepted > 0 ? "running" : "idle"));
             setFlowEdge("edge-mq-consumer", consumerDone ? "completed" : (brokerAccepted > 0 ? "running" : "idle"));
             setFlowEdge("edge-consumer-redis", consumerDone ? "completed" : (brokerAccepted > outbox.completed ? "running" : "idle"));
@@ -1922,6 +2160,7 @@
                 "执行解释：同步 Redis DEL 已计入购买响应耗时。");
         renderPublisherClock(run);
         renderProbeStream(state.probe, state.probe.active ? "active" : "completed");
+        renderLiveSystemSubtitle(run);
     }
 
     async function pollCriticalPath(id, isActive) {
@@ -2056,6 +2295,12 @@
             "节点将由后端增量状态推进；事务提交后才会解锁异步失效阶段。";
         byId("game-verdict-line").textContent =
             "执行解释：当前活跃节点只反映真实 run、Outbox 与探针证据。";
+        setSystemSubtitle(
+            "RESET BASELINE · CACHE PREHEAT",
+            "实验正在把 MySQL 库存恢复到固定起点，并预先放入一份 Redis 查询副本；这一步完成后才释放 150 个购买请求。",
+            "购买开始后，字幕只跟随后端真实状态推进。",
+            "critical"
+        );
         byId("control-status").textContent = "真实执行进行中；回放控制暂不可用。";
         byId("result-status").textContent = "正在真实执行";
         window.requestAnimationFrame(function () {
@@ -2126,6 +2371,12 @@
             }
             setExecutionMode("error",
                 "真实执行未能返回完整 trace：" + error.message + "。页面没有启动回放。");
+            setSystemSubtitle(
+                "REAL EXECUTION FAILED",
+                "真实执行没有返回完整结果：" + error.message + "。页面不会继续播放伪造的完成步骤。",
+                "查看失败节点和真实事件日志。",
+                "error"
+            );
             var first = document.querySelector("[data-replay-step='0']");
             first.dataset.status = "failed";
             first.classList.add("is-current");

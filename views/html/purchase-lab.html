@@ -9,7 +9,7 @@
     <title>材料购买实验 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/lottery.css?v=20260730-experiment-foyer-v1" />
-    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260801-execution-flow-v1" />
+    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260804-live-subtitles-v1" />
 </head>
 
 <body class="lab-page purchase-page purchase-observatory purchase-focus" data-purchase-strategy="unselected" data-purchase-status="idle">
@@ -151,6 +151,26 @@
                         <p id="stage-summary">当前节点会由真实 run 状态、trace 与 Outbox 时间证据推进。</p>
                     </div>
 
+                    <section id="system-subtitle" class="system-subtitle" data-tone="idle" aria-label="技术动作白话字幕" aria-live="polite" aria-atomic="true">
+                        <div class="system-subtitle-cue">
+                            <small>TECHNICAL CUE</small>
+                            <strong id="system-subtitle-term">MySQL SOURCE OF TRUTH · REDIS CACHE</strong>
+                            <span aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                        </div>
+                        <div class="system-subtitle-lyrics">
+                            <small>白话字幕 · 跟随真实执行与回放</small>
+                            <p id="system-subtitle-line">MySQL 保存真实库存；Redis 只是为了查询更快而保存的一份临时副本。删除副本不会删除库存。</p>
+                            <span id="system-subtitle-next">下一句：选择方案后，字幕会随着当前技术节点继续播放。</span>
+                        </div>
+                    </section>
+
+                    <div class="system-subtitle-dictionary" aria-label="本页核心术语即时翻译">
+                        <span><b>MySQL</b>真实库存</span>
+                        <span><b>Redis Key</b>一条材料查询副本</span>
+                        <span><b>DEL</b>丢掉旧副本</span>
+                        <span><b>MISS</b>副本暂时不存在，库存仍在</span>
+                    </div>
+
                     <div id="shop-allegory-stage" class="execution-flow-shell">
                         <section id="critical-phase" class="execution-phase critical-phase" data-phase-state="idle" aria-labelledby="critical-phase-title">
                             <header>
@@ -225,16 +245,16 @@
                                 <span id="edge-mq-consumer" class="flow-edge" data-state="idle" aria-hidden="true"><i></i></span>
                                 <article id="node-consumer" class="execution-node" data-flow-node data-state="idle">
                                     <header><span>07</span><strong>Consumer</strong></header>
-                                    <p>校验 event_id，重复投递仍只执行幂等失效。</p>
+                                    <p>一条消息执行一次幂等 DEL；多条消息可以指向同一个缓存键。</p>
                                     <small data-node-status>等待消息</small>
-                                    <dl><div><dt>完成</dt><dd data-node-time>0 / 150</dd></div><div><dt>动作</dt><dd data-node-io>—</dd></div></dl>
+                                    <dl><div><dt>消息</dt><dd data-node-time>0 / 150</dd></div><div><dt>动作</dt><dd data-node-io>—</dd></div></dl>
                                 </article>
                                 <span id="edge-consumer-redis" class="flow-edge" data-state="idle" aria-hidden="true"><i></i></span>
                                 <article id="node-async-redis" class="execution-node redis-delete-node" data-flow-node data-state="idle">
                                     <header><span>08</span><strong>Redis DEL</strong></header>
-                                    <p>删除材料 DTO；重复 DEL 安全，失败则不 Ack。</p>
+                                    <p>删除材料查询副本，不删除 MySQL 库存；失败则不 Ack。</p>
                                     <small data-node-status>等待 Consumer</small>
-                                    <dl><div><dt>完成</dt><dd data-node-time>0</dd></div><div><dt>结果</dt><dd data-node-io>—</dd></div></dl>
+                                    <dl><div><dt>缓存键</dt><dd data-node-time>1</dd></div><div><dt>消息处理</dt><dd data-node-io>0 / 150</dd></div></dl>
                                 </article>
                             </div>
                         </section>
@@ -530,7 +550,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
-    <script src="/js/purchase-lab.js?v=20260801-execution-flow-v1"></script>
+    <script src="/js/purchase-lab.js?v=20260804-live-subtitles-v1"></script>
 </body>
 
 </html>

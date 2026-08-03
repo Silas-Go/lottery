@@ -983,6 +983,22 @@
     100% { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes systemSubtitleEnter {
+    from { opacity: .15; transform: translateY(7px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes systemSubtitleBeat {
+    from { transform: scaleY(.4); opacity: .45; }
+    to { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes systemSubtitleScan {
+    0% { transform: scaleX(.08); opacity: .28; }
+    50% { transform: scaleX(.82); opacity: .9; }
+    100% { transform: scaleX(.08); opacity: .28; }
+}
+
 @media (max-width: 900px) {
     .purchase-focus .purchase-lab-header {
         grid-template-columns: 1fr 1fr;
@@ -1008,6 +1024,7 @@
     .purchase-focus .purchase-replay-controls {
         grid-column: 1 / -1;
     }
+
 }
 
 @media (max-width: 680px) {
@@ -1334,6 +1351,145 @@
     color: var(--flow-muted);
     font-size: 12px;
     line-height: 1.6;
+}
+
+.system-subtitle {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(210px, .34fr) minmax(0, 1fr);
+    margin: 0 clamp(16px, 2.8vw, 30px) 10px;
+    overflow: hidden;
+    border: 1px solid rgba(101, 230, 193, .42);
+    border-radius: 10px;
+    background: rgba(6, 16, 19, .72);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .025);
+    transition: border-color .24s ease, background .24s ease;
+}
+
+.system-subtitle::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--flow-active), transparent);
+    content: "";
+    opacity: .75;
+    transform-origin: left;
+    animation: systemSubtitleScan 2.4s linear infinite;
+}
+
+.system-subtitle-cue,
+.system-subtitle-lyrics {
+    min-width: 0;
+    padding: 13px 15px;
+}
+
+.system-subtitle-cue {
+    display: grid;
+    align-content: center;
+    gap: 7px;
+    border-right: 1px solid rgba(147, 170, 168, .18);
+    background: rgba(32, 50, 54, .74);
+}
+
+.system-subtitle-cue small,
+.system-subtitle-lyrics small {
+    color: var(--flow-active);
+    font: 800 8px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .12em;
+}
+
+.system-subtitle-cue strong {
+    overflow-wrap: anywhere;
+    color: #fff0ad;
+    font: 850 11px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .035em;
+}
+
+.system-subtitle-cue > span {
+    display: flex;
+    align-items: end;
+    height: 11px;
+    gap: 3px;
+}
+
+.system-subtitle-cue i {
+    width: 3px;
+    height: 5px;
+    background: var(--flow-active);
+    animation: systemSubtitleBeat .9s ease-in-out infinite alternate;
+}
+
+.system-subtitle-cue i:nth-child(2) { height: 10px; animation-delay: -.42s; }
+.system-subtitle-cue i:nth-child(3) { height: 7px; animation-delay: -.18s; }
+.system-subtitle-cue i:nth-child(4) { height: 9px; animation-delay: -.63s; }
+
+.system-subtitle-lyrics {
+    display: grid;
+    align-content: center;
+    gap: 5px;
+}
+
+.system-subtitle-lyrics p {
+    margin: 0;
+    color: #f3f7ed;
+    font-size: clamp(13px, 1.45vw, 16px);
+    font-weight: 750;
+    line-height: 1.58;
+}
+
+.system-subtitle-lyrics > span {
+    color: #8da3a1;
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.system-subtitle.is-changing .system-subtitle-cue strong,
+.system-subtitle.is-changing .system-subtitle-lyrics p,
+.system-subtitle.is-changing .system-subtitle-lyrics > span {
+    animation: systemSubtitleEnter .42s ease both;
+}
+
+.system-subtitle.is-changing .system-subtitle-lyrics p { animation-delay: .04s; }
+.system-subtitle.is-changing .system-subtitle-lyrics > span { animation-delay: .09s; }
+
+.system-subtitle[data-tone="critical"] { border-color: rgba(244, 201, 99, .62); }
+.system-subtitle[data-tone="critical"]::after,
+.system-subtitle[data-tone="critical"] .system-subtitle-cue i { background: var(--flow-active-2); }
+.system-subtitle[data-tone="critical"] .system-subtitle-cue small,
+.system-subtitle[data-tone="critical"] .system-subtitle-lyrics small { color: var(--flow-active-2); }
+.system-subtitle[data-tone="async"] { border-color: rgba(101, 230, 193, .68); }
+.system-subtitle[data-tone="probe"] { border-color: rgba(117, 184, 239, .66); }
+.system-subtitle[data-tone="probe"]::after,
+.system-subtitle[data-tone="probe"] .system-subtitle-cue i { background: #75b8ef; }
+.system-subtitle[data-tone="probe"] .system-subtitle-cue small,
+.system-subtitle[data-tone="probe"] .system-subtitle-lyrics small { color: #75b8ef; }
+.system-subtitle[data-tone="complete"] { border-color: rgba(134, 191, 160, .68); }
+.system-subtitle[data-tone="error"] { border-color: rgba(233, 112, 101, .74); background: rgba(49, 21, 21, .76); }
+.system-subtitle[data-tone="error"]::after,
+.system-subtitle[data-tone="error"] .system-subtitle-cue i { background: #e97065; }
+.system-subtitle[data-tone="error"] .system-subtitle-cue small,
+.system-subtitle[data-tone="error"] .system-subtitle-lyrics small { color: #f09087; }
+
+.system-subtitle-dictionary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 12px;
+    margin: 0 clamp(16px, 2.8vw, 30px) 16px;
+    color: #9eb0ad;
+    font-size: 9px;
+}
+
+.system-subtitle-dictionary span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.system-subtitle-dictionary b {
+    color: #dcebe2;
+    font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
 .execution-flow-shell {
@@ -2071,6 +2227,15 @@
 }
 
 @media (max-width: 940px) {
+    .system-subtitle {
+        grid-template-columns: 1fr;
+    }
+
+    .system-subtitle-cue {
+        border-right: 0;
+        border-bottom: 1px solid rgba(147, 170, 168, .18);
+    }
+
     .critical-track,
     .async-track {
         grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
@@ -2203,7 +2368,12 @@
     .flow-edge[data-state="running"] > i,
     .publisher-beat[data-state="active"] > span::after,
     .probe-stream[data-state="active"] #probe-live-indicator,
-    .probe-stream[data-state="active"] .probe-sample-rail > i::after {
+    .probe-stream[data-state="active"] .probe-sample-rail > i::after,
+    .system-subtitle::after,
+    .system-subtitle-cue i,
+    .system-subtitle.is-changing .system-subtitle-cue strong,
+    .system-subtitle.is-changing .system-subtitle-lyrics p,
+    .system-subtitle.is-changing .system-subtitle-lyrics > span {
         animation: none;
     }
 }
