@@ -1,0 +1,51 @@
+/* Order confirmation page. */
+.pay-page {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 24px;
+    color: #172033;
+    background: #edf2f7;
+}
+
+.pay-card {
+    width: min(680px, 100%);
+    padding: 28px;
+    border: 1px solid #d3dce7;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 20px 60px rgba(24, 36, 55, .1);
+}
+
+.eyebrow {
+    margin: 0 0 7px;
+    color: #2563eb;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.pay-card h1 { margin: 0 0 7px; font-size: 28px; }
+.subtitle { margin: 0; color: #667085; font-size: 13px; line-height: 1.6; }
+.pay-gift { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 22px 0; }
+.pay-field { padding: 14px; border: 1px solid #dce3eb; border-radius: 6px; }
+.pay-field span { display: block; color: #667085; font-size: 11px; }
+.pay-field strong { display: block; margin-top: 6px; font-size: 17px; }
+.architecture-flow { display: flex; align-items: center; gap: 8px; }
+.flow-node { flex: 1; padding: 12px; text-align: center; border: 1px solid #d9e0e8; border-radius: 5px; color: #667085; font-size: 11px; font-weight: 800; }
+.flow-node.is-active { border-color: #7aa5ee; background: #eef4ff; color: #2563eb; }
+.flow-arrow { color: #9aa8b8; }
+.pay-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
+.pay-action { min-height: 41px; padding: 0 16px; cursor: pointer; border: 1px solid #d6dee7; border-radius: 5px; font-weight: 800; }
+.pay-action.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
+.pay-action.secondary { background: #fff; color: #4d5b6a; }
+.pay-action:disabled { cursor: not-allowed; opacity: .5; }
+.pay-message { min-height: 20px; margin: 14px 0 0; color: #c2413b; font-size: 12px; }
+
+
+@media (max-width: 650px) {
+    .pay-gift { grid-template-columns: 1fr; }
+    .architecture-flow { align-items: stretch; flex-direction: column; }
+    .flow-arrow { align-self: center; transform: rotate(90deg); }
+}

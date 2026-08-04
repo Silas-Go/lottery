@@ -26,7 +26,6 @@
         var(--focus-bg);
     background-size: 16px 16px, 16px 16px, auto, auto;
 }
-
 .purchase-focus .lab-backdrop,
 .purchase-focus .lab-grid {
     display: none;
@@ -182,14 +181,6 @@
     color: #6b5f91;
     font: 900 7px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
     text-align: center;
-}
-
-.purchase-focus:not([data-material-kind="star"]) .purchase-relic {
-    display: none;
-}
-
-.purchase-focus:not([data-material-kind="star"]) .purchase-story-brief {
-    grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .purchase-focus .purchase-story-brief h1 {
@@ -353,314 +344,12 @@
     gap: 8px;
 }
 
-.purchase-focus .purchase-allegory {
-    padding: 10px;
-    border: 2px solid #6f6048;
-    border-radius: 2px;
-    background: var(--focus-surface-strong);
-    box-shadow: inset 0 0 0 3px #fffdf4;
-}
-
-.purchase-focus .purchase-allegory::before {
-    display: none;
-}
-
-.purchase-focus .purchase-allegory .purchase-section-heading {
-    margin: 0 0 7px;
-}
-
-.purchase-focus .market-view-caption {
-    margin: 0 0 9px;
-    color: var(--focus-muted);
-    font-size: 10px;
-}
-
 .purchase-focus .purchase-live-badge {
     border: 1px solid #62847b;
     border-radius: 2px;
     color: #255e59;
     background: #e5f4e8;
     font: 900 8px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
-}
-
-.purchase-focus .shop-allegory-stage {
-    position: relative;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    min-height: 350px;
-    gap: 8px;
-    padding: 100px 10px 12px;
-    overflow: hidden;
-    border: 2px solid #64533b;
-    border-radius: 2px;
-    background:
-        linear-gradient(rgba(82, 69, 48, .08) 2px, transparent 2px),
-        linear-gradient(90deg, rgba(82, 69, 48, .08) 2px, transparent 2px),
-        linear-gradient(180deg, #fbe4a8 0 92px, #d9a968 92px 100%);
-    background-size: 24px 24px, 24px 24px, auto;
-    box-shadow: inset 0 0 0 4px rgba(255, 248, 214, .45);
-}
-
-.purchase-focus .shop-allegory-stage::before {
-    top: 91px;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    border: 0;
-    background:
-        repeating-linear-gradient(90deg, rgba(94, 64, 39, .12) 0 2px, transparent 2px 48px),
-        linear-gradient(#d69d5e, #c1844b);
-    transform: none;
-}
-
-.purchase-focus .shop-allegory-stage::after {
-    top: 10px;
-    left: calc(50% - 54px);
-    width: 108px;
-    height: 68px;
-    border: 6px solid #74533a;
-    border-radius: 2px;
-    background:
-        linear-gradient(90deg, transparent 48%, #8b6b48 48% 52%, transparent 52%),
-        linear-gradient(0deg, transparent 48%, #8b6b48 48% 52%, transparent 52%),
-        #fff1b8;
-    box-shadow: 4px 4px 0 rgba(87, 58, 35, .18);
-}
-
-.purchase-focus .market-lantern,
-.purchase-focus .market-rug,
-.purchase-focus .market-door,
-.purchase-focus .material-crates,
-.purchase-focus .shop-counter,
-.purchase-focus .shop-basement {
-    display: none;
-}
-
-.purchase-focus .magic-shelf {
-    top: 9px;
-    width: 72px;
-    height: 66px;
-    grid-template-columns: repeat(3, 10px);
-    gap: 3px;
-    padding: 5px;
-    border: 4px solid #75553b;
-    border-radius: 0;
-    box-shadow: 3px 3px 0 rgba(81, 51, 31, .18);
-    transform: none;
-}
-
-.purchase-focus .magic-shelf-left {
-    left: 9px;
-}
-
-.purchase-focus .magic-shelf-back {
-    right: 9px;
-}
-
-.purchase-focus .magic-shelf i {
-    width: 9px;
-    height: 15px;
-    border-width: 1px;
-    border-radius: 1px;
-}
-
-.purchase-focus .magic-shelf i:nth-child(3n) {
-    height: 12px;
-    margin-top: 3px;
-}
-
-.purchase-focus .shop-role,
-.purchase-focus .shop-buyers,
-.purchase-focus .shop-service,
-.purchase-focus .shop-mysql,
-.purchase-focus .shop-outbox,
-.purchase-focus .shop-mq,
-.purchase-focus .shop-consumer,
-.purchase-focus .shop-redis {
-    position: relative;
-    inset: auto;
-    width: auto;
-    min-height: 102px;
-    gap: 3px;
-    padding: 8px;
-    border: 2px solid #8c7655;
-    border-radius: 2px;
-    color: var(--focus-ink);
-    background: #fffaf0;
-    box-shadow: 3px 3px 0 rgba(94, 68, 42, .28);
-    transform: none;
-    transition: background .16s steps(2, end), box-shadow .16s steps(2, end);
-}
-
-.purchase-focus .shop-role::after {
-    display: none;
-}
-
-.purchase-focus .shop-role strong {
-    color: var(--focus-ink);
-    font: 800 12px/1.2 Inter, "PingFang SC", sans-serif;
-}
-
-.purchase-focus .shop-role em {
-    color: #38736f;
-    font: 800 8px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
-}
-
-.purchase-focus .shop-role small {
-    min-height: 24px;
-    color: var(--focus-muted);
-    font-size: 9px;
-    line-height: 1.35;
-}
-
-.purchase-focus .shop-role[data-state="running"] {
-    border-color: #256e6b;
-    background: #dff5ea;
-    box-shadow: 4px 4px 0 #76b8a5;
-    animation: purchaseRolePulse .8s steps(2, end) infinite;
-}
-
-.purchase-focus .shop-role[data-state="waiting"] {
-    border-color: #c58b3a;
-    background: #fff0bf;
-}
-
-.purchase-focus .shop-role[data-state="success"],
-.purchase-focus .shop-role[data-state="completed"] {
-    border-color: #4e8665;
-    background: #e1f1d8;
-    box-shadow: 3px 3px 0 #94bc85;
-}
-
-.purchase-focus .shop-role[data-state="retry"],
-.purchase-focus .shop-role[data-state="failed"] {
-    border-color: #a94440;
-    background: #ffe1d6;
-    box-shadow: 3px 3px 0 #d99582;
-}
-
-.purchase-focus .shop-role[data-state="unused"] {
-    opacity: .46;
-    filter: grayscale(.35);
-}
-
-.purchase-focus .shop-buyers {
-    grid-column: span 2;
-    grid-template-columns: auto minmax(0, 1fr);
-    min-height: 102px;
-    justify-items: start;
-    text-align: left;
-}
-
-.purchase-focus .shop-outbox {
-    grid-template-columns: auto minmax(0, 1fr);
-    justify-items: start;
-    text-align: left;
-}
-
-.purchase-focus .role-figure {
-    width: 22px;
-    height: 34px;
-    margin: 7px 0 2px;
-    border-width: 2px;
-    border-radius: 2px;
-    image-rendering: pixelated;
-}
-
-.purchase-focus .role-figure::before {
-    top: -11px;
-    left: 5px;
-    width: 11px;
-    height: 11px;
-    border-width: 2px;
-    border-radius: 1px;
-}
-
-.purchase-focus .shopkeeper::after {
-    top: -14px;
-    left: 0;
-    width: 21px;
-    height: 5px;
-    border-radius: 0;
-}
-
-.purchase-focus .ledger-stamp {
-    width: 36px;
-    height: 36px;
-    border-radius: 2px;
-}
-
-.purchase-focus .outbox-slip {
-    width: 29px;
-    height: 38px;
-    border-width: 2px;
-    border-radius: 1px;
-}
-
-.purchase-focus .stock-sign {
-    width: 62px;
-    min-height: 54px;
-    margin: 2px 0 4px;
-    border-width: 3px;
-    border-radius: 1px;
-    box-shadow: 3px 3px 0 rgba(58, 39, 28, .24);
-}
-
-.purchase-focus .stock-sign b {
-    font-size: 19px;
-}
-
-.purchase-focus .market-role-legend {
-    display: none;
-}
-
-.purchase-game-hud {
-    display: grid;
-    gap: 8px;
-    margin-top: 9px;
-    padding: 10px;
-    border: 2px solid #45595b;
-    color: #eaf7ee;
-    background:
-        linear-gradient(rgba(255, 255, 255, .035) 1px, transparent 1px),
-        #314447;
-    background-size: 8px 8px;
-    box-shadow: 4px 4px 0 #233438;
-}
-
-.purchase-focus .purchase-stage-readout {
-    display: grid;
-    grid-template-columns: minmax(0, .42fr) minmax(0, 1fr);
-    align-items: center;
-    gap: 8px 18px;
-    padding: 0 0 8px;
-    border: 0;
-    border-bottom: 1px dashed rgba(220, 239, 225, .24);
-    background: transparent;
-}
-
-.purchase-focus .purchase-stage-readout > div:first-child {
-    display: grid;
-    gap: 3px;
-}
-
-.purchase-focus .purchase-stage-readout small {
-    color: #8fd7c7;
-    font: 900 8px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
-    letter-spacing: .1em;
-}
-
-.purchase-focus .purchase-stage-readout h3 {
-    margin: 0;
-    color: #fff7cf;
-    font: 900 16px/1.25 Inter, "PingFang SC", sans-serif;
-}
-
-.purchase-focus .purchase-stage-readout > p {
-    margin: 0;
-    color: #c7d5cf;
-    font-size: 10px;
-    line-height: 1.55;
 }
 
 .purchase-score-grid {
@@ -884,13 +573,6 @@
     z-index: 30;
 }
 
-.purchase-focus .purchase-system-view {
-    margin: 0;
-    border: 1px solid #b7a98e;
-    border-radius: 1px;
-    background: #fffaf0;
-}
-
 .purchase-focus .purchase-system-view summary,
 .purchase-evidence-drawer > summary,
 .purchase-battle-report-drawer > summary,
@@ -934,13 +616,6 @@
 .purchase-report-archive-drawer > summary i {
     color: var(--focus-teal);
     font: normal 900 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
-}
-
-.purchase-focus .purchase-topology {
-    border: 0;
-    border-top: 1px dashed #b7a98e;
-    border-radius: 0;
-    box-shadow: none;
 }
 
 .purchase-evidence-drawer,
@@ -1130,86 +805,6 @@
     .purchase-focus .purchase-hero-button {
         min-height: 52px;
         font-size: 14px;
-    }
-
-    .purchase-focus .purchase-allegory {
-        padding: 7px;
-    }
-
-    .purchase-focus .market-view-caption {
-        display: none;
-    }
-
-    .purchase-focus .shop-allegory-stage {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        min-height: 0;
-        gap: 6px;
-        padding: 88px 7px 8px;
-    }
-
-    .purchase-focus .shop-allegory-stage::before {
-        top: 80px;
-    }
-
-    .purchase-focus .shop-allegory-stage::after {
-        top: 8px;
-        left: calc(50% - 42px);
-        width: 84px;
-        height: 55px;
-    }
-
-    .purchase-focus .magic-shelf {
-        top: 8px;
-        width: 55px;
-        height: 52px;
-    }
-
-    .purchase-focus .shop-role,
-    .purchase-focus .shop-buyers,
-    .purchase-focus .shop-service,
-    .purchase-focus .shop-mysql,
-    .purchase-focus .shop-outbox,
-    .purchase-focus .shop-mq,
-    .purchase-focus .shop-consumer,
-    .purchase-focus .shop-redis {
-        width: auto;
-        min-height: 78px;
-        padding: 6px;
-    }
-
-    .purchase-focus .shop-buyers {
-        grid-column: span 2;
-        min-height: 74px;
-    }
-
-    .purchase-focus .shop-role small {
-        min-height: 0;
-        font-size: 8px;
-    }
-
-    .purchase-focus .role-figure {
-        display: none;
-    }
-
-    .purchase-focus .ledger-stamp,
-    .purchase-focus .outbox-slip {
-        width: 24px;
-        height: 24px;
-    }
-
-    .purchase-focus .stock-sign {
-        width: 48px;
-        min-height: 40px;
-    }
-
-    .purchase-focus .buyer-silhouettes {
-        transform: scale(.78);
-        transform-origin: left center;
-    }
-
-    .purchase-focus .purchase-stage-readout {
-        grid-template-columns: 1fr;
-        gap: 5px;
     }
 
     .purchase-score-grid {

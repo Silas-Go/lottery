@@ -1,0 +1,128 @@
+/* Shared reset, design tokens, accessibility helpers, and brand primitives. */
+
+:root {
+    color-scheme: light;
+    --market-ink: #342518;
+    --market-paper: #fff2ce;
+    --market-amber: #a85e24;
+    --lab-bg: #07111d;
+    --lab-panel: rgba(12, 25, 39, .92);
+    --lab-panel-soft: rgba(17, 34, 50, .78);
+    --lab-line: rgba(132, 170, 190, .2);
+    --lab-line-strong: rgba(132, 190, 210, .42);
+    --lab-text: #e8f2f5;
+    --lab-muted: #8da5b2;
+    --lab-cyan: #66d3d0;
+    --lab-green: #63d69f;
+    --lab-amber: #e4ad62;
+    --lab-red: #ef7b72;
+    --lab-blue: #72a9e9;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    min-width: 320px;
+    scroll-behavior: smooth;
+}
+
+body,
+button,
+input,
+select {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+body {
+    margin: 0;
+}
+
+button,
+a,
+input,
+select {
+    -webkit-tap-highlight-color: transparent;
+}
+
+button {
+    border: 0;
+    font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+.sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.market-brand,
+.lab-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.market-brand-mark,
+.lab-brand > span {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid currentColor;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 22px;
+    line-height: 1;
+}
+
+.market-brand > span:last-child,
+.lab-brand > div {
+    display: grid;
+    gap: 1px;
+}
+
+.market-brand strong,
+.lab-brand strong {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 16px;
+    letter-spacing: .16em;
+}
+
+.market-brand small,
+.lab-brand small {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .22em;
+}
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+    }
+}
+

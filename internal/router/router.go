@@ -61,7 +61,7 @@ func registerPages(engine *gin.Engine) {
 		ctx.HTML(http.StatusOK, "seckill.html", nil)
 	})
 	engine.GET("/lab", func(ctx *gin.Context) {
-		ctx.HTML(http.StatusOK, "lottery.html", nil)
+		ctx.HTML(http.StatusOK, "query-lab.html", nil)
 	})
 	engine.GET("/purchase-lab", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "purchase-lab.html", nil)

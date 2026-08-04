@@ -248,8 +248,7 @@ html:has(.market-street-shell) {
     line-height: 1.45;
 }
 
-.market-street-shell .event-choices button,
-.market-street-shell .preview-actions button {
+.market-street-shell .event-choices button {
     border: 1px solid var(--world-line);
     border-radius: 1px;
     color: var(--world-ink);
@@ -258,9 +257,7 @@ html:has(.market-street-shell) {
 }
 
 .market-street-shell .event-choices button:hover,
-.market-street-shell .event-choices button:focus-visible,
-.market-street-shell .preview-actions button:hover,
-.market-street-shell .preview-actions button:focus-visible {
+.market-street-shell .event-choices button:focus-visible {
     border-color: var(--world-teal-dark);
     color: var(--world-ink);
     background: #e2f1e9;
