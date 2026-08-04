@@ -84,7 +84,7 @@ func TestPurchaseExperimentSyncInvalidateSharesArchiveData(t *testing.T) {
 }
 
 // TestPurchaseExperimentOutboxConsumerIsIdempotent 验证订单与 Outbox 同事务落库后，
-// Consumer 可以安全重复删除同一个 DTO key，并把事件收敛到 completed。
+// 缓存失效 Consumer 可以安全重复删除同一个 DTO key，并把事件收敛到 completed。
 func TestPurchaseExperimentOutboxConsumerIsIdempotent(t *testing.T) {
 	if store == nil {
 		t.Skip("store not initialized (needs MySQL and Redis)")
@@ -144,6 +144,49 @@ func TestPurchaseExperimentOutboxConsumerIsIdempotent(t *testing.T) {
 	if source != service.ArchiveSourceCacheMiss || cached.Stock != direct.Stock {
 		t.Fatalf("cached query must refill the purchased stock: source=%s direct=%d cached=%d",
 			source, direct.Stock, cached.Stock)
+	}
+}
+
+// TestRecoverPurchaseOutboxRequeuesPublishedEvent 验证切换缓存失效 Consumer Group 或进程重启时，
+// 已发布但尚未 completed 的事件会重新进入 retry；重复发布只会触发幂等 DEL，不会再次扣库存。
+func TestRecoverPurchaseOutboxRequeuesPublishedEvent(t *testing.T) {
+	if store == nil {
+		t.Skip("store not initialized (needs MySQL and Redis)")
+	}
+	ensurePurchaseExperimentFixtures(t)
+	lab := service.NewPurchaseLabService(store)
+	t.Cleanup(func() {
+		_, _ = lab.Reset(4)
+	})
+	if _, appErr := lab.Reset(4); appErr != nil {
+		t.Fatalf("reset outbox recovery fixture: %v", appErr)
+	}
+
+	requestID := purchaseIntegrationID("outbox-recovery")
+	eventID := purchaseIntegrationID("outbox-recovery-event")
+	if _, err := store.CommitMaterialPurchase(
+		requestID, requestID, eventID, 4, 1,
+		string(service.PurchaseOutboxMQInvalidate), true,
+	); err != nil {
+		t.Fatalf("commit recovery outbox: %v", err)
+	}
+	event, err := store.ClaimNextPurchaseOutbox(time.Now())
+	if err != nil || event == nil || event.EventID != eventID {
+		t.Fatalf("claim recovery outbox: event=%+v err=%v", event, err)
+	}
+	if err := store.MarkPurchaseOutboxPublished(eventID, time.Now()); err != nil {
+		t.Fatalf("mark recovery outbox published: %v", err)
+	}
+
+	if err := store.RecoverPurchaseOutbox(); err != nil {
+		t.Fatalf("recover published outbox: %v", err)
+	}
+	recovered, err := store.PurchaseOutboxByEvent(eventID)
+	if err != nil {
+		t.Fatalf("read recovered outbox: %v", err)
+	}
+	if recovered == nil || recovered.Status != database.PurchaseOutboxRetry || recovered.RetryCount != 1 {
+		t.Fatalf("published outbox must become retry exactly once: %+v", recovered)
 	}
 }
 

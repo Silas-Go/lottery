@@ -808,14 +808,15 @@
 }
 
 .purchase-focus .purchase-running-bar {
-    order: 5;
     grid-template-columns: minmax(0, 1fr) auto minmax(360px, .8fr);
     gap: 10px;
-    padding: 8px 10px;
-    border: 1px solid #b7a98e;
-    border-radius: 1px;
-    background: #f7f1df;
-    box-shadow: none;
+    margin: 0 clamp(12px, 2vw, 22px) 10px;
+    padding: 9px 11px;
+    border: 1px solid rgba(101, 230, 193, .42);
+    border-radius: 9px;
+    background: rgba(8, 21, 24, .96);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .22);
+    backdrop-filter: blur(12px);
 }
 
 .purchase-focus[data-purchase-status="idle"] .purchase-running-bar {
@@ -823,12 +824,26 @@
 }
 
 .purchase-focus .purchase-running-summary strong {
-    color: var(--focus-ink);
+    color: var(--flow-text, #edf7ef);
 }
 
 .purchase-focus .purchase-running-summary small,
 .purchase-focus .purchase-running-progress small {
-    color: var(--focus-muted);
+    color: var(--flow-muted, #93aaa8);
+}
+
+.purchase-focus .purchase-running-summary > span {
+    border-color: rgba(101, 230, 193, .38);
+    color: var(--flow-active, #65e6c1);
+    background: rgba(101, 230, 193, .08);
+}
+
+.purchase-focus .purchase-running-progress {
+    border-color: rgba(147, 170, 168, .2);
+}
+
+.purchase-focus .purchase-running-progress strong {
+    color: var(--flow-active-2, #f4c963);
 }
 
 .purchase-focus .purchase-replay-controls {
@@ -859,6 +874,14 @@
     gap: 4px;
     padding: 0;
     border: 0;
+}
+
+/* 控制条属于同步与异步方案的共用回放边界，放在执行流内部并随长流程吸顶。
+ * 它只移动前端 trace 游标，不会再次触发购买、重置库存或发送 MQ。 */
+.purchase-focus .purchase-execution-view > .purchase-running-bar {
+    position: sticky;
+    top: 8px;
+    z-index: 30;
 }
 
 .purchase-focus .purchase-system-view {
@@ -981,22 +1004,6 @@
 @keyframes purchaseMetricTick {
     0% { transform: translateY(4px); opacity: .45; }
     100% { transform: translateY(0); opacity: 1; }
-}
-
-@keyframes systemSubtitleEnter {
-    from { opacity: .15; transform: translateY(7px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes systemSubtitleBeat {
-    from { transform: scaleY(.4); opacity: .45; }
-    to { transform: scaleY(1); opacity: 1; }
-}
-
-@keyframes systemSubtitleScan {
-    0% { transform: scaleX(.08); opacity: .28; }
-    50% { transform: scaleX(.82); opacity: .9; }
-    100% { transform: scaleX(.08); opacity: .28; }
 }
 
 @media (max-width: 900px) {
@@ -1272,7 +1279,7 @@
     --flow-active-2: #f4c963;
     --flow-complete: #86bfa0;
     order: 0;
-    overflow: hidden;
+    overflow: visible;
     padding: 0;
     border: 1px solid #294247;
     border-radius: 14px;
@@ -1310,6 +1317,14 @@
     margin: 4px 0 0;
     color: var(--flow-text);
     font-size: clamp(19px, 2.2vw, 27px);
+}
+
+.execution-map-guide {
+    max-width: 660px;
+    margin: 6px 0 0;
+    color: var(--flow-muted);
+    font-size: 10px;
+    line-height: 1.55;
 }
 
 .execution-current {
@@ -1354,123 +1369,93 @@
 }
 
 .system-subtitle {
-    position: relative;
     display: grid;
-    grid-template-columns: minmax(210px, .34fr) minmax(0, 1fr);
+    gap: 10px;
     margin: 0 clamp(16px, 2.8vw, 30px) 10px;
-    overflow: hidden;
     border: 1px solid rgba(101, 230, 193, .42);
     border-radius: 10px;
     background: rgba(6, 16, 19, .72);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .025);
-    transition: border-color .24s ease, background .24s ease;
+    padding: 13px 15px 15px;
+    transition: border-color .18s ease, background .18s ease;
 }
 
-.system-subtitle::after {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--flow-active), transparent);
-    content: "";
-    opacity: .75;
-    transform-origin: left;
-    animation: systemSubtitleScan 2.4s linear infinite;
+.system-subtitle-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
 }
 
-.system-subtitle-cue,
-.system-subtitle-lyrics {
-    min-width: 0;
-    padding: 13px 15px;
-}
-
-.system-subtitle-cue {
+.system-subtitle-header > div {
     display: grid;
-    align-content: center;
-    gap: 7px;
-    border-right: 1px solid rgba(147, 170, 168, .18);
-    background: rgba(32, 50, 54, .74);
+    min-width: 0;
+    gap: 5px;
 }
 
-.system-subtitle-cue small,
-.system-subtitle-lyrics small {
+.system-subtitle-header small,
+.system-subtitle-item small {
     color: var(--flow-active);
     font: 800 8px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
     letter-spacing: .12em;
 }
 
-.system-subtitle-cue strong {
+.system-subtitle-header strong {
     overflow-wrap: anywhere;
     color: #fff0ad;
-    font: 850 11px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace;
-    letter-spacing: .035em;
+    font-size: clamp(15px, 1.65vw, 20px);
+    line-height: 1.35;
 }
 
-.system-subtitle-cue > span {
-    display: flex;
-    align-items: end;
-    height: 11px;
-    gap: 3px;
+.system-subtitle-header > span {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border: 1px solid rgba(147, 170, 168, .22);
+    border-radius: 99px;
+    color: #dcebe2;
+    background: rgba(32, 50, 54, .74);
+    font: 800 9px/1 ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
-.system-subtitle-cue i {
-    width: 3px;
-    height: 5px;
-    background: var(--flow-active);
-    animation: systemSubtitleBeat .9s ease-in-out infinite alternate;
-}
-
-.system-subtitle-cue i:nth-child(2) { height: 10px; animation-delay: -.42s; }
-.system-subtitle-cue i:nth-child(3) { height: 7px; animation-delay: -.18s; }
-.system-subtitle-cue i:nth-child(4) { height: 9px; animation-delay: -.63s; }
-
-.system-subtitle-lyrics {
+.system-subtitle-grid {
     display: grid;
-    align-content: center;
-    gap: 5px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
 }
 
-.system-subtitle-lyrics p {
-    margin: 0;
+.system-subtitle-item {
+    min-width: 0;
+    min-height: 88px;
+    padding: 10px 11px;
+    border: 1px solid rgba(147, 170, 168, .16);
+    border-radius: 7px;
+    background: rgba(32, 50, 54, .46);
+}
+
+.system-subtitle-item.is-action {
+    border-color: rgba(101, 230, 193, .3);
+    background: rgba(32, 57, 58, .62);
+}
+
+.system-subtitle-item p {
+    margin: 7px 0 0;
+    overflow-wrap: anywhere;
     color: #f3f7ed;
-    font-size: clamp(13px, 1.45vw, 16px);
-    font-weight: 750;
+    font-size: 12px;
     line-height: 1.58;
 }
 
-.system-subtitle-lyrics > span {
-    color: #8da3a1;
-    font-size: 10px;
-    line-height: 1.5;
-}
-
-.system-subtitle.is-changing .system-subtitle-cue strong,
-.system-subtitle.is-changing .system-subtitle-lyrics p,
-.system-subtitle.is-changing .system-subtitle-lyrics > span {
-    animation: systemSubtitleEnter .42s ease both;
-}
-
-.system-subtitle.is-changing .system-subtitle-lyrics p { animation-delay: .04s; }
-.system-subtitle.is-changing .system-subtitle-lyrics > span { animation-delay: .09s; }
-
 .system-subtitle[data-tone="critical"] { border-color: rgba(244, 201, 99, .62); }
-.system-subtitle[data-tone="critical"]::after,
-.system-subtitle[data-tone="critical"] .system-subtitle-cue i { background: var(--flow-active-2); }
-.system-subtitle[data-tone="critical"] .system-subtitle-cue small,
-.system-subtitle[data-tone="critical"] .system-subtitle-lyrics small { color: var(--flow-active-2); }
+.system-subtitle[data-tone="critical"] .system-subtitle-header small,
+.system-subtitle[data-tone="critical"] .system-subtitle-item small { color: var(--flow-active-2); }
 .system-subtitle[data-tone="async"] { border-color: rgba(101, 230, 193, .68); }
 .system-subtitle[data-tone="probe"] { border-color: rgba(117, 184, 239, .66); }
-.system-subtitle[data-tone="probe"]::after,
-.system-subtitle[data-tone="probe"] .system-subtitle-cue i { background: #75b8ef; }
-.system-subtitle[data-tone="probe"] .system-subtitle-cue small,
-.system-subtitle[data-tone="probe"] .system-subtitle-lyrics small { color: #75b8ef; }
+.system-subtitle[data-tone="probe"] .system-subtitle-header small,
+.system-subtitle[data-tone="probe"] .system-subtitle-item small { color: #75b8ef; }
 .system-subtitle[data-tone="complete"] { border-color: rgba(134, 191, 160, .68); }
 .system-subtitle[data-tone="error"] { border-color: rgba(233, 112, 101, .74); background: rgba(49, 21, 21, .76); }
-.system-subtitle[data-tone="error"]::after,
-.system-subtitle[data-tone="error"] .system-subtitle-cue i { background: #e97065; }
-.system-subtitle[data-tone="error"] .system-subtitle-cue small,
-.system-subtitle[data-tone="error"] .system-subtitle-lyrics small { color: #f09087; }
+.system-subtitle[data-tone="error"] .system-subtitle-header small,
+.system-subtitle[data-tone="error"] .system-subtitle-item small { color: #f09087; }
 
 .system-subtitle-dictionary {
     display: flex;
@@ -1555,32 +1540,25 @@
 
 .async-track {
     grid-template-columns: minmax(220px, 1.35fr) 44px minmax(132px, .8fr) 44px minmax(150px, .9fr) 44px minmax(145px, .9fr);
-    max-height: 360px;
     opacity: 1;
-    transform: translateY(0);
-    transition: max-height .45s ease, opacity .3s ease, transform .45s ease;
+    filter: saturate(1);
+    transition: opacity .25s ease, filter .25s ease;
 }
 
 .async-phase[data-phase-state="locked"] .async-track {
-    max-height: 0;
-    overflow: hidden;
-    opacity: 0;
-    transform: translateY(-12px);
+    opacity: .38;
+    filter: saturate(.45);
 }
 
 .async-phase[data-phase-state="locked"] {
-    padding-block: 12px;
     border-style: dashed;
     background: rgba(17, 27, 30, .48);
 }
 
-.async-phase[data-phase-state="locked"] > header {
-    margin-bottom: 0;
-}
-
 .async-phase[data-phase-state="unused"] .async-track,
 .async-phase[data-phase-state="unused"] .phase-handoff {
-    display: none;
+    opacity: .28;
+    filter: saturate(.35);
 }
 
 .async-phase[data-phase-state="unused"] {
@@ -2227,41 +2205,88 @@
 }
 
 @media (max-width: 940px) {
-    .system-subtitle {
-        grid-template-columns: 1fr;
-    }
-
-    .system-subtitle-cue {
-        border-right: 0;
-        border-bottom: 1px solid rgba(147, 170, 168, .18);
+    .system-subtitle-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .critical-track,
     .async-track {
         grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
-        gap: 10px 0;
+        gap: 0;
     }
 
-    .critical-track > :nth-child(4),
-    .async-track > :nth-child(4) {
-        display: none;
+    .critical-track {
+        grid-template-rows: auto 96px auto;
     }
 
-    .critical-track > :nth-child(5),
-    .critical-track > :nth-child(6),
-    .critical-track > :nth-child(7),
-    .async-track > :nth-child(5),
-    .async-track > :nth-child(6),
-    .async-track > :nth-child(7) {
+    .async-track {
+        grid-template-rows: auto 42px auto;
+    }
+
+    /* 中等宽度使用蛇形顺序：第一行向右、竖直下接、第三行向左，连接关系不会因换行消失。 */
+    .critical-track > :nth-child(4) {
         grid-row: 2;
+        grid-column: 3;
+        width: 100%;
+        height: 96px;
+    }
+
+    .critical-track > :nth-child(4)::before {
+        top: 4px;
+        right: auto;
+        bottom: 5px;
+        left: 50%;
+        width: 2px;
+        height: auto;
+    }
+
+    .critical-track > :nth-child(4)::after {
+        top: auto;
+        right: auto;
+        bottom: 2px;
+        left: calc(50% - 4px);
+        border: solid #49686c;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+
+    .critical-track > :nth-child(4)[data-state="running"]::after,
+    .critical-track > :nth-child(4)[data-state="completed"]::after {
+        border-color: var(--flow-active);
+    }
+
+    .async-track > :nth-child(4) {
+        grid-row: 2;
+        grid-column: 3;
+        justify-self: center;
+        width: 42px;
+        height: 42px;
+        transform: rotate(90deg);
     }
 
     .critical-track > :nth-child(5),
-    .async-track > :nth-child(5) { grid-column: 1; }
+    .async-track > :nth-child(5) { grid-row: 3; grid-column: 3; }
     .critical-track > :nth-child(6),
-    .async-track > :nth-child(6) { grid-column: 2; }
+    .async-track > :nth-child(6) { grid-row: 3; grid-column: 2; }
+    .async-track > :nth-child(6) { transform: rotate(180deg); }
+
+    /* 同步方案的 DEL 卡片嵌在这条边里，只反转箭头，不能旋转整个容器把文字倒置。 */
+    .critical-track > :nth-child(6)::after {
+        right: auto;
+        left: 2px;
+        transform: rotate(-135deg);
+    }
+
+    .critical-track > :nth-child(6)[data-state="completed"] > i {
+        right: auto;
+        left: 4px;
+    }
+
+    .critical-track > :nth-child(6)[data-state="running"] > i {
+        animation-direction: reverse;
+    }
     .critical-track > :nth-child(7),
-    .async-track > :nth-child(7) { grid-column: 3; }
+    .async-track > :nth-child(7) { grid-row: 3; grid-column: 1; }
 
     .execution-live-hud {
         grid-template-columns: 1fr;
@@ -2287,6 +2312,19 @@
         width: auto;
     }
 
+    .system-subtitle-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .system-subtitle-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .system-subtitle-item {
+        min-height: 0;
+    }
+
     .critical-track,
     .async-track {
         display: flex;
@@ -2298,6 +2336,7 @@
     .async-track > :nth-child(n) {
         display: block;
         width: 100%;
+        transform: none;
     }
 
     .flow-edge {
@@ -2368,12 +2407,7 @@
     .flow-edge[data-state="running"] > i,
     .publisher-beat[data-state="active"] > span::after,
     .probe-stream[data-state="active"] #probe-live-indicator,
-    .probe-stream[data-state="active"] .probe-sample-rail > i::after,
-    .system-subtitle::after,
-    .system-subtitle-cue i,
-    .system-subtitle.is-changing .system-subtitle-cue strong,
-    .system-subtitle.is-changing .system-subtitle-lyrics p,
-    .system-subtitle.is-changing .system-subtitle-lyrics > span {
+    .probe-stream[data-state="active"] .probe-sample-rail > i::after {
         animation: none;
     }
 }

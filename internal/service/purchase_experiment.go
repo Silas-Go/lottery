@@ -359,7 +359,7 @@ func (s *PurchaseLabService) RunExperiment(
 		run.OutboxStatus = database.PurchaseOutboxPending
 		run.MQStatus = "waiting-publisher"
 		recorder.add("purchase", "outbox_created", "OUTBOX COMMITTED",
-			fmt.Sprintf("%d 张缓存失效凭证与订单在同一事务提交，购买响应不等待 Consumer",
+			fmt.Sprintf("%d 张缓存失效凭证与订单在同一事务提交，购买响应不等待缓存失效 Consumer",
 				run.PurchaseSucceeded),
 			"mysql", 0, run.FinalMySQLStock, run.FinalRedisStock, nil)
 	}

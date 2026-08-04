@@ -15,6 +15,7 @@ import (
 	"silas/internal/router"
 	"silas/internal/service"
 	"silas/internal/util"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,10 +26,10 @@ import (
 // 把 HTTP server、数据库和外部客户端收口到这里，是为了让启动和退出流程可追踪，
 // 避免资源初始化散落在 main 或 handler 里。
 type Application struct {
-	store        *database.Store
-	server       *http.Server
-	workerCancel context.CancelFunc
-	workerDone   <-chan struct{}
+	store            *database.Store
+	server           *http.Server
+	backgroundCancel context.CancelFunc
+	backgroundDone   <-chan struct{}
 }
 
 // New 初始化依赖并创建 HTTP 应用。
@@ -36,30 +37,60 @@ type Application struct {
 func New() *Application {
 	store := initInfrastructure()
 	engine, orderService, purchaseLabService := initHTTP(store)
-	workerCtx, workerCancel := context.WithCancel(context.Background())
-	workerDone := make(chan struct{})
-	if mq.Enabled() {
-		// MQ 只负责消息传输；订单状态机与材料缓存失效各自回到对应 service 做幂等裁决。
-		go mq.ReceiveOrders(orderService.CreateRedisPendingOrder, orderService.TimeoutCancel,
-			purchaseLabService.ConsumeCacheInvalidation)
-		go func() {
-			defer close(workerDone)
-			purchaseLabService.RunOutboxWorker(workerCtx)
-		}()
-	} else {
-		close(workerDone)
-		slog.Info("rocketmq disabled")
-	}
+	backgroundCancel, backgroundDone := startMQBackground(orderService, purchaseLabService)
 	addr := util.EnvString("LOTTERY_HTTP_ADDR", "localhost:5678")
 	slog.Info("application initialized", "http_addr", addr)
 
 	return &Application{
-		store: store, workerCancel: workerCancel, workerDone: workerDone,
+		store: store, backgroundCancel: backgroundCancel, backgroundDone: backgroundDone,
 		server: &http.Server{
 			Addr:    addr,
 			Handler: engine,
 		},
 	}
+}
+
+// startMQBackground 把三项后台职责显式拆开：订单消费、缓存失效消费、Outbox 发布。
+// 两个 Consumer 使用不同 Group 和订阅集合；WaitGroup 让退出流程可以等它们停止后再关闭数据库与 Redis。
+func startMQBackground(
+	orderService *service.OrderService,
+	purchaseLabService *service.PurchaseLabService,
+) (context.CancelFunc, <-chan struct{}) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	if !mq.Enabled() {
+		close(done)
+		slog.Info("rocketmq disabled")
+		return cancel, done
+	}
+	if err := mq.ValidateConsumerConfig(); err != nil {
+		cancel()
+		slog.Error("invalid rocketmq consumer configuration", "error", err)
+		panic(err)
+	}
+
+	var workers sync.WaitGroup
+	workers.Add(3)
+	go func() {
+		defer workers.Done()
+		mq.RunOrderConsumer(ctx, orderService.CreateRedisPendingOrder, orderService.TimeoutCancel)
+	}()
+	go func() {
+		defer workers.Done()
+		mq.RunPurchaseCacheConsumer(ctx, purchaseLabService.ConsumeCacheInvalidation)
+	}()
+	go func() {
+		defer workers.Done()
+		purchaseLabService.RunOutboxWorker(ctx)
+	}()
+	go func() {
+		workers.Wait()
+		close(done)
+	}()
+	slog.Info("rocketmq background workers started",
+		"order_consumer_group", mq.OrderConsumerGroup(),
+		"purchase_cache_consumer_group", mq.PurchaseCacheConsumerGroup())
+	return cancel, done
 }
 
 // Run 启动 HTTP server 并等待退出信号。
@@ -91,6 +122,9 @@ func (a *Application) Run() error {
 		} else {
 			slog.Info("http server stopped")
 		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		a.Shutdown(ctx)
 		return err
 	case sig := <-stopCh:
 		slog.Info("receive term signal " + sig.String() + ", going to exit")
@@ -108,19 +142,19 @@ func (a *Application) Shutdown(ctx context.Context) {
 		slog.Info("http server shutting down")
 		_ = a.server.Shutdown(ctx)
 	}
-	if a.workerCancel != nil {
-		a.workerCancel()
+	if a.backgroundCancel != nil {
+		a.backgroundCancel()
 	}
-	if a.workerDone != nil {
+	// 先取消循环，让 Receive 停止拉新消息并允许已取得的小批消息完成幂等处理；
+	// 等后台任务退出后再关闭两个 Consumer，最后才释放 Producer、MySQL 和 Redis。
+	if a.backgroundDone != nil {
 		select {
-		case <-a.workerDone:
+		case <-a.backgroundDone:
 		case <-ctx.Done():
-			slog.Warn("purchase outbox worker shutdown timed out", "error", ctx.Err())
+			slog.Warn("rocketmq background workers shutdown timed out", "error", ctx.Err())
 		}
 	}
-	// Consumer 可能正在执行订单状态迁移或材料缓存 DEL，必须先停消息入口，
-	// 再关闭 MySQL/Redis；否则优雅退出反而会制造一次可避免的处理中断。
-	mq.StopConsumer()
+	mq.StopConsumers()
 	mq.StopProducter()
 	if a.store != nil {
 		a.store.CloseGiftDB()

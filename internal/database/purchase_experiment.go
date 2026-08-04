@@ -69,7 +69,7 @@ type PurchaseLabOutbox struct {
 func (PurchaseLabOutbox) TableName() string { return "purchase_lab_outbox" }
 
 // PurchaseCacheInvalidation 是 RocketMQ 中唯一允许的材料缓存失效消息。
-// Consumer 只接受 event_id/material_id，不能携带任意 Redis key 或命令。
+// 缓存失效 Consumer 只接受 event_id/material_id，不能携带任意 Redis key 或命令。
 type PurchaseCacheInvalidation struct {
 	EventID    string `json:"eventId"`
 	MaterialID int    `json:"materialId"`
@@ -296,14 +296,15 @@ func (s *Store) UpdatePurchaseOrderLatency(requestID string, latencyMS float64) 
 	return nil
 }
 
-// RecoverPurchaseOutbox 将发布中断点恢复为可重试状态。
-// 如果消息已经发出但状态尚未写回，恢复后会重复发送；Consumer 的幂等 DEL 负责兜底。
+// RecoverPurchaseOutbox 将发布或消费完成确认中断的事件恢复为可重试状态。
+// publishing 可能是发送后尚未写回；published 可能是旧 Consumer Group 尚未消费或 DEL 后尚未标记完成。
+// 两者都允许重新发布，因为缓存失效 Consumer 会幂等 DEL，completed/cancelled 终态不会进入恢复范围。
 func (s *Store) RecoverPurchaseOutbox() error {
 	if err := s.db.Model(&PurchaseLabOutbox{}).
-		Where("status = ?", PurchaseOutboxPublishing).
+		Where("status IN ?", []string{PurchaseOutboxPublishing, PurchaseOutboxPublished}).
 		Updates(map[string]any{
 			"status":        PurchaseOutboxRetry,
-			"last_error":    "publisher restarted before status confirmation",
+			"last_error":    "publisher or consumer completion was not confirmed before restart",
 			"next_retry_at": time.Now(),
 			"retry_count":   gorm.Expr("retry_count + 1"),
 		}).Error; err != nil {
@@ -380,7 +381,7 @@ func (s *Store) MarkPurchaseOutboxPublishFailed(eventID string, retryAt time.Tim
 	return nil
 }
 
-// MarkPurchaseOutboxInvalidated 是 Consumer 的幂等完成动作。
+// MarkPurchaseOutboxInvalidated 是缓存失效 Consumer 的幂等完成动作。
 // completed/cancelled 重复消息不会改变结果，避免 MQ 重投污染事件状态。
 func (s *Store) MarkPurchaseOutboxInvalidated(eventID string, invalidatedAt time.Time) error {
 	if err := s.db.Model(&PurchaseLabOutbox{}).

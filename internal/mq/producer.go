@@ -152,7 +152,7 @@ func SendCreateOrder(order database.Order) error {
 }
 
 // SendPurchaseCacheInvalidation 发布受控的材料详情缓存失效事件。
-// 消息只包含 event_id/material_id；Consumer 自己生成 Redis key，不能被消息注入任意命令。
+// 消息只包含 event_id/material_id；缓存失效 Consumer 自己生成 Redis key，不能被消息注入任意命令。
 func SendPurchaseCacheInvalidation(command database.PurchaseCacheInvalidation) error {
 	if !Enabled() {
 		return fmt.Errorf("rocketmq disabled: purchase cache invalidation cannot be published")

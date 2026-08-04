@@ -48,7 +48,7 @@ Windows、macOS 和 Linux 都只需配置“查询潮汐”并开始实验，不
 然后按页面顺序完成四件事：
 
 1. 从首页进入材料情报店（`/material-shop`），围绕唯一开放的实验货物 `ARC-004 · 星髓` 直接选择“配置查询潮汐”或“配置购买实验”。前厅不再提供单次查询分支；两个入口共享材料语境，但互不构成启动前置条件。由于共用库存与缓存，不应并行运行。其他材料数据仍保留在后端与兼容映射中。
-2. 查询分支在店外选择 Direct、查询潮汐和魔法通路模式。配置页只显示 Runner 的启动前 `wrk2 -c` 预估并保存实验计划，不创建任务。进入 `/lab` 后，页面先完成可见场景渲染并收到指标 SSE 的首个权威快照，随后才调用 `/api/loadtests`；任务创建响应会立即显示本轮最终锁定的 `-c`。实验期间通过 SSE 观察服务端 SQL、连接池与缓存状态，最终对比表分别冻结目标/实际速率、目标完成率、`-c` 配置、实际请求延迟、需求侧延迟、Socket Errors 和 Error Rate。购买分支先在店外选择同步失效或 Outbox + MQ，并明确展示固定的 150 个唯一请求、12 个服务端并发槽和 20 QPS 观察探针；确认后进入 `/purchase-lab`，仍由用户明确点击才开始真实执行。购买页在 POST 返回前轮询真实批次进度，先推进 `Purchase Tasks -> Service -> MySQL Transaction -> Response`；事务提交后才展开 `Outbox Publisher -> MQ -> Consumer -> Redis DEL`。Publisher 每 1 秒真实扫描一次，页面直接显示后端提供的扫描次数与上/下次扫描时间。
+2. 查询分支在店外选择 Direct、查询潮汐和魔法通路模式。配置页只显示 Runner 的启动前 `wrk2 -c` 预估并保存实验计划，不创建任务。进入 `/lab` 后，页面先完成可见场景渲染并收到指标 SSE 的首个权威快照，随后才调用 `/api/loadtests`；任务创建响应会立即显示本轮最终锁定的 `-c`。实验期间通过 SSE 观察服务端 SQL、连接池与缓存状态，最终对比表分别冻结目标/实际速率、目标完成率、`-c` 配置、实际请求延迟、需求侧延迟、Socket Errors 和 Error Rate。购买分支先在店外选择同步失效或 Outbox + MQ，并明确展示固定的 150 个唯一请求、12 个服务端并发槽和 20 QPS 观察探针；确认后进入 `/purchase-lab`，仍由用户明确点击才开始真实执行。购买页在 POST 返回前轮询真实批次进度，始终保留完整流程骨架，只高亮当前真实节点；事务提交后才激活 `Outbox Publisher -> MQ(PURCHASE_CACHE_INVALIDATE) -> 缓存失效 Consumer -> Redis DEL` 支线。当前步骤用“发生 / 原因 / 证据 / 接下来”四块稳定讲解，实时计数不会反复换掉正文；真实执行结束后默认停在回放第 1 步，自动播放时 1x 每步停留 6 秒。Publisher 每 1 秒真实扫描一次，页面直接显示后端提供的扫描次数与上/下次扫描时间。
 3. 唤醒 Redis 记忆水晶。第一次查询真实发生 `MISS -> 4 SQL -> SET DTO`，后续直接命中最终 JSON。
 4. 切换 Cached 并使用相同查询潮汐与通路配置再次点击，查看缓存命中和 MySQL 回源差异。
 
@@ -227,11 +227,13 @@ stateDiagram-v2
 
 ## RocketMQ Topics
 
-| Topic | 类型 | 职责 |
-|---|---|---|
-| `CREATE_ORDER` | 普通消息 | Redis 准入后异步创建 MySQL 待支付订单，缓冲数据库写峰值 |
-| `CANCEL_ORDER` | 延迟消息 | 支付窗口到期后触发状态检查和库存释放 |
-| `PURCHASE_CACHE_INVALIDATE` | 普通消息 | 发布购买实验的材料 DTO 缓存失效事件；Consumer 幂等执行 DEL |
+| Topic | 类型 | 职责 | 处理者 |
+|---|---|---|---|
+| `CREATE_ORDER` | 普通消息 | Redis 准入后异步创建 MySQL 待支付订单，缓冲数据库写峰值 | 订单 Consumer（group `lottery`） |
+| `CANCEL_ORDER` | 延迟消息 | 支付窗口到期后触发状态检查和库存释放 | 订单 Consumer（group `lottery`） |
+| `PURCHASE_CACHE_INVALIDATE` | 普通消息 | 发布购买实验的材料 DTO 缓存失效事件；幂等执行 DEL | 缓存失效 Consumer（group `lottery-purchase-cache`） |
+
+Topic 是消息类别，像信箱，不等于 Consumer，也不等于一条物理队列。当前三个 Topic 由两个独立“办事员”处理：订单 Consumer 负责创建和取消订单，缓存失效 Consumer 只负责删缓存；一个 Topic 内部还可以有多个 MessageQueue 分区。
 
 普通消息使用的是主流 MQ 共有的异步解耦、缓冲削峰和至少一次投递语义；延迟取消才使用 RocketMQ 的延迟消息能力。
 

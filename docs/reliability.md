@@ -159,7 +159,7 @@ Redis 的 `gift_cache_all_stock` 在该模式中只是读快照，不参与库�
 -> Redis Lua 原子扣库存并写 stock_acquired
 -> CANCEL_ORDER 延迟消息
 -> CREATE_ORDER 普通消息
--> Consumer 创建 MySQL pending_payment 账本
+-> 订单 Consumer 创建 MySQL pending_payment 账本
 -> 支付或取消
 ```
 
@@ -183,7 +183,7 @@ porder_10001 = 3|cancelled
 关键边界：
 
 - 获取库存：Lua 原子执行防重、检查库存、扣减、写 `stock_acquired`。
-- 异步落单：Consumer 幂等创建 MySQL `pending_payment`，随后推进 Redis 状态。
+- 异步落单：订单 Consumer 幂等创建 MySQL `pending_payment`，随后推进 Redis 状态。
 - 支付：Redis Lua 先裁决 `pending_payment -> paid`，再推进 MySQL 最终账本。
 - 取消：Redis Lua 裁决非终态 `-> cancelled` 并只增加一次库存，再写 MySQL 最终账本。
 - Redis 中保留 `paid/cancelled` 到 TTL，迟到的支付或取消可以识别终态，不能依赖“Key 不存在”猜测结果。
@@ -191,11 +191,14 @@ porder_10001 = 3|cancelled
 
 ## MQ 消费语义
 
-Consumer 同时订阅：
+系统启动两个独立的 SimpleConsumer，并使用不同 Consumer Group：
 
-- `CREATE_ORDER`：普通异步落单。
-- `CANCEL_ORDER`：延迟超时检查。
-- `PURCHASE_CACHE_INVALIDATE`：购买实验材料 DTO 缓存失效。
+- 订单 Consumer（group `lottery`）：只订阅 `CREATE_ORDER` 普通异步落单和 `CANCEL_ORDER` 延迟超时检查。
+- 缓存失效 Consumer（group `lottery-purchase-cache`）：只订阅 `PURCHASE_CACHE_INVALIDATE` 材料 DTO 缓存失效。
+
+Topic 是消息类别，不等于 Consumer，也不等于一条物理队列。两个 Consumer 各自拉取、处理和 Ack；
+缓存失效消息不再轮流经过订单 Topic，因此空的订单 Topic 不会拖慢材料缓存失效。同一 Consumer Group
+绝不能运行不同订阅集合，启动时会校验两个 Group 和三个 Topic 均未错误重名。
 
 处理原则：
 
@@ -245,7 +248,7 @@ porder state = pending_payment
 
 如果订单已经 `cancelled`，迟到的 `CREATE_ORDER` 只能确认终态，不能执行 `cancelled -> pending_payment`。
 
-### Consumer 落库成功但 Ack 失败
+### 订单 Consumer 落库成功但 Ack 失败
 
 消息会重投。唯一索引和状态条件更新使第二次消费返回已有订单，不重复建立订单。
 
@@ -309,20 +312,31 @@ Outbox Worker
 -> publish PURCHASE_CACHE_INVALIDATE
 -> mark published
 
-Consumer
+缓存失效 Consumer
 -> validate event_id + material_id
 -> idempotent DEL archive:material-detail:v2:{materialId}
 -> mark completed
+-> Ack
 ```
 
 订单、库存和 Outbox 在同一事务中提交；Outbox 唯一键失败会回滚整笔购买。Worker 以真实 1 秒周期扫描，批次关键路径结束后从一个完整周期重新计时；API 快照暴露 `publisherScanIntervalMs`、`publisherScanCount`、`publisherLastScanAt` 和 `publisherNextScanAt`，前端倒计时不自行推测扫描事实。Worker 使用
 `pending -> publishing -> published`，发布失败进入 `retry` 并指数退避；进程重启会把遗留
-`publishing` 恢复为 `retry`。消息可能在数据库写回前已经被 Consumer 处理，因此 Consumer 的
-`completed` 是终态，发布者不能把它倒退为 `published`。
+`publishing` 和尚未确认消费完成的 `published` 恢复为 `retry`。这既覆盖发送后写回前崩溃，也防止切换到
+缓存失效专用 Consumer Group 时遗留事件永久悬挂；重复发布由幂等 DEL 兜底。消息可能在发布状态写回前
+已经被缓存失效 Consumer 处理，因此 `completed` 是终态，发布者不能把它倒退为 `published`。
 
-Redis 删除失败时 Consumer 不 Ack，并记录 `retry_count/last_error`；RocketMQ 重投后再次 DEL。
-DEL 天然幂等，`completed` 事件收到重复消息时直接成功返回。SimpleConsumer 每次最多拉取 16 条消息，
-随后逐条执行业务处理与 Ack；批量拉取只消除 100 个事件被长轮询串行放大的等待，不改变单条失败不 Ack 的语义。
+Redis 删除失败时缓存失效 Consumer 不 Ack，并记录 `retry_count/last_error`；RocketMQ 重投后再次 DEL。
+DEL 天然幂等，`completed` 事件收到重复消息时直接成功返回。缓存失效 Consumer 只从
+`PURCHASE_CACHE_INVALIDATE` 拉取消息，每批最多 16 条，随后逐条校验事件、执行 DEL、标记 completed 并 Ack；
+单条失败仍不 Ack。两个 Consumer 都使用 5 秒长轮询：消息到达时 Broker 会立即返回，5 秒只是空队列的最长挂起时间；
+过短轮询会被 RocketMQ Proxy 拒绝。非空队列错误会退避 1 秒再重试，避免 Broker/网络异常时形成忙循环并刷爆日志。
+`Receive` 的 10 秒参数是消息不可见期，不是拉取等待。
+
+`cacheInvalidationLatencyMs` 统计 `created_at -> invalidated_at`，包含 Outbox 等待扫描、发布、MQ 排队、
+缓存失效 Consumer 拉取、DEL 和完成状态回写；它是整段可靠失效链路耗时，不是 Redis `DEL` 命令耗时。
+
+订单 Group 沿用 `lottery` 以保留原订单消费位点；缓存失效使用新 Group `lottery-purchase-cache`。
+升级时必须先停旧 app 再启动新 app，不能让同一 `lottery` Group 同时运行旧的三 Topic 订阅和新的订单双 Topic 订阅。
 
 主页面固定提交 150 个唯一购买请求，每个请求购买 1 件；服务端白名单上限同样是 150，不接受 URL、
 脚本、Topic 或任意命令。请求由服务端同时释放，但每一笔仍复用原有条件扣库存、订单幂等和
@@ -332,13 +346,18 @@ DEL 天然幂等，`completed` 事件收到重复消息时直接成功返回。S
 调用真实 Cached 查询接口作为持续库存探针，在响应后读取 MySQL 权威库存判断旧读并记录最大观测窗口。
 技术节点只读取 run 进度、trace、HTTP 状态、Publisher 扫描时钟及 Outbox 时间字段，不用定时器伪造业务完成。
 
-购买页把“实时执行流”和“保存 trace 回放”明确分开：实时阶段先显示同步请求关键路径，再在提交后
-显示 Outbox Publisher、MQ、Consumer、Redis DEL 的异步支线，并让 20 QPS 探针持续更新 Redis 值、
-MySQL 值、旧值标记和最大观测窗口。全部结束后，前端把 trace、Outbox 时间证据、Publisher 扫描时钟、
-探针样本及最终指标冻结为本轮回放记录。六步时间线的播放、暂停、前进、后退、重新播放和结果跳转只在这份前端记录上移动游标，
-不会重新调用 `/api/purchase-lab/:id/run`、重置库存或发送 MQ；只有“重新运行当前方案”和
-“使用另一方案运行”会开始新一轮真实执行。当前回放位置及两个方案各自的完整记录保存在
-`sessionStorage`，用于刷新前的恢复，不承担服务端账本或跨设备持久化职责。
+购买页把“实时执行流”和“保存 trace 回放”明确分开。完整请求路径与异步失效支线始终可见；尚未进入的支线只降亮度，
+不再折叠或突然展开。实时阶段只高亮当前节点，并让 20 QPS 探针持续更新 Redis 值、MySQL 值、旧值标记和最大观测窗口。
+“当前步骤讲解”固定分为发生了什么、为什么这样做、真实证据和接下来四块：前三块教学文字只随业务语义阶段切换，
+高频计数只更新不参与屏幕朗读的证据块，避免真实执行速度反复打断阅读。
+
+全部结束后，前端把 trace、Outbox 时间证据、Publisher 扫描时钟、探针样本及最终指标冻结为本轮回放记录，
+默认停在六步时间线的第一步，由用户选择下一步或播放；同步与异步方案共用嵌入执行流顶部的回放控制条，
+浏览长流程时控制条保持可见。自动回放在 1x 下每步停留 6 秒。
+播放、暂停、前进、后退、重新播放和结果跳转只在这份前端记录上移动游标，不会重新调用
+`/api/purchase-lab/:id/run`、重置库存或发送 MQ；只有“重新运行当前方案”和“使用另一方案运行”会开始
+新一轮真实执行。当前回放位置及两个方案各自的完整记录保存在 `sessionStorage`，用于刷新前的恢复，
+不承担服务端账本或跨设备持久化职责。
 
 旧的错误顺序竞态夹具已经完全移除。当前购买页只运行以上两条真实写链路，不再维护第二份材料库存
 或专用 Redis 库存 Key。

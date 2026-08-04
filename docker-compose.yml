@@ -27,7 +27,8 @@ services:
       LOTTERY_MQ_CANCEL_TOPIC: CANCEL_ORDER
       LOTTERY_MQ_ORDER_TOPIC: CREATE_ORDER
       LOTTERY_MQ_PURCHASE_INVALIDATION_TOPIC: PURCHASE_CACHE_INVALIDATE
-      LOTTERY_MQ_CONSUMER_GROUP: lottery
+      LOTTERY_MQ_ORDER_CONSUMER_GROUP: lottery
+      LOTTERY_MQ_PURCHASE_CACHE_CONSUMER_GROUP: lottery-purchase-cache
       LOTTERY_COOKIE_DOMAIN: localhost
       LOTTERY_RATE_LIMIT_QPS: "800"
       LOTTERY_LOADTEST_RUNNER_URL: http://loadtest-runner:8090
@@ -143,8 +144,9 @@ services:
         for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
           if sh mqadmin updateTopic -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -t CANCEL_ORDER -a +message.type=DELAY &&
              sh mqadmin updateTopic -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -t CREATE_ORDER -a +message.type=NORMAL &&
-              sh mqadmin updateTopic -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -t PURCHASE_CACHE_INVALIDATE -a +message.type=NORMAL &&
-             sh mqadmin updateSubGroup -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -g lottery; then
+             sh mqadmin updateTopic -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -t PURCHASE_CACHE_INVALIDATE -a +message.type=NORMAL &&
+             sh mqadmin updateSubGroup -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -g lottery &&
+             sh mqadmin updateSubGroup -n rocketmq-namesrv:9876 -b rocketmq-broker:10911 -g lottery-purchase-cache; then
             exit 0;
           fi;
           sleep 2;

@@ -77,7 +77,8 @@ docs/                   # 设计和可靠性说明
 ## RocketMQ 注意事项
 
 - 不要移除 `rocket_client.go` 中对 client id / hostname 的兼容逻辑（曾因中文主机名导致 gRPC 报错）
-- 本地默认：普通落单 `CREATE_ORDER`、延迟取消 `CANCEL_ORDER`、consumer group `lottery`
+- 本地默认有两个独立 Consumer：订单 Consumer 使用 group `lottery`，只订阅普通落单 `CREATE_ORDER` 和延迟取消 `CANCEL_ORDER`；缓存失效 Consumer 使用 group `lottery-purchase-cache`，只订阅 `PURCHASE_CACHE_INVALIDATE`
+- 不同订阅集合绝不能复用 Consumer Group；Topic 是消息分类，不等于 Consumer，也不等于单条物理队列
 - 普通消息负责异步削峰；延迟消息只负责超时检查
 - MQ 入队成功只表示请求已受理，不表示订单已经支付
 - MQ 入队失败时，调用方必须立即 release Redis 资格
