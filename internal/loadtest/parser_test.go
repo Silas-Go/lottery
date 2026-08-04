@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseWrkOutput(t *testing.T) {
-	output := `Running 20s test @ http://app:5678/api/archives/2/cached
+	output := `Running 20s test @ http://app:5678/api/archives/4/cached
   4 threads and 96 connections
   Thread calibration: mean lat.: 1.423ms, rate sampling interval: 10ms
   Latency Distribution (HdrHistogram - Recorded Latency)

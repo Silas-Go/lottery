@@ -16,10 +16,15 @@ const materialDetailCachePrefix = "archive:material-detail:v2:"
 const (
 	materialTradeFactsPerMaterial  = 2500
 	materialReviewFactsPerMaterial = 400
-	starMarrowMaterialID           = 4
+	// StarMarrowMaterialID 是查询、购买和抢购实验共享的唯一业务材料主键。
+	StarMarrowMaterialID = 4
 )
 
-var starMarrowCatalogIDs = []int{starMarrowMaterialID, 401, 402, 403}
+var (
+	starMarrowCatalogIDs = []int{StarMarrowMaterialID, 401, 402, 403}
+	starMarrowRarityIDs  = []int{1, 4}
+	starMarrowSourceIDs  = []int{4}
+)
 
 // ErrMaterialArchiveNotFound 让 service 能把“没有这份材料档案”稳定映射成 404。
 var ErrMaterialArchiveNotFound = errors.New("material archive not found")
@@ -250,36 +255,35 @@ func (s *Store) EnsureMaterialReadModelSchema() error {
 	return nil
 }
 
-// removeLegacyBusinessMaterials 把旧数据卷中的其他商品及其事实数据迁出业务目录。
+// removeLegacyBusinessMaterials 把旧数据卷中的其他商品、事实与孤儿字典迁出业务目录。
 // 星髓详情仍需要 401～403 三种组成材料完成真实 JOIN，因此白名单不是只有主商品 ID 4。
-// Redis 缓存先清空、MySQL 后提交：如果数据库清理失败，丢失的只是可重建副本；反向顺序会让
-// 已删除商品的旧 DTO 在缓存清理失败后继续可读，破坏“全项目只展示星髓”的边界。
+// Redis 只保留星髓 DTO，MySQL 清理无条件执行，避免旧 materials 已删后 rarity/source 孤儿行被跳过。
 func (s *Store) removeLegacyBusinessMaterials() error {
-	var legacyCount int64
-	if err := s.db.Model(&MaterialCatalog{}).
-		Where("id NOT IN ?", starMarrowCatalogIDs).
-		Count(&legacyCount).Error; err != nil {
-		return fmt.Errorf("count legacy business materials: %w", err)
+	keepCache := map[string]struct{}{
+		materialDetailCacheKey(StarMarrowMaterialID): {},
 	}
-	if legacyCount == 0 {
-		return nil
-	}
-	if err := ClearMaterialDetailCache(); err != nil {
-		return fmt.Errorf("clear material cache before single-product migration: %w", err)
+	if err := deleteRedisKeysExcept("archive:material-detail:*", keepCache); err != nil {
+		return fmt.Errorf("remove legacy material caches: %w", err)
 	}
 
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("material_id <> ? OR component_material_id NOT IN ?", starMarrowMaterialID, starMarrowCatalogIDs).
+		if err := tx.Where("material_id <> ? OR component_material_id NOT IN ?", StarMarrowMaterialID, starMarrowCatalogIDs).
 			Delete(&MaterialComponent{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("material_id <> ?", starMarrowMaterialID).Delete(&MaterialTrade{}).Error; err != nil {
+		if err := tx.Where("material_id <> ?", StarMarrowMaterialID).Delete(&MaterialTrade{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("material_id <> ?", starMarrowMaterialID).Delete(&MaterialReview{}).Error; err != nil {
+		if err := tx.Where("material_id <> ?", StarMarrowMaterialID).Delete(&MaterialReview{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("id NOT IN ?", starMarrowCatalogIDs).Delete(&MaterialCatalog{}).Error
+		if err := tx.Where("id NOT IN ?", starMarrowCatalogIDs).Delete(&MaterialCatalog{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id NOT IN ?", starMarrowRarityIDs).Delete(&MaterialRarity{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id NOT IN ?", starMarrowSourceIDs).Delete(&MaterialSource{}).Error
 	}); err != nil {
 		return fmt.Errorf("remove legacy business materials: %w", err)
 	}
@@ -340,8 +344,8 @@ func (s *Store) ListMaterialSummaries() ([]MaterialSummaryDTO, error) {
 		       r.label AS rarity
 		FROM materials m
 		JOIN material_rarities r ON r.id = m.rarity_id
-		WHERE m.is_primary = TRUE
-		ORDER BY m.id`).Scan(&summaries).Error
+		WHERE m.id = ? AND m.is_primary = TRUE
+		ORDER BY m.id`, StarMarrowMaterialID).Scan(&summaries).Error
 	if err != nil {
 		return nil, fmt.Errorf("list material summaries: %w", err)
 	}
@@ -352,11 +356,11 @@ func (s *Store) ListMaterialSummaries() ([]MaterialSummaryDTO, error) {
 // 四次查询分别承担一对一基础 JOIN、组成列表、交易聚合和评分聚合；不使用 SLEEP 人为制造差距。
 func (s *Store) GetMaterialDetail(id int) (*MaterialDetailDTO, int, error) {
 	type baseRow struct {
-		ID, Price, Stock, RarityRank                    int
-		Name, Title, Sigil, Accent, Summary, Oath       string
-		Attribute, Usage, Risk                          string
-		RarityCode, RarityLabel                         string
-		SourceCode, SourceName, SourceRegion            string
+		ID, Price, Stock, RarityRank              int
+		Name, Title, Sigil, Accent, Summary, Oath string
+		Attribute, Usage, Risk                    string
+		RarityCode, RarityLabel                   string
+		SourceCode, SourceName, SourceRegion      string
 	}
 	var base baseRow
 	queries := 1
@@ -368,7 +372,7 @@ func (s *Store) GetMaterialDetail(id int) (*MaterialDetailDTO, int, error) {
 		FROM materials m
 		JOIN material_rarities r ON r.id = m.rarity_id
 		JOIN material_sources s ON s.id = m.source_id
-		WHERE m.id = ?`, id).Scan(&base).Error
+		WHERE m.id = ? AND m.is_primary = TRUE`, id).Scan(&base).Error
 	if err != nil {
 		return nil, queries, fmt.Errorf("read material base %d: %w", id, err)
 	}

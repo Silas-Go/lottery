@@ -6,8 +6,9 @@ import (
 )
 
 func TestCreateTempOrder(t *testing.T) {
+	requireIntegrationStore(t)
 	uid := 1
-	gid := 1
+	gid := database.StarMarrowMaterialID
 	err := database.CreateTempOrder(uid, gid)
 	if err != nil {
 		t.Error(err)
@@ -20,8 +21,9 @@ func TestCreateTempOrder(t *testing.T) {
 }
 
 func TestDeleteTempOrder(t *testing.T) {
+	requireIntegrationStore(t)
 	uid := 1
-	gid := 1
+	gid := database.StarMarrowMaterialID
 	err := database.CreateTempOrder(uid, gid)
 	if err != nil {
 		t.Error(err)

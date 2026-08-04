@@ -112,6 +112,13 @@
         return selectedCode && materials[selectedCode] ? materials[selectedCode].id : 0;
     }
 
+    function materialCodeForId(id) {
+        var numericId = Number(id);
+        return Object.keys(materials).find(function (code) {
+            return materials[code].id === numericId;
+        }) || "";
+    }
+
     function crowdCommand() {
         var experiment = experimentState.get();
         var tier = crowdTiers[crowdTierID];
@@ -758,7 +765,10 @@
             }
             var task = await response.json();
             if (!selectedCode) {
-                applySelectedMaterial("ARC-" + String(task.archiveId).padStart(3, "0"));
+                var taskMaterialCode = materialCodeForId(task.archiveId);
+                if (taskMaterialCode) {
+                    applySelectedMaterial(taskMaterialCode);
+                }
             }
             if (experimentState.get().mode !== task.mode) {
                 experimentState.set({ mode: task.mode, cacheTemperature: "cold" });

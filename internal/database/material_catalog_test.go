@@ -7,7 +7,7 @@ func TestDefaultMaterialCatalogOnlyExposesStarMarrow(t *testing.T) {
 		t.Fatalf("primary material count=%d, want=1", len(defaultMaterialCatalog))
 	}
 	material := defaultMaterialCatalog[0]
-	if material.ID != starMarrowMaterialID || material.Code != "star-marrow" || material.Name != "星髓" || !material.IsPrimary {
+	if material.ID != StarMarrowMaterialID || material.Code != "star-marrow" || material.Name != "星髓" || !material.IsPrimary {
 		t.Fatalf("unexpected primary material: %+v", material)
 	}
 
@@ -17,7 +17,7 @@ func TestDefaultMaterialCatalogOnlyExposesStarMarrow(t *testing.T) {
 			len(defaultComponentMaterials), len(defaultMaterialComponents), len(wantComponents))
 	}
 	for _, relation := range defaultMaterialComponents {
-		if relation.MaterialID != starMarrowMaterialID || !wantComponents[relation.ComponentMaterialID] {
+		if relation.MaterialID != StarMarrowMaterialID || !wantComponents[relation.ComponentMaterialID] {
 			t.Fatalf("unexpected star marrow component relation: %+v", relation)
 		}
 	}

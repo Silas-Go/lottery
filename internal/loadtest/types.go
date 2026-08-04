@@ -7,6 +7,7 @@ import (
 
 const (
 	ExperimentCacheAsideRead = "cache-aside-read"
+	StarMarrowArchiveID      = 4
 	MaxDurationSeconds       = 30
 	DefaultDurationSeconds   = 30
 )
@@ -151,8 +152,8 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 	if request.Experiment != ExperimentCacheAsideRead {
 		return TierConfig{}, "experiment must be cache-aside-read"
 	}
-	if request.ArchiveID < 1 || request.ArchiveID > 4 {
-		return TierConfig{}, "archiveId must be between 1 and 4"
+	if request.ArchiveID != StarMarrowArchiveID {
+		return TierConfig{}, "archiveId must be 4 (star marrow)"
 	}
 	if request.Mode != "direct" && request.Mode != "cached" {
 		return TierConfig{}, "mode must be direct or cached"

@@ -33,7 +33,7 @@ type Gift struct {
 // 名称和价格与 materials 聚合读模型保持一致；count 是独立抢购活动的库存基线，
 // 不复用购买实验的 materials.stock，避免两个实验互相污染。
 var defaultSeckillMaterialCatalog = []Gift{
-	{Id: 4, Name: "星髓", Description: "从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。", Picture: "img/star-marrow-relic.png", Price: 5200, Count: 300},
+	{Id: StarMarrowMaterialID, Name: "星髓", Description: "从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。", Picture: "img/star-marrow-relic.png", Price: 5200, Count: 300},
 }
 
 // EnsureSeckillMaterialCatalog 为不会重跑 init.sql 的老数据卷迁移限量材料目录。

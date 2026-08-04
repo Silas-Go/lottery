@@ -41,6 +41,9 @@ func (s *ArchiveService) List() ([]database.MaterialSummaryDTO, *AppError) {
 
 // ReadDirect 代表旧规矩：每次都重新 JOIN 基础资料并聚合组成、交易和评分事实。
 func (s *ArchiveService) ReadDirect(id int) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError) {
+	if appErr := validateArchiveMaterialID(id); appErr != nil {
+		return nil, ArchiveSourceMySQL, 0, appErr
+	}
 	start := time.Now()
 	metrics.RecordArchiveRequest(metrics.ArchivePathDirect)
 	archive, queries, appErr := s.readMySQL(id, metrics.ArchivePathDirect)
@@ -52,6 +55,9 @@ func (s *ArchiveService) ReadDirect(id int) (*database.MaterialDetailDTO, Archiv
 // fillMu 只合并本进程同一时刻的冷缓存回源，防止第一波并发把一次 MISS 放大成缓存击穿；
 // 多实例生产环境应改用 singleflight/分布式互斥或逻辑过期等专门治理方案。
 func (s *ArchiveService) ReadCached(id int) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError) {
+	if appErr := validateArchiveMaterialID(id); appErr != nil {
+		return nil, ArchiveSourceCacheMiss, 0, appErr
+	}
 	start := time.Now()
 	metrics.RecordArchiveRequest(metrics.ArchivePathCached)
 
@@ -99,6 +105,13 @@ func (s *ArchiveService) ReadCached(id int) (*database.MaterialDetailDTO, Archiv
 	}
 	metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), false)
 	return archive, ArchiveSourceCacheMiss, queries, nil
+}
+
+func validateArchiveMaterialID(id int) *AppError {
+	if id == database.StarMarrowMaterialID {
+		return nil
+	}
+	return NewAppError(CodeArchiveNotFound, "材料档案中没有这一页", database.ErrMaterialArchiveNotFound, "archive_id", id)
 }
 
 func (s *ArchiveService) readMySQL(id int, path string) (*database.MaterialDetailDTO, int, *AppError) {

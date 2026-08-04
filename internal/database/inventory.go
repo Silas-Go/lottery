@@ -41,6 +41,7 @@ func (s *Store) InitGiftInventory() error {
 	}
 
 	ids := make([]any, 0, len(gifts))
+	currentStockKeys := make(map[string]struct{}, len(gifts))
 	for _, gift := range gifts {
 		sold := completedCounts[gift.Id] + unpersistedAdmissionCounts[gift.Id]
 		remaining := gift.Count - sold
@@ -50,12 +51,18 @@ func (s *Store) InitGiftInventory() error {
 		}
 
 		key := INVENTORY_PREFIX + strconv.Itoa(gift.Id)
+		currentStockKeys[key] = struct{}{}
 		if err := GiftRedis.Set(key, remaining, 0).Err(); err != nil {
 			slog.Error("set gift count to redis failed", "gift_id", gift.Id, "key", key, "error", err)
 			return fmt.Errorf("set gift %d inventory to redis: %w", gift.Id, err)
 		}
 		ids = append(ids, gift.Id)
 		slog.Info("gift inventory restored to redis", "activity_id", DefaultActivityID, "gift_id", gift.Id, "initial", gift.Count, "sold", sold, "remaining", remaining)
+	}
+	// gift_ids 是读取权威，但旧 gift_count_* 仍会占据数据卷并误导人工排查；
+	// 每次启动只保留当前 MySQL 目录对应的库存 key。
+	if err := deleteRedisKeysExcept(INVENTORY_PREFIX+"*", currentStockKeys); err != nil {
+		return fmt.Errorf("remove unregistered gift inventory: %w", err)
 	}
 
 	// 重建奖品 ID 注册表（全量替换，保证与 MySQL 配置一致）。

@@ -36,7 +36,7 @@ func TestRunnerAllowsOnlyOneActiveTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := CreateRequest{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "direct", Tier: TierVisitors}
+	input := CreateRequest{Experiment: ExperimentCacheAsideRead, ArchiveID: StarMarrowArchiveID, Mode: "direct", Tier: TierVisitors}
 	first, apiErr := runner.Start(input)
 	if apiErr != nil {
 		t.Fatal(apiErr)
@@ -77,7 +77,7 @@ func TestAutoConnectionsUseConservativeBaseline(t *testing.T) {
 		1500: 500,
 	}
 	for rate, want := range expected {
-		got, _ := runner.resolveAutoConnectionsLocked(CreateRequest{ArchiveID: 2, Mode: "direct"}, rate)
+		got, _ := runner.resolveAutoConnectionsLocked(CreateRequest{ArchiveID: StarMarrowArchiveID, Mode: "direct"}, rate)
 		if got != want {
 			t.Fatalf("rate %d: expected %d connections, got %d", rate, want, got)
 		}
@@ -88,7 +88,7 @@ func TestConnectionPlanUsesRunnerEstimatorWithoutCreatingTask(t *testing.T) {
 	runner := &Runner{records: make(map[string]*taskRecord)}
 	plan, apiErr := runner.PlanConnections(CreateRequest{
 		Experiment:     ExperimentCacheAsideRead,
-		ArchiveID:      4,
+		ArchiveID:      StarMarrowArchiveID,
 		Mode:           "direct",
 		Rate:           800,
 		ConnectionMode: ConnectionModeAuto,
@@ -108,7 +108,7 @@ func TestRunnerHTTPReturnsConnectionPlan(t *testing.T) {
 	runner := &Runner{records: make(map[string]*taskRecord)}
 	body, err := json.Marshal(CreateRequest{
 		Experiment:     ExperimentCacheAsideRead,
-		ArchiveID:      4,
+		ArchiveID:      StarMarrowArchiveID,
 		Mode:           "cached",
 		Rate:           300,
 		ConnectionMode: ConnectionModeManual,
@@ -157,7 +157,7 @@ func TestRunnerHTTPCreateReturnsLockedConnectionConfiguration(t *testing.T) {
 	}
 	body, err := json.Marshal(CreateRequest{
 		Experiment:     ExperimentCacheAsideRead,
-		ArchiveID:      4,
+		ArchiveID:      StarMarrowArchiveID,
 		Mode:           "direct",
 		Rate:           800,
 		ConnectionMode: ConnectionModeAuto,
@@ -191,7 +191,7 @@ func TestAutoConnectionsReuseSameConfigurationForBothPaths(t *testing.T) {
 			"direct": {
 				Task: Task{
 					ID:             "direct",
-					ArchiveID:      2,
+					ArchiveID:      StarMarrowArchiveID,
 					Mode:           "direct",
 					Status:         StatusCompleted,
 					ConnectionMode: ConnectionModeAuto,
@@ -206,7 +206,7 @@ func TestAutoConnectionsReuseSameConfigurationForBothPaths(t *testing.T) {
 		order: []string{"direct"},
 	}
 	connections, _ := runner.resolveAutoConnectionsLocked(
-		CreateRequest{ArchiveID: 2, Mode: "cached"},
+		CreateRequest{ArchiveID: StarMarrowArchiveID, Mode: "cached"},
 		1500,
 	)
 	if connections != 500 {
@@ -217,13 +217,13 @@ func TestAutoConnectionsReuseSameConfigurationForBothPaths(t *testing.T) {
 func TestAutoConnectionsUseSlowerActualRequestHistory(t *testing.T) {
 	runner := &Runner{
 		records: map[string]*taskRecord{
-			"direct": completedHistoricalTask("direct", 2, 800, 220),
-			"cached": completedHistoricalTask("cached", 2, 800, 4),
+			"direct": completedHistoricalTask("direct", StarMarrowArchiveID, 800, 220),
+			"cached": completedHistoricalTask("cached", StarMarrowArchiveID, 800, 4),
 		},
 		order: []string{"direct", "cached"},
 	}
 	connections, _ := runner.resolveAutoConnectionsLocked(
-		CreateRequest{ArchiveID: 2, Mode: "direct"},
+		CreateRequest{ArchiveID: StarMarrowArchiveID, Mode: "direct"},
 		800,
 	)
 	if connections != 300 {

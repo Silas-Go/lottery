@@ -48,7 +48,7 @@ func TestQueryTideWhitelist(t *testing.T) {
 func TestCreateRequestAcceptsControlledConnectionModes(t *testing.T) {
 	auto := CreateRequest{
 		Experiment:     ExperimentCacheAsideRead,
-		ArchiveID:      2,
+		ArchiveID:      StarMarrowArchiveID,
 		Mode:           "direct",
 		Rate:           800,
 		ConnectionMode: ConnectionModeAuto,
@@ -75,18 +75,19 @@ func TestCreateRequestAcceptsControlledConnectionModes(t *testing.T) {
 
 func TestCreateRequestRejectsUncontrolledInputs(t *testing.T) {
 	tests := []CreateRequest{
-		{Experiment: "shell", ArchiveID: 2, Mode: "cached", Tier: TierVisitors},
+		{Experiment: "shell", ArchiveID: StarMarrowArchiveID, Mode: "cached", Tier: TierVisitors},
+		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Tier: TierVisitors},
 		{Experiment: ExperimentCacheAsideRead, ArchiveID: 99, Mode: "cached", Tier: TierVisitors},
-		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "http://example.com", Tier: TierVisitors},
-		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Tier: TierID("custom")},
-		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Rate: 500},
-		{Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Tier: TierVisitors, Rate: 100},
+		{Experiment: ExperimentCacheAsideRead, ArchiveID: StarMarrowArchiveID, Mode: "http://example.com", Tier: TierVisitors},
+		{Experiment: ExperimentCacheAsideRead, ArchiveID: StarMarrowArchiveID, Mode: "cached", Tier: TierID("custom")},
+		{Experiment: ExperimentCacheAsideRead, ArchiveID: StarMarrowArchiveID, Mode: "cached", Rate: 500},
+		{Experiment: ExperimentCacheAsideRead, ArchiveID: StarMarrowArchiveID, Mode: "cached", Tier: TierVisitors, Rate: 100},
 		{
-			Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Rate: 800,
+			Experiment: ExperimentCacheAsideRead, ArchiveID: StarMarrowArchiveID, Mode: "cached", Rate: 800,
 			ConnectionMode: ConnectionModeAuto, Connections: 300,
 		},
 		{
-			Experiment: ExperimentCacheAsideRead, ArchiveID: 2, Mode: "cached", Rate: 800,
+			Experiment: ExperimentCacheAsideRead, ArchiveID: StarMarrowArchiveID, Mode: "cached", Rate: 800,
 			ConnectionMode: ConnectionModeManual, Connections: 64,
 		},
 	}

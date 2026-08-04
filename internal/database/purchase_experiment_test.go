@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const starMarrowMaterialID = database.StarMarrowMaterialID
+
 func purchaseIntegrationID(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
 }
@@ -34,15 +36,15 @@ func TestPurchaseExperimentSyncInvalidateSharesArchiveData(t *testing.T) {
 	lab := service.NewPurchaseLabService(store)
 	archive := service.NewArchiveService(store)
 	t.Cleanup(func() {
-		_, _ = lab.Reset(2)
+		_, _ = lab.Reset(starMarrowMaterialID)
 	})
 
-	baseline, appErr := lab.Reset(2)
+	baseline, appErr := lab.Reset(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("reset shared purchase fixture: %v", appErr)
 	}
 	requestID := purchaseIntegrationID("sync-shared")
-	run, appErr := lab.RunExperiment(context.Background(), 2, service.PurchaseExperimentRequest{
+	run, appErr := lab.RunExperiment(context.Background(), starMarrowMaterialID, service.PurchaseExperimentRequest{
 		RequestID: requestID, Strategy: service.PurchaseSyncInvalidate,
 		PurchaseCount: 1, QueryCount: 0,
 	})
@@ -56,11 +58,11 @@ func TestPurchaseExperimentSyncInvalidateSharesArchiveData(t *testing.T) {
 		t.Fatalf("sync invalidation must commit stock and delete DTO cache: %+v", run)
 	}
 
-	direct, _, _, appErr := archive.ReadDirect(2)
+	direct, _, _, appErr := archive.ReadDirect(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("read direct after purchase: %v", appErr)
 	}
-	cached, source, _, appErr := archive.ReadCached(2)
+	cached, source, _, appErr := archive.ReadCached(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("read cached after purchase: %v", appErr)
 	}
@@ -71,7 +73,7 @@ func TestPurchaseExperimentSyncInvalidateSharesArchiveData(t *testing.T) {
 		t.Fatalf("first cached read after sync DEL should refill from MySQL, source=%s", source)
 	}
 
-	retry, appErr := lab.RunExperiment(context.Background(), 2, service.PurchaseExperimentRequest{
+	retry, appErr := lab.RunExperiment(context.Background(), starMarrowMaterialID, service.PurchaseExperimentRequest{
 		RequestID: requestID, Strategy: service.PurchaseSyncInvalidate,
 		PurchaseCount: 1, QueryCount: 0,
 	})
@@ -93,15 +95,15 @@ func TestPurchaseExperimentOutboxConsumerIsIdempotent(t *testing.T) {
 	lab := service.NewPurchaseLabService(store)
 	archive := service.NewArchiveService(store)
 	t.Cleanup(func() {
-		_, _ = lab.Reset(3)
+		_, _ = lab.Reset(starMarrowMaterialID)
 	})
 
-	baseline, appErr := lab.Reset(3)
+	baseline, appErr := lab.Reset(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("reset outbox fixture: %v", appErr)
 	}
 	requestID := purchaseIntegrationID("outbox-idempotent")
-	run, appErr := lab.RunExperiment(context.Background(), 3, service.PurchaseExperimentRequest{
+	run, appErr := lab.RunExperiment(context.Background(), starMarrowMaterialID, service.PurchaseExperimentRequest{
 		RequestID: requestID, Strategy: service.PurchaseOutboxMQInvalidate,
 		PurchaseCount: 1, QueryCount: 0,
 	})
@@ -112,7 +114,7 @@ func TestPurchaseExperimentOutboxConsumerIsIdempotent(t *testing.T) {
 		t.Fatalf("order and outbox should commit together: %+v", run)
 	}
 	command := database.PurchaseCacheInvalidation{
-		EventID: run.Outbox[0].EventID, MaterialID: 3,
+		EventID: run.Outbox[0].EventID, MaterialID: starMarrowMaterialID,
 	}
 	if err := lab.ConsumeCacheInvalidation(command); err != nil {
 		t.Fatalf("consume invalidation: %v", err)
@@ -133,11 +135,11 @@ func TestPurchaseExperimentOutboxConsumerIsIdempotent(t *testing.T) {
 		t.Fatalf("consumer must delete shared cache without changing committed stock: %+v", completed)
 	}
 
-	direct, _, _, appErr := archive.ReadDirect(3)
+	direct, _, _, appErr := archive.ReadDirect(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("read direct after outbox invalidation: %v", appErr)
 	}
-	cached, source, _, appErr := archive.ReadCached(3)
+	cached, source, _, appErr := archive.ReadCached(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("read cached after outbox invalidation: %v", appErr)
 	}
@@ -156,16 +158,16 @@ func TestRecoverPurchaseOutboxRequeuesPublishedEvent(t *testing.T) {
 	ensurePurchaseExperimentFixtures(t)
 	lab := service.NewPurchaseLabService(store)
 	t.Cleanup(func() {
-		_, _ = lab.Reset(4)
+		_, _ = lab.Reset(starMarrowMaterialID)
 	})
-	if _, appErr := lab.Reset(4); appErr != nil {
+	if _, appErr := lab.Reset(starMarrowMaterialID); appErr != nil {
 		t.Fatalf("reset outbox recovery fixture: %v", appErr)
 	}
 
 	requestID := purchaseIntegrationID("outbox-recovery")
 	eventID := purchaseIntegrationID("outbox-recovery-event")
 	if _, err := store.CommitMaterialPurchase(
-		requestID, requestID, eventID, 4, 1,
+		requestID, requestID, eventID, starMarrowMaterialID, 1,
 		string(service.PurchaseOutboxMQInvalidate), true,
 	); err != nil {
 		t.Fatalf("commit recovery outbox: %v", err)
@@ -199,9 +201,9 @@ func TestPurchaseExperimentOutboxConflictRollsBackStock(t *testing.T) {
 	ensurePurchaseExperimentFixtures(t)
 	lab := service.NewPurchaseLabService(store)
 	t.Cleanup(func() {
-		_, _ = lab.Reset(1)
+		_, _ = lab.Reset(starMarrowMaterialID)
 	})
-	baseline, appErr := lab.Reset(1)
+	baseline, appErr := lab.Reset(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("reset outbox rollback fixture: %v", appErr)
 	}
@@ -209,20 +211,20 @@ func TestPurchaseExperimentOutboxConflictRollsBackStock(t *testing.T) {
 	eventID := purchaseIntegrationID("shared-event")
 	firstBatch := purchaseIntegrationID("outbox-first")
 	if _, err := store.CommitMaterialPurchase(
-		firstBatch, firstBatch, eventID, 1, 1,
+		firstBatch, firstBatch, eventID, starMarrowMaterialID, 1,
 		string(service.PurchaseOutboxMQInvalidate), true,
 	); err != nil {
 		t.Fatalf("commit first outbox transaction: %v", err)
 	}
 	secondBatch := purchaseIntegrationID("outbox-second")
 	if _, err := store.CommitMaterialPurchase(
-		secondBatch, secondBatch, eventID, 1, 1,
+		secondBatch, secondBatch, eventID, starMarrowMaterialID, 1,
 		string(service.PurchaseOutboxMQInvalidate), true,
 	); err == nil {
 		t.Fatal("duplicate event_id should reject the second transaction")
 	}
 
-	stock, err := store.MaterialStock(1)
+	stock, err := store.MaterialStock(starMarrowMaterialID)
 	if err != nil {
 		t.Fatalf("read stock after rolled-back outbox: %v", err)
 	}
@@ -239,7 +241,7 @@ func TestPurchaseExperimentOutboxConflictRollsBackStock(t *testing.T) {
 }
 
 // TestPurchaseExperimentRuns150UniquePurchases 验证页面固定的 150 人购买不是前端动画：
-// 服务端会并发释放 150 个唯一 request_id，并复用单次事务语义完成真实扣库和订单写入。
+// 星髓首发 100 份，因此服务端应真实落下 100 单，并明确拒绝其余 50 个售罄请求。
 func TestPurchaseExperimentRuns150UniquePurchases(t *testing.T) {
 	if store == nil {
 		t.Skip("store not initialized (needs MySQL and Redis)")
@@ -247,15 +249,15 @@ func TestPurchaseExperimentRuns150UniquePurchases(t *testing.T) {
 	ensurePurchaseExperimentFixtures(t)
 	lab := service.NewPurchaseLabService(store)
 	t.Cleanup(func() {
-		_, _ = lab.Reset(1)
+		_, _ = lab.Reset(starMarrowMaterialID)
 	})
-	baseline, appErr := lab.Reset(1)
+	baseline, appErr := lab.Reset(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("reset 150 purchase fixture: %v", appErr)
 	}
 
 	requestID := purchaseIntegrationID("buyers-150")
-	run, appErr := lab.RunExperiment(context.Background(), 1, service.PurchaseExperimentRequest{
+	run, appErr := lab.RunExperiment(context.Background(), starMarrowMaterialID, service.PurchaseExperimentRequest{
 		RequestID: requestID, Strategy: service.PurchaseSyncInvalidate,
 		PurchaseCount: 150, QueryCount: 0,
 	})
@@ -263,20 +265,20 @@ func TestPurchaseExperimentRuns150UniquePurchases(t *testing.T) {
 		t.Fatalf("run 150 concurrent purchases: %v", appErr)
 	}
 	if run.Status != service.PurchaseRunCompleted ||
-		run.PurchaseSucceeded != 150 ||
-		run.SoldOutRequests != 0 ||
+		run.PurchaseSucceeded != baseline.InitialStock ||
+		run.SoldOutRequests != 150-baseline.InitialStock ||
 		run.DuplicateRequests != 0 {
 		t.Fatalf("unexpected 150 purchase result: %+v", run)
 	}
-	if run.FinalMySQLStock != baseline.InitialStock-150 || run.PurchaseP99MS <= 0 {
+	if run.FinalMySQLStock != 0 || run.PurchaseP99MS <= 0 {
 		t.Fatalf("150 purchases did not produce real stock and latency evidence: %+v", run)
 	}
 	orders, _, err := store.PurchaseBatchRecords(requestID)
 	if err != nil {
 		t.Fatalf("read 150 purchase orders: %v", err)
 	}
-	if len(orders) != 150 {
-		t.Fatalf("expected 150 persisted unique orders, got %d", len(orders))
+	if len(orders) != baseline.InitialStock {
+		t.Fatalf("expected %d persisted successful orders, got %d", baseline.InitialStock, len(orders))
 	}
 }
 
@@ -289,9 +291,9 @@ func TestPurchaseExperimentConcurrentStockNeverNegative(t *testing.T) {
 	ensurePurchaseExperimentFixtures(t)
 	lab := service.NewPurchaseLabService(store)
 	t.Cleanup(func() {
-		_, _ = lab.Reset(4)
+		_, _ = lab.Reset(starMarrowMaterialID)
 	})
-	baseline, appErr := lab.Reset(4)
+	baseline, appErr := lab.Reset(starMarrowMaterialID)
 	if appErr != nil {
 		t.Fatalf("reset oversell fixture: %v", appErr)
 	}
@@ -311,7 +313,7 @@ func TestPurchaseExperimentConcurrentStockNeverNegative(t *testing.T) {
 			defer wait.Done()
 			requestID := fmt.Sprintf("%s-%02d", batchID, index)
 			result, err := store.CommitMaterialPurchase(
-				batchID, requestID, "", 4, 1,
+				batchID, requestID, "", starMarrowMaterialID, 1,
 				string(service.PurchaseSyncInvalidate), false,
 			)
 			lock.Lock()
@@ -333,7 +335,7 @@ func TestPurchaseExperimentConcurrentStockNeverNegative(t *testing.T) {
 	if firstErr != nil {
 		t.Fatalf("concurrent purchase failed unexpectedly: %v", firstErr)
 	}
-	stock, err := store.MaterialStock(4)
+	stock, err := store.MaterialStock(starMarrowMaterialID)
 	if err != nil {
 		t.Fatalf("read stock after contention: %v", err)
 	}

@@ -98,13 +98,23 @@ func (s *Store) EnsurePurchaseExperimentSchema() error {
 	if err := s.db.AutoMigrate(&PurchaseLabOrder{}, &PurchaseLabOutbox{}); err != nil {
 		return fmt.Errorf("migrate purchase experiment schema: %w", err)
 	}
+	// 早期版本把四种材料库存复制到 purchase_lab_inventory，并使用独立 Redis stock key。
+	// 当前实验已与查询页共享 materials.stock 和 DTO 缓存；旧表与旧 key 都不再有读写方。
+	if err := deleteRedisKeysByPattern("purchase-lab:material:*"); err != nil {
+		return fmt.Errorf("remove legacy purchase material caches: %w", err)
+	}
+	if s.db.Migrator().HasTable("purchase_lab_inventory") {
+		if err := s.db.Migrator().DropTable("purchase_lab_inventory"); err != nil {
+			return fmt.Errorf("drop legacy purchase material inventory: %w", err)
+		}
+	}
 	// 老数据卷可能保存其他材料的购买订单或待发布 Outbox。先删 Outbox 再删订单，
 	// 避免后台 Publisher 在单商品迁移完成后继续传播已经没有业务语义的缓存失效事件。
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("material_id <> ?", 4).Delete(&PurchaseLabOutbox{}).Error; err != nil {
+		if err := tx.Where("material_id <> ?", StarMarrowMaterialID).Delete(&PurchaseLabOutbox{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("material_id <> ?", 4).Delete(&PurchaseLabOrder{}).Error
+		return tx.Where("material_id <> ?", StarMarrowMaterialID).Delete(&PurchaseLabOrder{}).Error
 	}); err != nil {
 		return fmt.Errorf("remove legacy purchase materials: %w", err)
 	}

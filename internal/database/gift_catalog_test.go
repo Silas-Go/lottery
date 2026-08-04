@@ -8,7 +8,7 @@ func TestDefaultSeckillMaterialCatalog(t *testing.T) {
 	}
 
 	material := defaultSeckillMaterialCatalog[0]
-	if material.Id != 4 || material.Name != "星髓" {
+	if material.Id != StarMarrowMaterialID || material.Name != "星髓" {
 		t.Fatalf("catalog material=%d/%s, want=4/星髓", material.Id, material.Name)
 	}
 	if material.Description == "" || material.Picture == "" || material.Price <= 0 || material.Count <= 0 {
