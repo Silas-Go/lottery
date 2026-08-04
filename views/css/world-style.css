@@ -12,14 +12,9 @@
 }
 
 /* 暖潮街：把场景从灰暗入口调成与实验室相同的明亮像素世界。 */
-html:has(.market-street-shell) {
-    background: var(--world-paper-deep);
-}
+html:has(.market-street-shell) { background: var(--world-paper-deep); }
 
-.market-street-shell {
-    color: var(--world-ink);
-    background: var(--world-paper-deep);
-}
+.market-street-shell { color: var(--world-ink); background: var(--world-paper-deep); }
 
 .market-street-shell .market-header {
     min-height: 64px;
@@ -29,9 +24,7 @@ html:has(.market-street-shell) {
     box-shadow: 0 4px 0 rgba(128, 100, 63, .13);
 }
 
-.market-street-shell .market-header__brand {
-    color: var(--world-ink);
-}
+.market-street-shell .market-header__brand { color: var(--world-ink); }
 
 .market-street-shell .market-header__seal {
     border: 2px solid var(--world-frame);
@@ -42,26 +35,16 @@ html:has(.market-street-shell) {
 }
 
 .market-street-shell .market-header__brand small,
-.market-street-shell .market-header__location small {
-    color: var(--world-muted);
-}
+.market-street-shell .market-header__location small { color: var(--world-muted); }
 
-.market-street-shell .market-header__location > i {
-    border-radius: 1px;
-    background: #6aa27e;
-    box-shadow: 0 0 0 4px rgba(91, 151, 112, .12);
-}
+.market-street-shell .market-header__location > i { border-radius: 1px; background: #6aa27e; box-shadow: 0 0 0 4px rgba(91, 151, 112, .12); }
 
-.market-street-shell .market-stage {
-    background: #d8caa2;
-}
+.market-street-shell .market-stage { background: #d8caa2; }
 
 .market-street-shell .market-scene-canvas,
 .market-street-shell .event-dialogue,
 .market-page .market-scene,
-.market-page .event-card {
-    will-change: transform, filter, opacity;
-}
+.market-page .event-card { will-change: transform, filter, opacity; }
 
 .market-street-shell::after,
 .market-page::after {
@@ -83,36 +66,24 @@ html:has(.market-street-shell) {
 }
 
 .market-street-shell.is-entering-archive,
-.market-street-shell.is-entering-seckill {
-    cursor: progress;
-}
+.market-street-shell.is-entering-seckill { cursor: progress; }
 
 .market-street-shell.is-entering-archive .market-scene-canvas,
-.market-street-shell.is-entering-seckill .market-scene-canvas {
-    animation: worldStreetWhip 560ms cubic-bezier(.42, 0, .68, .36) both;
-}
+.market-street-shell.is-entering-seckill .market-scene-canvas { animation: worldStreetWhip 560ms cubic-bezier(.42, 0, .68, .36) both; }
 
 .market-street-shell.is-entering-archive .event-dialogue,
-.market-street-shell.is-entering-seckill .event-dialogue {
-    animation: worldDialogueWhip 470ms cubic-bezier(.42, 0, .8, .4) both;
-}
+.market-street-shell.is-entering-seckill .event-dialogue { animation: worldDialogueWhip 470ms cubic-bezier(.42, 0, .8, .4) both; }
 
 .market-street-shell.is-entering-archive .market-header,
-.market-street-shell.is-entering-seckill .market-header {
-    animation: worldHeaderWhip 520ms cubic-bezier(.42, 0, .72, .38) both;
-}
+.market-street-shell.is-entering-seckill .market-header { animation: worldHeaderWhip 520ms cubic-bezier(.42, 0, .72, .38) both; }
 
 .market-street-shell.is-entering-archive::after,
-.market-street-shell.is-entering-seckill::after {
-    animation: worldSpeedCurtain 560ms ease-in both;
-}
+.market-street-shell.is-entering-seckill::after { animation: worldSpeedCurtain 560ms ease-in both; }
 
 .market-street-shell.is-entering-archive button,
 .market-street-shell.is-entering-archive a,
 .market-street-shell.is-entering-seckill button,
-.market-street-shell.is-entering-seckill a {
-    pointer-events: none;
-}
+.market-street-shell.is-entering-seckill a { pointer-events: none; }
 
 .market-street-shell .market-scene-canvas::before {
     position: absolute;
@@ -125,9 +96,7 @@ html:has(.market-street-shell) {
     content: "";
 }
 
-.market-street-shell .market-scene-background {
-    filter: brightness(1.52) saturate(.78) sepia(.08) contrast(.88);
-}
+.market-street-shell .market-scene-background { filter: brightness(1.52) saturate(.78) sepia(.08) contrast(.88); }
 
 .market-street-shell .market-vignette {
     background:
@@ -144,19 +113,11 @@ html:has(.market-street-shell) {
     box-shadow: 3px 3px 0 rgba(128, 100, 63, .3);
 }
 
-.market-street-shell .shop-status small {
-    color: var(--world-muted);
-}
+.market-street-shell .shop-status small { color: var(--world-muted); }
 
-.market-street-shell .shop-status > i {
-    border-radius: 1px;
-    background: var(--world-teal);
-}
+.market-street-shell .shop-status > i { border-radius: 1px; background: var(--world-teal); }
 
-.market-street-shell .shop-preview-ribbon {
-    border-left: 4px solid var(--world-teal);
-    color: var(--world-teal-dark);
-}
+.market-street-shell .shop-preview-ribbon { border-left: 4px solid var(--world-teal); color: var(--world-teal-dark); }
 
 .market-street-shell .shop-interaction__hitbox:hover,
 .market-street-shell .shop-interaction__hitbox:focus-visible {
@@ -181,31 +142,17 @@ html:has(.market-street-shell) {
     box-shadow: 6px 6px 0 var(--world-shadow);
 }
 
-.market-street-shell .event-dialogue::before {
-    border-color: rgba(128, 100, 63, .18);
-}
+.market-street-shell .event-dialogue::before { border-color: rgba(128, 100, 63, .18); }
 
-.market-street-shell .event-dialogue::after {
-    height: 5px;
-    background: var(--world-teal);
-    box-shadow: 353px 0 var(--world-frame);
-}
+.market-street-shell .event-dialogue::after { height: 5px; background: var(--world-teal); box-shadow: 353px 0 var(--world-frame); }
 
-.market-street-shell .event-dialogue__heading {
-    color: var(--world-teal-dark);
-}
+.market-street-shell .event-dialogue__heading { color: var(--world-teal-dark); }
 
 .market-street-shell .event-dialogue__heading small,
 .market-street-shell .event-dialogue p,
-.market-street-shell .event-choices button small {
-    color: var(--world-muted);
-}
+.market-street-shell .event-choices button small { color: var(--world-muted); }
 
-.market-street-shell .event-dialogue h2 {
-    color: var(--world-ink);
-    font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif;
-    font-weight: 900;
-}
+.market-street-shell .event-dialogue h2 { color: var(--world-ink); font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif; font-weight: 900; }
 
 .street-rare-notice {
     display: grid;
@@ -219,34 +166,17 @@ html:has(.market-street-shell) {
     box-shadow: inset 3px 0 #8877d7;
 }
 
-.street-rare-notice img {
-    width: 58px;
-    aspect-ratio: 1;
-    border: 1px solid var(--world-frame);
-    object-fit: cover;
-}
+.street-rare-notice img { width: 58px; aspect-ratio: 1; border: 1px solid var(--world-frame); object-fit: cover; }
 
 .street-rare-notice span,
 .street-rare-notice strong,
-.street-rare-notice small {
-    display: block;
-}
+.street-rare-notice small { display: block; }
 
-.street-rare-notice span {
-    min-width: 0;
-}
+.street-rare-notice span { min-width: 0; }
 
-.street-rare-notice strong {
-    color: #55477e;
-    font-size: 12px;
-}
+.street-rare-notice strong { color: #55477e; font-size: 12px; }
 
-.street-rare-notice small {
-    margin-top: 3px;
-    color: var(--world-muted);
-    font-size: 9px;
-    line-height: 1.45;
-}
+.street-rare-notice small { margin-top: 3px; color: var(--world-muted); font-size: 9px; line-height: 1.45; }
 
 .market-street-shell .event-choices button {
     border: 1px solid var(--world-line);
@@ -264,37 +194,16 @@ html:has(.market-street-shell) {
     outline-color: rgba(36, 95, 91, .3);
 }
 
-.market-street-shell .event-choices button > span {
-    border: 2px solid var(--world-frame);
-    border-radius: 1px;
-    color: var(--world-teal-dark);
-    background: #fffdf4;
-}
+.market-street-shell .event-choices button > span { border: 2px solid var(--world-frame); border-radius: 1px; color: var(--world-teal-dark); background: #fffdf4; }
 
-.market-street-shell .event-choices button > strong {
-    font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif;
-    font-weight: 900;
-}
+.market-street-shell .event-choices button > strong { font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif; font-weight: 900; }
 
 /* 材料情报店门口：沿用同一纸张、硬边框和青绿色行动色。 */
-.market-page .market-topbar {
-    min-height: 66px;
-    border-bottom: 2px solid var(--world-frame);
-    background: rgba(255, 253, 244, .94);
-    box-shadow: 0 4px 0 rgba(128, 100, 63, .13);
-}
+.market-page .market-topbar { min-height: 66px; border-bottom: 2px solid var(--world-frame); background: rgba(255, 253, 244, .94); box-shadow: 0 4px 0 rgba(128, 100, 63, .13); }
 
-.market-page .market-brand-mark {
-    border: 2px solid var(--world-frame);
-    color: var(--world-teal-dark);
-    background: #fffef8;
-    box-shadow: 3px 3px 0 #d8c9aa;
-}
+.market-page .market-brand-mark { border: 2px solid var(--world-frame); color: var(--world-teal-dark); background: #fffef8; box-shadow: 3px 3px 0 #d8c9aa; }
 
-.market-page .market-location {
-    gap: 9px;
-    color: var(--world-ink);
-}
+.market-page .market-location { gap: 9px; color: var(--world-ink); }
 
 .market-page .market-location a {
     padding: 7px 10px;
@@ -307,11 +216,7 @@ html:has(.market-street-shell) {
     text-decoration: none;
 }
 
-.market-page .market-location i {
-    border-radius: 1px;
-    background: #6aa27e;
-    box-shadow: 0 0 0 4px rgba(91, 151, 112, .12);
-}
+.market-page .market-location i { border-radius: 1px; background: #6aa27e; box-shadow: 0 0 0 4px rgba(91, 151, 112, .12); }
 
 .market-page .event-card {
     border: 2px solid var(--world-frame);
@@ -324,97 +229,38 @@ html:has(.market-street-shell) {
     box-shadow: 6px 6px 0 var(--world-shadow);
 }
 
-.market-page .event-heading {
-    border-color: var(--world-line);
-}
+.market-page .event-heading { border-color: var(--world-line); }
 
-.market-page .event-heading span {
-    color: var(--world-teal-dark);
-}
+.market-page .event-heading span { color: var(--world-teal-dark); }
 
 .market-page .event-primary,
 .market-page .event-secondary,
-.market-page .material-choices button,
-.market-page .delivery-choice button,
 .market-page .crowd-tier-options button,
-.market-page .crowd-panel header button {
-    border-radius: 1px;
-}
+.market-page .crowd-panel header button { border-radius: 1px; }
 
-.market-page .event-primary {
-    border: 2px solid #254d4b;
-    color: #fffef7;
-    background: var(--world-teal);
-    box-shadow: 4px 4px 0 #244b49;
-}
+.market-page .event-primary { border: 2px solid #254d4b; color: #fffef7; background: var(--world-teal); box-shadow: 4px 4px 0 #244b49; }
 
-.rare-material-feature {
-    display: grid;
-    grid-template-columns: 112px minmax(0, 1fr);
-    gap: 14px;
-    align-items: center;
-}
+.rare-material-feature { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px; align-items: center; }
 
-.rare-material-feature img {
-    width: 112px;
-    aspect-ratio: 1;
-    border: 2px solid var(--world-frame);
-    object-fit: cover;
-    box-shadow: 4px 4px 0 #cbb78e;
-}
+.rare-material-feature img { width: 112px; aspect-ratio: 1; border: 2px solid var(--world-frame); object-fit: cover; box-shadow: 4px 4px 0 #cbb78e; }
 
-.rare-material-feature > div > small {
-    color: #7665b1;
-    font: 900 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
-    letter-spacing: .1em;
-}
+.rare-material-feature > div > small { color: #7665b1; font: 900 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; }
 
-.rare-material-feature > div > strong {
-    display: block;
-    margin: 4px 0;
-    color: var(--world-ink);
-    font-size: 20px;
-}
+.rare-material-feature > div > strong { display: block; margin: 4px 0; color: var(--world-ink); font-size: 20px; }
 
-.market-page .rare-material-feature p {
-    margin-bottom: 7px;
-    font-size: 13px;
-    line-height: 1.55;
-}
+.market-page .rare-material-feature p { margin-bottom: 7px; font-size: 13px; line-height: 1.55; }
 
-.rare-material-feature dl {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    margin: 0;
-    border: 1px solid var(--world-line);
-    background: #fffaf0;
-}
+.rare-material-feature dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; border: 1px solid var(--world-line); background: #fffaf0; }
 
-.rare-material-feature dl > div {
-    padding: 6px 8px;
-    border-left: 1px solid var(--world-line);
-}
+.rare-material-feature dl > div { padding: 6px 8px; border-left: 1px solid var(--world-line); }
 
-.rare-material-feature dl > div:first-child {
-    border-left: 0;
-}
+.rare-material-feature dl > div:first-child { border-left: 0; }
 
-.rare-material-feature dt {
-    color: var(--world-muted);
-    font-size: 8px;
-}
+.rare-material-feature dt { color: var(--world-muted); font-size: 8px; }
 
-.rare-material-feature dd {
-    margin: 2px 0 0;
-    color: var(--world-teal-dark);
-    font: 900 12px/1 ui-monospace, "SFMono-Regular", Consolas, monospace;
-}
+.rare-material-feature dd { margin: 2px 0 0; color: var(--world-teal-dark); font: 900 12px/1 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 
-.rare-material-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
-    gap: 10px;
-}
+.rare-material-actions { display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 10px; }
 
 .market-street-shell.is-entering-seckill [data-shop="seckill"] .shop-interaction__hitbox {
     background: rgba(63, 146, 140, .15);
@@ -422,98 +268,37 @@ html:has(.market-street-shell) {
 }
 
 .rare-material-actions .event-primary,
-.rare-material-actions .event-secondary {
-    margin-top: 0;
-}
+.rare-material-actions .event-secondary { margin-top: 0; }
 
-.rare-material-actions .event-secondary {
-    border-style: dashed;
-}
+.rare-material-actions .event-secondary { border-style: dashed; }
 
 .market-page .event-secondary,
-.market-page .material-choices button,
-.market-page .delivery-choice button,
-.market-page .crowd-tier-options button {
-    border: 1px solid var(--world-line);
-    color: var(--world-ink);
-    background: #fffaf0;
-    box-shadow: 3px 3px 0 #d8c9aa;
-}
+.market-page .crowd-tier-options button { border: 1px solid var(--world-line); color: var(--world-ink); background: #fffaf0; box-shadow: 3px 3px 0 #d8c9aa; }
 
-.market-page .rare-material-actions .event-purchase {
-    border: 2px solid #805825;
-    border-style: solid;
-    color: #4b351d;
-    background: #efd08a;
-    box-shadow: 4px 4px 0 #b48a43;
-}
+.market-page .rare-material-actions .event-purchase { border: 2px solid #805825; border-style: solid; color: #4b351d; background: #efd08a; box-shadow: 4px 4px 0 #b48a43; }
 
 .market-page .rare-material-actions .event-purchase:hover,
-.market-page .rare-material-actions .event-purchase:focus-visible {
-    background: #f6dda3;
-    box-shadow: 4px 5px 0 #a77b35;
-}
+.market-page .rare-material-actions .event-purchase:focus-visible { background: #f6dda3; box-shadow: 4px 5px 0 #a77b35; }
 
-.market-page .crowd-tier-options button.is-active,
-.market-page .delivery-choice button:last-child {
-    border: 2px solid var(--world-teal-dark);
-    color: var(--world-ink);
-    background: #e2f1e9;
-    box-shadow: 3px 3px 0 #afc8ba;
-}
+.market-page .crowd-tier-options button.is-active { border: 2px solid var(--world-teal-dark); color: var(--world-ink); background: #e2f1e9; box-shadow: 3px 3px 0 #afc8ba; }
 
-.market-page .delivery-choice .is-purchase-choice {
-    border: 2px solid #805825;
-    color: #4b351d;
-    background: #f3ddb0;
-    box-shadow: 3px 3px 0 #c19a55;
-}
+.market-page .task-intent-panel .crowd-tier-options button.is-active strong { color: #245f5b; }
 
-.market-page .task-intent-panel .crowd-tier-options button.is-active strong {
-    color: #245f5b;
-}
+.market-page .task-intent-panel .crowd-tier-options button.is-active span { color: #304844; }
 
-.market-page .task-intent-panel .crowd-tier-options button.is-active span {
-    color: #304844;
-}
+.market-page .task-intent-panel .crowd-tier-options button.is-active small { color: #63746d; }
 
-.market-page .task-intent-panel .crowd-tier-options button.is-active small {
-    color: #63746d;
-}
+.market-page .shop-sign { border-color: var(--world-frame); color: #fff8dd; background: #304844; box-shadow: 5px 5px 0 rgba(128, 100, 63, .35); }
 
-.market-page .shop-sign {
-    border-color: var(--world-frame);
-    color: #fff8dd;
-    background: #304844;
-    box-shadow: 5px 5px 0 rgba(128, 100, 63, .35);
-}
+.market-page .shop-awning i:nth-child(odd) { background: #3f928c; }
 
-.market-page .shop-awning i:nth-child(odd) {
-    background: #3f928c;
-}
+.market-page .shop-awning i:nth-child(even) { background: #fff3d2; }
 
-.market-page .shop-awning i:nth-child(even) {
-    background: #fff3d2;
-}
+.market-page.is-arriving-from-street .market-scene { opacity: .62; filter: blur(7px) brightness(1.08); transform: translate3d(13vw, 0, 0) scale(1.09); transition: none; }
 
-.market-page.is-arriving-from-street .market-scene {
-    opacity: .62;
-    filter: blur(7px) brightness(1.08);
-    transform: translate3d(13vw, 0, 0) scale(1.09);
-    transition: none;
-}
+.market-page.is-arriving-from-street .event-card { opacity: 0; filter: blur(3px); transform: translate3d(80px, 0, 0); transition: none; }
 
-.market-page.is-arriving-from-street .event-card {
-    opacity: 0;
-    filter: blur(3px);
-    transform: translate3d(80px, 0, 0);
-    transition: none;
-}
-
-.market-page.is-arriving-from-street::after {
-    opacity: .72;
-    transform: translate3d(8%, 0, 0);
-}
+.market-page.is-arriving-from-street::after { opacity: .72; transform: translate3d(8%, 0, 0); }
 
 .market-page.is-arriving-from-street.is-arrival-settled .market-scene {
     opacity: 1;
@@ -542,124 +327,59 @@ html:has(.market-street-shell) {
 }
 
 @keyframes worldStreetWhip {
-    0% {
-        filter: blur(0) brightness(1);
-        transform: translate3d(0, 0, 0) scale(1);
-    }
-    38% {
-        filter: blur(2px) brightness(1.03);
-        transform: translate3d(-3.5vw, 0, 0) scale(1.025);
-    }
-    100% {
-        filter: blur(8px) brightness(1.12);
-        transform: translate3d(-18vw, 0, 0) scale(1.13);
-    }
+0% { filter: blur(0) brightness(1); transform: translate3d(0, 0, 0) scale(1); }
+38% { filter: blur(2px) brightness(1.03); transform: translate3d(-3.5vw, 0, 0) scale(1.025); }
+100% { filter: blur(8px) brightness(1.12); transform: translate3d(-18vw, 0, 0) scale(1.13); }
 }
 
 @keyframes worldDialogueWhip {
-    0% {
-        opacity: 1;
-        filter: blur(0);
-        transform: translateX(-50%);
-    }
-    100% {
-        opacity: 0;
-        filter: blur(5px);
-        transform: translateX(calc(-50% - 34vw));
-    }
+0% { opacity: 1; filter: blur(0); transform: translateX(-50%); }
+100% { opacity: 0; filter: blur(5px); transform: translateX(calc(-50% - 34vw)); }
 }
 
 @keyframes worldHeaderWhip {
-    0% {
-        opacity: 1;
-        filter: blur(0);
-        transform: translateX(0);
-    }
-    100% {
-        opacity: .3;
-        filter: blur(4px);
-        transform: translateX(-12vw);
-    }
+0% { opacity: 1; filter: blur(0); transform: translateX(0); }
+100% { opacity: .3; filter: blur(4px); transform: translateX(-12vw); }
 }
 
 @keyframes worldSpeedCurtain {
-    0% {
-        opacity: 0;
-        transform: translate3d(100%, 0, 0);
-    }
-    36% {
-        opacity: .82;
-    }
-    100% {
-        opacity: .12;
-        transform: translate3d(-90%, 0, 0);
-    }
+0% { opacity: 0; transform: translate3d(100%, 0, 0); }
+36% { opacity: .82; }
+100% { opacity: .12; transform: translate3d(-90%, 0, 0); }
 }
 
 @media (max-width: 650px) {
-    .market-street-shell .market-header {
-        padding: 0 12px;
-    }
+.market-street-shell .market-header { padding: 0 12px; }
 
     .market-street-shell .market-header__brand small,
-    .market-street-shell .market-header__location small {
-        display: none;
-    }
+.market-street-shell .market-header__location small { display: none; }
 
-    .market-street-shell .market-header__location strong {
-        font-size: 11px;
-    }
+.market-street-shell .market-header__location strong { font-size: 11px; }
 
-    .market-street-shell .event-dialogue {
-        width: calc(100vw - 20px);
-        padding: 17px 16px 16px;
-    }
+.market-street-shell .event-dialogue { width: calc(100vw - 20px); padding: 17px 16px 16px; }
 
-    .street-rare-notice {
-        grid-template-columns: 48px minmax(0, 1fr);
-    }
+.street-rare-notice { grid-template-columns: 48px minmax(0, 1fr); }
 
-    .street-rare-notice img {
-        width: 48px;
-    }
+.street-rare-notice img { width: 48px; }
 
-    .market-page .market-topbar {
-        gap: 10px;
-        padding: 0 12px;
-    }
+.market-page .market-topbar { gap: 10px; padding: 0 12px; }
 
-    .market-page .market-location {
-        display: flex;
-    }
+.market-page .market-location { display: flex; }
 
     .market-page .market-brand small,
     .market-page .market-location > i,
-    .market-page .market-location > span {
-        display: none;
-    }
+.market-page .market-location > span { display: none; }
 
-    .rare-material-feature {
-        grid-template-columns: 78px minmax(0, 1fr);
-        gap: 10px;
-    }
+.rare-material-feature { grid-template-columns: 78px minmax(0, 1fr); gap: 10px; }
 
-    .rare-material-feature img {
-        width: 78px;
-    }
+.rare-material-feature img { width: 78px; }
 
-    .rare-material-feature dl {
-        grid-column: 1 / -1;
-    }
+.rare-material-feature dl { grid-column: 1 / -1; }
 
-    .rare-material-actions {
-        display: grid;
-        grid-template-columns: 1fr;
-    }
+.rare-material-actions { display: grid; grid-template-columns: 1fr; }
 
     .rare-material-actions .event-primary,
-    .rare-material-actions .event-secondary {
-        padding-inline: 10px;
-    }
+.rare-material-actions .event-secondary { padding-inline: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -668,9 +388,5 @@ html:has(.market-street-shell) {
     .market-street-shell *::after,
     .market-page *,
     .market-page *::before,
-    .market-page *::after {
-        animation-duration: .01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: .01ms !important;
-    }
+.market-page *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
