@@ -15,7 +15,7 @@ const (
 	ArchivePathCached = "cached"
 )
 
-// ArchiveReadSnapshot 是第一章“百职录”读实验的完整快照。
+// ArchiveReadSnapshot 是材料聚合档案只读实验的完整快照。
 // 两组数据使用相同结构，页面可以在不改口径的情况下公平比较直读与 Cache-Aside。
 type ArchiveReadSnapshot struct {
 	At              string                  `json:"at"`

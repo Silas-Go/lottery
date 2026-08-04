@@ -23,7 +23,7 @@ const (
 // 恢复量必须扣掉 Redis 模式的 pending_payment/paid 订单，以及尚未异步落账的 stock_acquired；
 // cancelled 已经完成回补，MySQL 模式使用独立库存，二者都不能从 Redis 基线重复扣除。
 //
-// 该函数同时用 MySQL 奖品配置重建 INVENTORY_IDS_KEY（gift_ids SET），
+// 该函数同时用 MySQL 限量材料配置重建 INVENTORY_IDS_KEY（gift_ids SET），
 // 供后续 GetAllGiftInventoryWithError 用 SMEMBERS + MGET 批量读取库存，
 // 不再需要在 /lucky 热路径上逐请求 KEYS 全库扫描。
 func (s *Store) InitGiftInventory() error {

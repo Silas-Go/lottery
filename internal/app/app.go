@@ -180,6 +180,14 @@ func initInfrastructure() *database.Store {
 		slog.Error("ensure cache stock schema failed", "error", err)
 		panic(err)
 	}
+	// 旧数据卷仍可能保存篮球、茶叶等早期转盘奖品。目录只在不一致时迁移为四种炼金材料，
+	// 并清理无法继续解释的旧订单/admission；正常重启不会重置已经发生的活动库存。
+	if migrated, err := store.EnsureSeckillMaterialCatalog(); err != nil {
+		slog.Error("ensure seckill material catalog failed", "error", err)
+		panic(err)
+	} else if migrated {
+		slog.Info("seckill material catalog migration completed")
+	}
 	// 第一章详情读实验使用独立材料表、组成关系与交易/评分事实，避免复用秒杀 gift/order 造成语义串线。
 	if err := store.EnsureMaterialReadModelSchema(); err != nil {
 		slog.Error("ensure material read model schema failed", "error", err)

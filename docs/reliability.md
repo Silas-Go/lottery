@@ -128,6 +128,17 @@ pending_payment -> cancelled
 
 如果业务将来允许支付后取消，需要新增退款状态，不能复用 `cancelled`。
 
+## 限量材料目录与实验隔离
+
+秒杀/抽取链路的 `inventory` 只保留四种炼金材料：月盐、雾银、龙息琥珀、星髓。它们的名称、
+价格和图片与材料世界观一致，但 `inventory.count/cache_stock` 是独立的高并发实验库存，不能与
+购买实验的 `materials.stock` 混用。`GET /api/seckill/materials` 只返回目录信息，不承诺实时库存；
+真正库存仍由下述 Redis Lua 或 MySQL 事务裁决。
+
+老数据卷不会重跑 `init.sql`。启动时若检测到篮球、茶叶等旧目录，会先清理 Redis admission，
+再在同一 MySQL 事务中清空旧秒杀订单并替换四种材料目录。该迁移只在目录不一致时执行；正常重启
+不能重置库存。旧消息到达时因找不到匹配 admission 被幂等忽略，不能把已删除的商品重新落单。
+
 ## 模式 A：MySQL 权威库存同步准入
 
 入口：`GET /lucky/cacheaside`

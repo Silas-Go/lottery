@@ -68,7 +68,7 @@ func (h *ArchiveHandler) ResetChapter(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{
-		"message":  "《百职录》已合拢，记忆水晶与本章指标均已清空",
+		"message":  "材料档案已合拢，记忆水晶与本章指标均已清空",
 		"snapshot": metrics.SnapshotArchiveRead(metrics.ArchiveCacheTTL),
 	})
 }

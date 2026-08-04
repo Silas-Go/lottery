@@ -34,7 +34,7 @@ func NewArchiveService(store *database.Store) *ArchiveService {
 func (s *ArchiveService) List() ([]database.MaterialSummaryDTO, *AppError) {
 	archives, err := s.store.ListMaterialSummaries()
 	if err != nil {
-		return nil, NewAppError(CodeArchiveDBReadFailed, "《百职录》目录暂时无法打开", err)
+		return nil, NewAppError(CodeArchiveDBReadFailed, "材料档案目录暂时无法打开", err)
 	}
 	return archives, nil
 }

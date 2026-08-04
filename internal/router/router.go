@@ -10,13 +10,13 @@ import (
 // Handlers 汇总路由层需要的 HTTP handler。
 // router 只负责 URL 到 handler 的映射，不直接依赖 service/database，保持分层边界清楚。
 type Handlers struct {
-	// Archive 处理第一章《百职录》的只读 Cache-Aside 实验。
+	// Archive 处理材料聚合档案的只读 Cache-Aside 实验。
 	Archive *handler.ArchiveHandler
 
 	// PurchaseLab 处理共享材料库存上的同步失效与 Outbox + MQ 购买实验。
 	PurchaseLab *handler.PurchaseLabHandler
 
-	// Gift 处理奖品列表和 /lucky 抽奖请求。
+	// Gift 处理限量材料列表和 /lucky 高并发抽取请求；字段名保留 gift 仅为兼容历史表与订单协议。
 	Gift *handler.GiftHandler
 
 	// Order 处理 /pay 支付和 /giveup 放弃支付请求。
@@ -57,6 +57,9 @@ func registerPages(engine *gin.Engine) {
 	engine.GET("/material-shop", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "market.html", nil)
 	})
+	engine.GET("/seckill-lab", func(ctx *gin.Context) {
+		ctx.HTML(http.StatusOK, "seckill.html", nil)
+	})
 	engine.GET("/lab", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "lottery.html", nil)
 	})
@@ -78,7 +81,8 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.POST("/api/purchase-lab/:id/run", handlers.PurchaseLab.Run)
 	engine.POST("/api/purchase-lab/:id/query", handlers.PurchaseLab.Query)
 	engine.GET("/api/purchase-lab/runs/:requestId", handlers.PurchaseLab.GetRun)
-	engine.GET("/gifts", handlers.Gift.GetAllGifts)
+	engine.GET("/api/seckill/materials", handlers.Gift.GetAllMaterials)
+	engine.GET("/gifts", handlers.Gift.GetAllMaterials) // 兼容旧转盘页面与压测脚本。
 	engine.GET("/lucky", handlers.Gift.Lottery)
 	engine.GET("/lucky/cacheaside", handlers.Gift.LotteryCacheAside)
 	engine.POST("/giveup", handlers.Order.GiveUp)

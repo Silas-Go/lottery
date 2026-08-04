@@ -10,17 +10,13 @@ create table if not exists inventory(
     primary key (id)
 )default charset=utf8mb4;
 
-insert into inventory (id,name,picture,price,count) values (1,'谢谢参与','img/face.png',0,1000);
-insert into inventory (name,picture,price,count) values
-('篮球','img/ball.jpeg',100,1000),
-('水杯','img/cup.jpeg',80,1000),
-('电脑','img/laptop.jpeg',6000,200),
-('平板','img/pad.jpg',4000,300),
-('手机','img/phone.jpeg',5000,400),
-('锅','img/pot.jpeg',120,1000),
-('茶叶','img/tea.jpeg',90,1000),
-('无人机','img/uav.jpeg',400,100),
-('酒','img/wine.jpeg',160,500);
+-- 秒杀库存只保留炼金市已经存在的四种材料语义。库存梯度用于制造不同热度，
+-- 但每份请求仍由 Redis Lua 或 MySQL 事务裁决，不能依赖展示库存判断成功。
+insert into inventory (id,name,description,picture,price,count) values
+(1,'月盐','月潮退去后留下的低温结晶，稳定、常见且易于计量。','img/moon-salt-relic.png',90,3000),
+(2,'雾银','能在雾中保持镜面反射的液态银，适合镜面术式与感应器。','img/mist-silver-relic.png',360,1800),
+(3,'龙息琥珀','封存古老高温吐息的琥珀核心，为高负荷炼成装置持续供能。','img/dragon-breath-amber-relic.png',1280,900),
+(4,'星髓','从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。','img/star-marrow-relic.png',5200,300);
 
 create table if not exists orders(
     id int auto_increment comment '订单id，自增',
@@ -43,7 +39,7 @@ create table if not exists orders(
     unique key uk_activity_user (activity_id, user_id)
 )default charset=utf8mb4;
 
--- 第一章《那本不该被翻烂的百职录》的只读真本。
+-- 材料情报店只读实验的权威档案。
 -- 应用启动时也会 AutoMigrate + FirstOrCreate，以兼容不会重新执行 init.sql 的老数据卷。
 create table if not exists profession_archives(
     id int not null,

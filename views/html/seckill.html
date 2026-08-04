@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ebe2c5" />
+    <meta name="description" content="限量炼金材料真实抽取实验：观察限流、Redis Lua 准入、RocketMQ 异步落单和订单状态机。" />
+    <title>限量材料申领所 · Silas</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
+    <link rel="stylesheet" href="/css/seckill.css?v=20260804-real-lab" />
+</head>
+
+<body class="seckill-page" data-request-state="idle">
+    <header class="seckill-header">
+        <a class="seckill-brand" href="/" aria-label="返回暖潮街 17 号">
+            <span aria-hidden="true">S</span>
+            <div><strong>SILAS</strong><small>LIMITED MATERIAL OFFICE</small></div>
+        </a>
+        <div class="seckill-location">
+            <small>暖潮街 17 号 · 左侧</small>
+            <strong>限量材料申领所</strong>
+        </div>
+        <div class="seckill-connection">
+            <i aria-hidden="true"></i>
+            <span id="metrics-connection">正在连接真实指标</span>
+        </div>
+    </header>
+
+    <main class="seckill-main">
+        <section class="lab-intro" aria-labelledby="seckill-title">
+            <div>
+                <p class="chapter-mark">EXPERIMENT Ⅰ · HIGH CONCURRENCY ADMISSION</p>
+                <h1 id="seckill-title">限量材料申领实验</h1>
+                <p>递交一次真实请求。材料由当前剩余库存加权抽取，准入由 Redis Lua 原子裁决，随后交给 RocketMQ 异步建立待支付订单。</p>
+            </div>
+            <div class="truth-seal" aria-label="本页不使用前端模拟数据">
+                <span>REAL</span>
+                <strong>只展示真实链路</strong>
+                <small>HTTP · REDIS · MQ · MYSQL</small>
+            </div>
+        </section>
+
+        <section class="material-ledger lab-card" aria-labelledby="material-ledger-title">
+            <header class="section-heading">
+                <div>
+                    <small>LIMITED MATERIAL CATALOG</small>
+                    <h2 id="material-ledger-title">本轮可取得的炼金材料</h2>
+                </div>
+                <span id="material-count">读取目录中</span>
+            </header>
+            <div id="material-grid" class="material-grid" aria-live="polite"></div>
+            <p class="catalog-note">目录接口不泄露实时库存；最终是否取得材料，以 Redis Lua 准入结果为准。</p>
+        </section>
+
+        <div class="lab-columns">
+            <section class="request-desk lab-card" aria-labelledby="request-desk-title">
+                <header class="section-heading">
+                    <div>
+                        <small>REQUEST DESK</small>
+                        <h2 id="request-desk-title">递交一次真实申领</h2>
+                    </div>
+                    <span id="request-badge" class="state-badge">等待递交</span>
+                </header>
+
+                <div id="request-ritual" class="request-ritual" aria-hidden="true">
+                    <span class="ritual-ring ritual-ring--outer"></span>
+                    <span class="ritual-ring ritual-ring--inner"></span>
+                    <i></i><i></i><i></i><i></i>
+                    <strong id="ritual-mark">S</strong>
+                </div>
+
+                <p id="request-message" class="request-message" role="status">一次点击只发送一个 <code>GET /lucky</code> 请求，不在浏览器制造假并发。</p>
+                <button id="draw-material" class="primary-action" type="button">递交真实申领</button>
+
+                <article id="request-receipt" class="request-receipt" hidden aria-live="polite">
+                    <img id="receipt-image" src="" alt="" />
+                    <div>
+                        <small id="receipt-code">ARC-000</small>
+                        <h3 id="receipt-name">等待材料</h3>
+                        <p id="receipt-status">正在确认订单状态</p>
+                    </div>
+                    <a id="open-order" href="/result">查看并处理订单</a>
+                </article>
+
+                <div class="desk-actions">
+                    <a href="/">返回暖潮街</a>
+                    <button id="reset-seckill" type="button">重置实验数据</button>
+                </div>
+            </section>
+
+            <section class="runtime-board lab-card" aria-labelledby="runtime-title">
+                <header class="section-heading">
+                    <div>
+                        <small>SERVER-SIDE OBSERVATORY</small>
+                        <h2 id="runtime-title">真实运行观测</h2>
+                    </div>
+                    <time id="metrics-time">等待快照</time>
+                </header>
+
+                <div class="metric-grid" aria-live="polite">
+                    <article><span>Redis 可用库存</span><strong id="metric-stock">—</strong></article>
+                    <article><span>请求总数</span><strong id="metric-requests">—</strong></article>
+                    <article><span>准入并入队</span><strong id="metric-queued">—</strong></article>
+                    <article><span>限流拦截</span><strong id="metric-limited">—</strong></article>
+                    <article><span>库存 / 重复失败</span><strong id="metric-failed">—</strong></article>
+                    <article><span>MQ 待检查</span><strong id="metric-mq">—</strong></article>
+                    <article><span>已支付订单</span><strong id="metric-paid">—</strong></article>
+                    <article><span>实时 QPS</span><strong id="metric-qps">—</strong></article>
+                    <article><span>P95</span><strong id="metric-p95">—</strong></article>
+                    <article><span>超卖</span><strong id="metric-oversold">—</strong></article>
+                </div>
+            </section>
+        </div>
+
+        <section class="chain-board lab-card" aria-labelledby="chain-title">
+            <header class="section-heading">
+                <div>
+                    <small>AUTHORITATIVE REQUEST PATH</small>
+                    <h2 id="chain-title">这次申领究竟经过哪里</h2>
+                </div>
+                <span>成功响应表示取得资格，不等于已经支付</span>
+            </header>
+            <ol class="request-chain">
+                <li data-chain-step="http"><b>01</b><div><strong>Gin HTTP</strong><span>接收 /lucky，生成本次 uid</span></div></li>
+                <li data-chain-step="limit"><b>02</b><div><strong>入口限流</strong><span>本机令牌桶先挡住过载请求</span></div></li>
+                <li data-chain-step="redis"><b>03</b><div><strong>Redis Lua</strong><span>查重、验库存、扣减、写入资格一次完成</span></div></li>
+                <li data-chain-step="mq"><b>04</b><div><strong>RocketMQ</strong><span>普通消息异步落单，延迟消息检查超时</span></div></li>
+                <li data-chain-step="mysql"><b>05</b><div><strong>MySQL</strong><span>最终账本进入 pending_payment</span></div></li>
+            </ol>
+        </section>
+
+        <section class="event-board lab-card" aria-labelledby="event-title">
+            <header class="section-heading">
+                <div>
+                    <small>RECENT BUSINESS EVENTS</small>
+                    <h2 id="event-title">服务端最近事件</h2>
+                </div>
+                <span>来自 SSE 指标快照</span>
+            </header>
+            <ol id="server-events" class="server-events"><li class="is-empty">等待服务端事件</li></ol>
+        </section>
+    </main>
+
+    <div id="lab-toast" class="lab-toast" role="status" aria-live="assertive"></div>
+    <script src="/js/seckill.js?v=20260804-real-lab"></script>
+</body>
+
+</html>

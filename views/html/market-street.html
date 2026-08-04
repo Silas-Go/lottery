@@ -9,7 +9,7 @@
     <title>暖潮街 17 号 · 技术实验街区</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/market-street.css?v=20260721-static-scene" />
-    <link rel="stylesheet" href="/css/world-style.css?v=20260728-star-marrow" />
+    <link rel="stylesheet" href="/css/world-style.css?v=20260804-real-seckill-entry" />
 </head>
 
 <body class="market-street-shell" data-dialogue="street" data-seckill-state="idle">
@@ -32,8 +32,8 @@
                 <img class="market-scene-background" src="/img/market-street-bg.svg?v=20260721-placeholder" alt="" aria-hidden="true" />
 
                 <article id="seckill-shop" class="shop-interaction scene-positioned" data-scene-key="seckillShop" data-shop="seckill">
-                    <button id="seckill-shop-hitbox" class="shop-interaction__hitbox" type="button" aria-label="进入秒杀实验室小型预览" aria-describedby="seckill-shop-description"></button>
-                    <p id="seckill-shop-description" class="sr-only">浏览器内请求卡片演示，不连接真实秒杀接口。</p>
+                    <button id="seckill-shop-hitbox" class="shop-interaction__hitbox" type="button" aria-label="进入限量材料秒杀实验室" aria-describedby="seckill-shop-description"></button>
+                    <p id="seckill-shop-description" class="sr-only">进入使用真实 Redis、RocketMQ 和 MySQL 链路的限量材料抽取实验。</p>
                 </article>
 
                 <article id="archive-shop" class="shop-interaction scene-positioned" data-scene-key="archiveShop" data-shop="archive">
@@ -49,9 +49,9 @@
 
                 <div class="shop-status scene-positioned" data-scene-key="seckillStatus" role="status">
                     <i aria-hidden="true"></i>
-                    <span><small>WINDOW STATUS</small><strong id="shop-status-text">秒杀尚未开始</strong></span>
+                    <span><small>WINDOW STATUS</small><strong id="shop-status-text">限量申领开放</strong></span>
                 </div>
-                <span class="shop-preview-ribbon scene-positioned" data-scene-key="seckillRibbon">小型预览 · 功能建设中</span>
+                <span class="shop-preview-ribbon scene-positioned" data-scene-key="seckillRibbon">真实链路 · REDIS + MQ</span>
 
                 <div id="seckill-crowd" class="silhouette-crowd" data-component="SilhouetteCrowd" aria-hidden="true">
                     <span class="queue-figure scene-positioned" data-scene-key="queue1"><i></i></span>
@@ -92,7 +92,7 @@
                 </div>
                 <div class="event-choices" aria-label="选择前往的店铺">
                     <button id="dialogue-seckill" type="button">
-                        <span aria-hidden="true">Ⅰ</span><strong>前往秒杀实验室<small>观看请求卡片的前端演示</small></strong>
+                        <span aria-hidden="true">Ⅰ</span><strong>进入限量材料申领所<small>真实抽取材料，观察 Redis 准入与 MQ 落单</small></strong>
                     </button>
                     <button id="dialogue-archive" type="button">
                         <span aria-hidden="true">Ⅱ</span><strong>进入材料情报店<small>亲眼查验星髓，再跟随查询卷轴进入实验</small></strong>
@@ -100,39 +100,12 @@
                 </div>
             </div>
 
-            <div id="seckill-dialogue" class="event-dialogue__view event-dialogue__view--seckill" hidden>
-                <div class="event-dialogue__heading">
-                    <span>小型预览 · 功能建设中</span>
-                    <small>FRONTEND-ONLY MOCK</small>
-                </div>
-                <div class="seckill-dialogue__title">
-                    <h2 id="preview-status-title">秒杀尚未开始</h2>
-                    <strong id="preview-countdown" aria-label="倒计时"></strong>
-                </div>
-                <p id="preview-status-copy">提交口仍暗着。门前只有几位访客在等待限时委托。</p>
-                <ol class="preview-progress" aria-label="秒杀演示阶段">
-                    <li data-preview-step="idle"><i></i><span>等待</span></li>
-                    <li data-preview-step="countdown"><i></i><span>倒计时</span></li>
-                    <li data-preview-step="running"><i></i><span>提交中</span></li>
-                    <li data-preview-step="sold_out"><i></i><span>售罄</span></li>
-                </ol>
-                <div class="result-key" aria-label="返回结果图例">
-                    <span class="result-key__success"><i>✓</i>成功凭证</span>
-                    <span class="result-key__limited"><i>!</i>限流印章</span>
-                    <span class="result-key__duplicate"><i>↩</i>重复退回</span>
-                </div>
-                <div class="preview-actions">
-                    <button id="preview-replay" type="button" hidden>再看一轮</button>
-                    <button id="preview-close" type="button">返回街道选择</button>
-                </div>
-            </div>
         </section>
     </main>
 
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/market-scene-config.js?v=20260721-static-scene"></script>
-    <script src="/js/seckill-mock.js?v=20260721-state-machine"></script>
-    <script src="/js/market-street.js?v=20260728-star-marrow"></script>
+    <script src="/js/market-street.js?v=20260804-real-seckill-entry"></script>
 </body>
 
 </html>

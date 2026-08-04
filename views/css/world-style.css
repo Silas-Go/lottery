@@ -82,28 +82,35 @@ html:has(.market-street-shell) {
     transform: translate3d(100%, 0, 0);
 }
 
-.market-street-shell.is-entering-archive {
+.market-street-shell.is-entering-archive,
+.market-street-shell.is-entering-seckill {
     cursor: progress;
 }
 
-.market-street-shell.is-entering-archive .market-scene-canvas {
+.market-street-shell.is-entering-archive .market-scene-canvas,
+.market-street-shell.is-entering-seckill .market-scene-canvas {
     animation: worldStreetWhip 560ms cubic-bezier(.42, 0, .68, .36) both;
 }
 
-.market-street-shell.is-entering-archive .event-dialogue {
+.market-street-shell.is-entering-archive .event-dialogue,
+.market-street-shell.is-entering-seckill .event-dialogue {
     animation: worldDialogueWhip 470ms cubic-bezier(.42, 0, .8, .4) both;
 }
 
-.market-street-shell.is-entering-archive .market-header {
+.market-street-shell.is-entering-archive .market-header,
+.market-street-shell.is-entering-seckill .market-header {
     animation: worldHeaderWhip 520ms cubic-bezier(.42, 0, .72, .38) both;
 }
 
-.market-street-shell.is-entering-archive::after {
+.market-street-shell.is-entering-archive::after,
+.market-street-shell.is-entering-seckill::after {
     animation: worldSpeedCurtain 560ms ease-in both;
 }
 
 .market-street-shell.is-entering-archive button,
-.market-street-shell.is-entering-archive a {
+.market-street-shell.is-entering-archive a,
+.market-street-shell.is-entering-seckill button,
+.market-street-shell.is-entering-seckill a {
     pointer-events: none;
 }
 
@@ -410,6 +417,11 @@ html:has(.market-street-shell) {
     display: grid;
     grid-template-columns: repeat(2, minmax(150px, 1fr));
     gap: 10px;
+}
+
+.market-street-shell.is-entering-seckill [data-shop="seckill"] .shop-interaction__hitbox {
+    background: rgba(63, 146, 140, .15);
+    box-shadow: inset 0 0 0 4px rgba(63, 146, 140, .58), inset 0 0 42px rgba(63, 146, 140, .18);
 }
 
 .rare-material-actions .event-primary,

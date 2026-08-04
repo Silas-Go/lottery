@@ -36,7 +36,7 @@ type LotteryOptions struct {
 	RateLimitQPS int
 }
 
-// LotteryResult 表示库存获取成功后的统一订单视图。
+// LotteryResult 表示限量材料库存获取成功后的统一订单视图。
 // Redis 模式返回 stock_acquired，MySQL 模式返回 pending_payment；二者都不是 paid 终态。
 type LotteryResult struct {
 	// UID 是 user id，用户 ID；前端支付时会把它带回 /pay。
@@ -45,10 +45,10 @@ type LotteryResult struct {
 	// GiftID 是 gift id，奖品 ID；前端支付和放弃时会把它带回服务端校验资格。
 	GiftID int
 
-	// GiftName 是奖品名称，只用于页面展示，不参与并发控制。
+	// GiftName 是限量材料名称，只用于页面展示，不参与并发控制。
 	GiftName string
 
-	// Price 是奖品价值，只用于页面展示。
+	// Price 是材料价格，只用于页面展示。
 	Price int
 
 	// Delay 是支付窗口秒数，用来设置 cookie 过期时间和页面倒计时。
@@ -58,6 +58,17 @@ type LotteryResult struct {
 	Status database.OrderStatus
 
 	InventoryMode database.InventoryMode
+}
+
+// SeckillMaterialView 是实验入口使用的材料目录 DTO。
+// 它故意不包含 count/cache_stock：展示目录不能泄露或伪造实时库存，准入结果只能由 Lua/事务给出。
+type SeckillMaterialView struct {
+	ID          int    `json:"id"`
+	Code        string `json:"code"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Picture     string `json:"picture"`
+	Price       int    `json:"price"`
 }
 
 // NewLotteryService 创建抽奖服务并初始化入口限流器。
@@ -71,22 +82,26 @@ func NewLotteryService(store *database.Store, opts LotteryOptions) *LotteryServi
 	}
 }
 
-// ListGifts 读取奖品列表供转盘展示。
-// 转盘只需要展示奖品配置，不代表真实库存；真实可抢库存以 Redis 中的预扣库存为准。
-func (s *LotteryService) ListGifts() ([]*database.Gift, *AppError) {
+// ListMaterials 读取四种限量材料供实验页面展示。
+// 目录只提供业务语义，不代表真实库存；真实可抢库存以 Redis 中的预扣库存为准。
+func (s *LotteryService) ListMaterials() ([]SeckillMaterialView, *AppError) {
 	gifts, err := s.store.GetAllGiftsWithError()
 	if err != nil {
-		return nil, NewAppError(CodeGiftDBReadFailed, "读取奖品列表失败", err)
+		return nil, NewAppError(CodeGiftDBReadFailed, "读取限量材料目录失败", err)
 	}
 	if len(gifts) == 0 {
-		return nil, NewAppError(CodeNoGiftsConfigured, "奖品列表为空，请先初始化数据库", nil)
+		return nil, NewAppError(CodeNoGiftsConfigured, "限量材料目录为空，请先初始化数据库", nil)
 	}
 
+	materials := make([]SeckillMaterialView, 0, len(gifts))
 	for _, gift := range gifts {
-		gift.Count = 1
+		materials = append(materials, SeckillMaterialView{
+			ID: gift.Id, Code: fmt.Sprintf("ARC-%03d", gift.Id), Name: gift.Name,
+			Description: gift.Description, Picture: "/" + gift.Picture, Price: gift.Price,
+		})
 	}
-	slog.Info("gift list loaded for wheel", "count", len(gifts))
-	return gifts, nil
+	slog.Info("seckill material catalog loaded", "count", len(materials))
+	return materials, nil
 }
 
 // Draw 执行 Redis 准入和异步落单。
@@ -192,8 +207,8 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 			s.recordMySQLPressure(dbStart)
 			if err != nil {
 				rollbackAdmission(s.store, uid, giftID, "gift_lookup_failed")
-				metrics.RecordSystemError("查询中奖奖品详情失败", err)
-				return nil, NewAppError(CodeGiftLookupFailed, "查询中奖奖品详情失败", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
+				metrics.RecordSystemError("查询取得的材料详情失败", err)
+				return nil, NewAppError(CodeGiftLookupFailed, "查询取得的材料详情失败", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
 			}
 			slog.Info("lottery gift detail loaded", "uid", uid, "gid", giftID, "gift", gift.Name, "price", gift.Price, "try", try, "attempt", attempt)
 

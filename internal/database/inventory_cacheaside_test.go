@@ -25,7 +25,7 @@ func TestCacheAsideNoOversell(t *testing.T) {
 		t.Fatalf("reset cache stock: %v", err)
 	}
 
-	const giftID = 2 // 篮球，初始库存较大
+	const giftID = 2 // 雾银，秒杀库存基线足够支撑并发扣减测试
 	before := readCacheStock(t, giftID)
 	if before <= 0 {
 		t.Skipf("gift %d has no stock to test", giftID)

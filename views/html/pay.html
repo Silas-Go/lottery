@@ -16,14 +16,14 @@
         <h1 id="pay-title">正在确认订单状态</h1>
         <p id="state-description" class="subtitle">两个库存模式共用 stock_acquired → pending_payment → paid/cancelled 生命周期。</p>
 
-        <section class="pay-gift" aria-label="中奖奖品">
+        <section class="pay-gift" aria-label="已取得的限量材料">
             <div class="pay-field">
-                <span>奖品</span>
+                <span>限量材料</span>
                 <strong id="gift-name">加载中</strong>
             </div>
             <div class="pay-field">
                 <span>待支付金额</span>
-                <strong><span id="gift-price">0</span> 元</strong>
+                <strong><span id="gift-price">0</span> 金币</strong>
             </div>
         </section>
 
@@ -141,7 +141,7 @@
 
         document.addEventListener("DOMContentLoaded", function () {
             var order = currentOrder();
-            document.getElementById("gift-name").textContent = order.name || "未知奖品";
+            document.getElementById("gift-name").textContent = order.name || "未知材料";
             document.getElementById("gift-price").textContent = order.price || "0";
             renderOrderState(order.status || "stock_acquired", order.mode || "redis");
             var poll = window.setInterval(async function () {

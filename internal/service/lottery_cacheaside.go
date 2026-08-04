@@ -121,7 +121,7 @@ func (s *CacheAsideLotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 		if err != nil {
 			_, _, _ = s.store.CancelMySQLOrderAndRestoreStock(order.Id, "gift_lookup_failed")
 			metrics.RecordSystemError("Cache-Aside 查询奖品详情失败", err)
-			return nil, NewAppError(CodeGiftLookupFailed, "查询中奖奖品详情失败", err, "uid", uid, "gid", giftID, "try", try)
+			return nil, NewAppError(CodeGiftLookupFailed, "查询取得的材料详情失败", err, "uid", uid, "gid", giftID, "try", try)
 		}
 
 		if err := mq.SendCancelOrder(*order, PayDelaySeconds); err != nil {
