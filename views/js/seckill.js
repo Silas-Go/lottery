@@ -51,7 +51,7 @@
             var card = document.createElement("article");
             var image = document.createElement("img");
             var content = document.createElement("div");
-            var code = document.createElement("small");
+            var label = document.createElement("small");
             var name = document.createElement("h3");
             var description = document.createElement("p");
 
@@ -59,10 +59,10 @@
             card.dataset.materialId = String(material.id);
             image.src = material.picture;
             image.alt = material.name;
-            code.textContent = material.code;
+            label.textContent = "唯一实验材料";
             name.textContent = material.name;
             description.textContent = material.description;
-            content.appendChild(code);
+            content.appendChild(label);
             content.appendChild(name);
             content.appendChild(description);
             card.appendChild(image);
@@ -70,7 +70,7 @@
             grid.appendChild(card);
             materialByID.set(String(material.id), material);
         });
-        setText("material-count", materials.length === 1 ? "ARC-004 · 星髓" : materials.length + " 种材料");
+        setText("material-count", materials.length === 1 ? "星髓" : materials.length + " 种材料");
     }
 
     async function loadMaterials() {
@@ -125,7 +125,6 @@
         activateMaterial(material.id);
         byId("receipt-image").src = material.picture;
         byId("receipt-image").alt = material.name;
-        setText("receipt-code", material.code);
         setText("receipt-name", material.name);
         setText("receipt-status", "库存资格已取得，等待 MQ 建立待支付订单");
         byId("request-receipt").hidden = false;

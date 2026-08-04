@@ -7,7 +7,7 @@ func TestDefaultMaterialCatalogOnlyExposesStarMarrow(t *testing.T) {
 		t.Fatalf("primary material count=%d, want=1", len(defaultMaterialCatalog))
 	}
 	material := defaultMaterialCatalog[0]
-	if material.ID != starMarrowMaterialID || material.Code != "ARC-004" || material.Name != "星髓" || !material.IsPrimary {
+	if material.ID != starMarrowMaterialID || material.Code != "star-marrow" || material.Name != "星髓" || !material.IsPrimary {
 		t.Fatalf("unexpected primary material: %+v", material)
 	}
 

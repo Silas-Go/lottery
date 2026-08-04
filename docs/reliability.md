@@ -2,8 +2,8 @@
 
 本文描述当前代码实际实现的可靠性语义。两个库存模式共享同一套订单生命周期，差别仅在库存准入和 `pending_payment` 建立方式。
 
-首页 `/` 的“秒杀实验室”是纯前端预览：倒计时、请求卡、限流、重复与售罄结果均为视觉 Mock，
-不会调用 `/lucky`、`/pay`、`/giveup` 或指标接口，也不能用于判断真实库存和订单状态。
+首页 `/` 的左侧入口会进入真实秒杀实验室 `/seckill-lab`，页面调用 `/lucky`、`/pay`、`/giveup`
+与指标接口；首页本身只负责转场，不展示或裁决实时库存。
 真实查询与购买实验都从材料情报店 `/material-shop` 选择：查询进入 `/lab`，购买进入
 `/purchase-lab`。两者共享材料语境，但不互相解锁；由于共用库存与缓存，不应并行运行。后端可靠性边界仍以本文后续链路为准。
 
@@ -53,7 +53,7 @@ Browser -> app:5678 -> loadtest-runner:8090 -> wrk2 child process
                                       \-> app:5678/api/archives/:id/{direct|cached}
 ```
 
-前端职责也按场景拆开：`/material-shop` 当前只开放 `ARC-004 · 星髓`，直接提供查询与购买两个
+前端职责也按场景拆开：`/material-shop` 当前只开放星髓，直接提供查询与购买两个
 平级配置入口，不再经过单次查询或第二层方式选择。查询分支负责读取路径、查询潮汐、通路模式和固定时长的计划展示；该页面只保存查询
 计划并转场，不调用任务创建接口，也不重置购买实验库存。
 `/lab` 在页面可见且收到全局指标 SSE 首帧后创建任务，再订阅任务 SSE、轮询恢复状态、显示详细指标和日志、执行停止，
@@ -74,7 +74,7 @@ HTTP/1.1 链路中通常要等上一请求返回后才能继续。QPS、连接�
 
 - Runner 不挂载 `/var/run/docker.sock`，也不执行 `docker compose run`；它只能管理自己的 wrk2 子进程。
 - 新页面公开请求只有 `experiment`、`archiveId`、`mode`、`rate`、`connectionMode`，手动模式才额外提交 `connections`；旧 `tier` 只为滚动升级兼容保留。目标 URL、Lua 路径、线程和时长均由服务端生成。`POST /api/loadtests/connection-plan` 只读调用 Runner 的同一套连接估算器，不创建任务；`POST /api/loadtests` 在创建响应中返回最终锁定的 `connections` 和选择原因。
-- `archiveId` 只允许当前材料夹具 1..4，模式只允许 `direct|cached`，实验只允许 `cache-aside-read`。
+- `archiveId` 只允许唯一商品星髓的内部主键 `4`，模式只允许 `direct|cached`，实验只允许 `cache-aside-read`。
 - `rate` 只允许 100 / 300 / 800 / 1500 QPS，`connectionMode` 只允许 `auto|manual`；手动通路数只允许 70 / 140 / 300 / 500，新协议任务固定 30 秒。30 秒为 wrk2 单线程、最多 500 条通路留出校准后的有效延迟采样窗口；旧 tier 任务仍保留原 20 秒兼容值。Runner 另有 30 秒配置上限和额外的整体硬超时；异常或超时必须回收进程并释放单任务锁。
 - 自动通路模式依据同一材料历史 uncorrected 请求 P95 估算在途请求数并增加 25% 周转余量，再选择能覆盖估算值的最小白名单档位；没有历史时使用保守基线，估算超过白名单时使用 500 条上限。同一材料、同一目标 QPS 已有自动任务时沿用它的 `wrk2 -c` 配置，保证 Direct 与 Cache-Aside 公平比较。启动前的预估只是当前历史快照，任务创建时会在 Runner 锁内再次计算并锁定最终值。
 - 同一时间最多一个活动任务。互斥锁在 Runner 内而非浏览器内，所以多标签页同时点击也只有一个任务成功。
@@ -131,10 +131,12 @@ pending_payment -> cancelled
 
 ## 限量材料目录与实验隔离
 
-抢购链路的 `inventory` 只保留 `ARC-004 · 星髓`。它的名称、价格和图片与材料读模型一致，
+抢购链路的 `inventory` 只保留星髓。它的名称、价格和图片与材料读模型一致，
 但 `inventory.count/cache_stock` 是独立的高并发活动库存，不能与
 购买实验的 `materials.stock` 混用。`GET /api/seckill/materials` 只返回目录信息，不承诺实时库存；
 真正库存仍由下述 Redis Lua 或 MySQL 事务裁决。
+页面、跳转参数和对外材料 DTO 不再暴露历史档案编号；三个实验固定使用星髓，后端仍以
+`material_id = 4` 作为表关联和缓存 key 的内部主键。
 
 老数据卷不会重跑 `init.sql`。启动时若检测到现代奖品或多材料目录，会先清理 Redis admission，
 再在同一 MySQL 事务中清空旧秒杀订单并替换为星髓。材料读模型会先清空 Redis DTO 副本，再删除
@@ -287,10 +289,11 @@ inventory.count
 - 实验订单：`purchase_lab_orders`，`request_id` 唯一
 - 可靠事件：`purchase_lab_outbox`，`event_id` 和 `request_id` 唯一
 
-购买页可从材料店前厅直接进入，也可作为查询完成后的延续入口；两条路径都只传递材料编号。
+购买页可从材料店前厅直接进入，也可作为查询完成后的延续入口；两条路径都使用固定星髓上下文，
+不再通过 URL 或 sessionStorage 传递材料编号。
 购买页会自行读取库存并在真正开始一轮实验时重置基线，不依赖查询任务或查询结果。
 
-重置时先在 MySQL 事务中锁定材料行、恢复该材料的实验基线（星髓 100，普通材料 300）、取消未完成 Outbox，并删除该材料的实验订单；
+重置时先在 MySQL 事务中锁定材料行、恢复星髓的实验基线 100、取消未完成 Outbox，并删除该材料的实验订单；
 事务提交后重新组装材料 DTO 并预热同一个 Redis key。迟到的 MQ 消息读取到 `cancelled` 后不会删除
 新预热的缓存。
 

@@ -10,7 +10,7 @@ create table if not exists inventory(
     primary key (id)
 )default charset=utf8mb4;
 
--- 查询、购买和抢购实验统一围绕 ARC-004 星髓展开。
+-- 查询、购买和抢购实验统一围绕星髓展开。
 -- inventory 是独立的抢购活动库存，不与 materials.stock 的普通购买库存混用。
 insert into inventory (id,name,description,picture,price,count) values
 (4,'星髓','从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。','img/star-marrow-relic.png',5200,300);

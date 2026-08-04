@@ -64,7 +64,6 @@ type LotteryResult struct {
 // 它故意不包含 count/cache_stock：展示目录不能泄露或伪造实时库存，准入结果只能由 Lua/事务给出。
 type SeckillMaterialView struct {
 	ID          int    `json:"id"`
-	Code        string `json:"code"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Picture     string `json:"picture"`
@@ -96,7 +95,7 @@ func (s *LotteryService) ListMaterials() ([]SeckillMaterialView, *AppError) {
 	materials := make([]SeckillMaterialView, 0, len(gifts))
 	for _, gift := range gifts {
 		materials = append(materials, SeckillMaterialView{
-			ID: gift.Id, Code: fmt.Sprintf("ARC-%03d", gift.Id), Name: gift.Name,
+			ID: gift.Id, Name: gift.Name,
 			Description: gift.Description, Picture: "/" + gift.Picture, Price: gift.Price,
 		})
 	}

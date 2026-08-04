@@ -103,7 +103,6 @@ func (MaterialReview) TableName() string { return "reviews" }
 // MaterialSummaryDTO 是市场列表使用的轻量视图，不参与 Direct/Cache-Aside 压测。
 type MaterialSummaryDTO struct {
 	ID      int    `json:"id"`
-	Code    string `json:"code"`
 	Name    string `json:"name"`
 	Sigil   string `json:"sigil"`
 	Accent  string `json:"accent"`
@@ -148,7 +147,6 @@ type MaterialRatingDTO struct {
 // Redis 缓存的就是这份 JSON，而不是若干底层表行，命中时无需再次 JOIN 或聚合。
 type MaterialDetailDTO struct {
 	ID         int                    `json:"id"`
-	Code       string                 `json:"code"`
 	Name       string                 `json:"name"`
 	Title      string                 `json:"title"`
 	Sigil      string                 `json:"sigil"`
@@ -177,7 +175,7 @@ var defaultMaterialSources = []MaterialSource{
 }
 
 var defaultMaterialCatalog = []MaterialCatalog{
-	{ID: 4, Code: "ARC-004", Name: "星髓", IsPrimary: true, Title: "从坠星内部提取的高密度魔力介质", Sigil: "Ⅳ", Accent: "#8877d7", Summary: "只在高阶炼成中使用的稀缺校准材料。", Oath: "群星沉默，星髓仍在迁移。", Price: 5200, Stock: 12, RarityID: 4, SourceID: 4, Attribute: "高密度魔力 · 星光迁移", Usage: "高阶炼成与能量校准", Risk: "高密度魔力会干扰未经屏蔽的仪器。"},
+	{ID: 4, Code: "star-marrow", Name: "星髓", IsPrimary: true, Title: "从坠星内部提取的高密度魔力介质", Sigil: "Ⅳ", Accent: "#8877d7", Summary: "只在高阶炼成中使用的稀缺校准材料。", Oath: "群星沉默，星髓仍在迁移。", Price: 5200, Stock: 12, RarityID: 4, SourceID: 4, Attribute: "高密度魔力 · 星光迁移", Usage: "高阶炼成与能量校准", Risk: "高密度魔力会干扰未经屏蔽的仪器。"},
 }
 
 // 组成材料也复用 materials；关系表只保存“成品材料 -> 组成材料”的外键和用量。
@@ -338,7 +336,7 @@ func (s *Store) ensureMaterialFactFixtures() error {
 func (s *Store) ListMaterialSummaries() ([]MaterialSummaryDTO, error) {
 	var summaries []MaterialSummaryDTO
 	err := s.db.Raw(`
-		SELECT m.id, m.code, m.name, m.sigil, m.accent, m.summary, m.price, m.stock,
+		SELECT m.id, m.name, m.sigil, m.accent, m.summary, m.price, m.stock,
 		       r.label AS rarity
 		FROM materials m
 		JOIN material_rarities r ON r.id = m.rarity_id
@@ -355,7 +353,7 @@ func (s *Store) ListMaterialSummaries() ([]MaterialSummaryDTO, error) {
 func (s *Store) GetMaterialDetail(id int) (*MaterialDetailDTO, int, error) {
 	type baseRow struct {
 		ID, Price, Stock, RarityRank                    int
-		Code, Name, Title, Sigil, Accent, Summary, Oath string
+		Name, Title, Sigil, Accent, Summary, Oath       string
 		Attribute, Usage, Risk                          string
 		RarityCode, RarityLabel                         string
 		SourceCode, SourceName, SourceRegion            string
@@ -363,7 +361,7 @@ func (s *Store) GetMaterialDetail(id int) (*MaterialDetailDTO, int, error) {
 	var base baseRow
 	queries := 1
 	err := s.db.Raw(`
-		SELECT m.id, m.code, m.name, m.title, m.sigil, m.accent, m.summary, m.oath,
+		SELECT m.id, m.name, m.title, m.sigil, m.accent, m.summary, m.oath,
 		       m.price, m.stock, m.attribute, m.usage, m.risk,
 		       r.code AS rarity_code, r.label AS rarity_label, r.rank AS rarity_rank,
 		       s.code AS source_code, s.name AS source_name, s.region AS source_region
@@ -378,7 +376,7 @@ func (s *Store) GetMaterialDetail(id int) (*MaterialDetailDTO, int, error) {
 		return nil, queries, fmt.Errorf("%w: id=%d", ErrMaterialArchiveNotFound, id)
 	}
 	detail := &MaterialDetailDTO{
-		ID: base.ID, Code: base.Code, Name: base.Name, Title: base.Title, Sigil: base.Sigil,
+		ID: base.ID, Name: base.Name, Title: base.Title, Sigil: base.Sigil,
 		Accent: base.Accent, Summary: base.Summary, Oath: base.Oath, Price: base.Price, Stock: base.Stock,
 		Attribute: base.Attribute, Usage: base.Usage, Risk: base.Risk,
 		Rarity:     MaterialRarityDTO{Code: base.RarityCode, Label: base.RarityLabel, Rank: base.RarityRank},

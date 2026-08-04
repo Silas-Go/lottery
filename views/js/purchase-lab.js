@@ -1,7 +1,6 @@
 (function () {
     "use strict";
 
-    var MATERIAL_STORAGE_KEY = "silas.cache-aside.material-id";
     var REPLAY_POSITION_KEY = "silas.cache-aside.purchase-replay-position.v2";
     // 独立实验报告使用新的前端信封保存，record/trace 本身保持原结构不变。
     // requestId 既是幂等键也是精确回看索引，避免同一方案重跑后误载最新一轮。
@@ -24,7 +23,7 @@
         generated: null
     };
     var profiles = {
-        4: { code: "ARC-004", name: "星髓" }
+        4: { name: "星髓" }
     };
     var strategyNames = {
         "sync-invalidate": "同步删除缓存",
@@ -289,26 +288,8 @@
         };
     }
 
-    function normalizeMaterial(value) {
-        if (value === null || value === undefined || value === "") {
-            return null;
-        }
-        var raw = String(value).trim().toUpperCase();
-        var match = raw.match(/^ARC-00([1-4])$/);
-        var id = match ? Number(match[1]) : Number(raw);
-        return profiles[id] ? { id: id, profile: profiles[id] } : null;
-    }
-
     function incomingMaterial() {
-        var query = new URLSearchParams(window.location.search);
-        if (query.has("material")) {
-            return normalizeMaterial(query.get("material")) || normalizeMaterial(4);
-        }
-        try {
-            return normalizeMaterial(window.sessionStorage.getItem(MATERIAL_STORAGE_KEY)) || normalizeMaterial(4);
-        } catch (_) {
-            return normalizeMaterial(4);
-        }
+        return { id: 4, profile: profiles[4] };
     }
 
     function incomingPurchasePlan() {
@@ -341,14 +322,6 @@
             nextURL.searchParams.set("strategy", state.strategy);
         }
         window.history.replaceState(null, "", nextURL.toString());
-    }
-
-    function rememberMaterial(profile) {
-        try {
-            window.sessionStorage.setItem(MATERIAL_STORAGE_KEY, profile.code);
-        } catch (_) {
-            // URL 仍保留材料上下文；存储失败只影响刷新后的便捷恢复。
-        }
     }
 
     function readReplayPosition() {
@@ -3046,13 +3019,11 @@
         }
         state.materialId = material.id;
         state.profile = material.profile;
-        document.body.dataset.materialKind = material.profile.code === "ARC-004" ? "star" : "standard";
-        rememberMaterial(material.profile);
-        byId("purchase-current-code").textContent = material.profile.code;
+        document.body.dataset.materialKind = "star";
         byId("purchase-current-name").textContent = material.profile.name;
         byId("story-material-name").textContent = material.profile.name;
         byId("purchase-shop-link").href = "/material-shop";
-        byId("back-to-query").href = "/lab?material=" + encodeURIComponent(material.profile.code);
+        byId("back-to-query").href = "/lab";
         byId("purchase-empty").hidden = true;
         byId("purchase-content").hidden = false;
         return true;

@@ -1,13 +1,12 @@
 (function () {
     "use strict";
 
-    var STORAGE_KEY = "silas.cache-aside.material-id";
     var ACTIVE_TASK_KEY = "silas.cache-aside.active-loadtest.v1";
     var experimentState = window.SilasExperimentState;
     var experimentResults = window.SilasExperimentResults;
     var profiles = {
         4: {
-            code: "ARC-004", name: "星髓", sigil: "Ⅳ", kind: "star",
+            name: "星髓", sigil: "Ⅳ", kind: "star",
             rarity: "LEGENDARY · 传说", origin: "坠星盆地", attribute: "高密度魔力 · 星光迁移",
             usage: "高阶炼成与能量校准", risk: "高密度魔力会干扰未经屏蔽的仪器。"
         }
@@ -261,26 +260,8 @@
         byId("query-verdict-line").textContent = copy;
     }
 
-    function normalizeMaterial(value) {
-        if (value === null || value === undefined || value === "") {
-            return null;
-        }
-        var raw = String(value).trim().toUpperCase();
-        var match = raw.match(/^ARC-00([1-4])$/);
-        var id = match ? Number(match[1]) : Number(raw);
-        return profiles[id] ? { id: id, profile: profiles[id] } : null;
-    }
-
     function incomingMaterial() {
-        var query = new URLSearchParams(window.location.search);
-        if (query.has("material")) {
-            return normalizeMaterial(query.get("material")) || normalizeMaterial(4);
-        }
-        try {
-            return normalizeMaterial(window.sessionStorage.getItem(STORAGE_KEY)) || normalizeMaterial(4);
-        } catch (_) {
-            return normalizeMaterial(4);
-        }
+        return { id: 4, profile: profiles[4] };
     }
 
     function incomingEntry() {
@@ -327,14 +308,6 @@
             connectionMode: mode,
             connections: requestedConnections
         };
-    }
-
-    function rememberMaterial(profile) {
-        try {
-            window.sessionStorage.setItem(STORAGE_KEY, profile.code);
-        } catch (_) {
-            // URL 已经携带材料编号，存储失败不影响当前实验。
-        }
     }
 
     function showToast(message, tone) {
@@ -384,9 +357,7 @@
         }
         state.id = context.id;
         state.profile = context.profile;
-        rememberMaterial(context.profile);
         document.body.dataset.materialKind = context.profile.kind;
-        byId("lab-current-code").textContent = context.profile.code;
         byId("lab-current-name").textContent = context.profile.name;
         byId("rare-query-brief").hidden = context.profile.kind !== "star";
         byId("empty-state").hidden = true;
@@ -867,7 +838,7 @@
         var results = experimentResults.list();
         for (var index = results.length - 1; index >= 0; index -= 1) {
             if (results[index].mode === mode && results[index].entry === "crowd" &&
-                state.profile && results[index].materialCode === state.profile.code) {
+                state.profile && results[index].materialName === state.profile.name) {
                 return results[index];
             }
         }
@@ -928,7 +899,7 @@
             "查询潮汐" + (result.expectedRate ? " · " + result.expectedRate + " req/s" : "") +
             (result.expectedDurationSeconds ? " · " + result.expectedDurationSeconds + "s" : "") : "单次检索";
         card.querySelector("[data-result-context]").textContent =
-            (result.materialCode || "材料未标记") + " · " + (result.materialName || "") + temperature + " · " + runKind;
+            (result.materialName || "星髓") + temperature + " · " + runKind;
         Array.prototype.forEach.call(card.querySelectorAll("[data-result]"), function (node) {
             var key = node.dataset.result;
             var value = resultMetric(result, key);
@@ -1000,7 +971,7 @@
         if (direct.entry !== "crowd" || cached.entry !== "crowd") {
             return false;
         }
-        if (direct.materialCode !== cached.materialCode) {
+        if (direct.materialName !== cached.materialName) {
             return false;
         }
         if (Number(direct.expectedRate || 0) !== Number(cached.expectedRate || 0) ||
@@ -1093,7 +1064,7 @@
                 "两轮配置不同，页面不会据此裁定路径差异；请使用相同潮汐和相同 wrk2 -c 配置重新实验。";
             return;
         }
-        byId("frozen-comparison-title").textContent = direct.materialCode + " · 同条件结果已冻结";
+        byId("frozen-comparison-title").textContent = (direct.materialName || "星髓") + " · 同条件结果已冻结";
         byId("frozen-overall-winner").textContent = "分维度观察";
         var directCompletion = resultCompletionRate(direct);
         var cachedCompletion = resultCompletionRate(cached);
@@ -1349,7 +1320,6 @@
         completeResult({
             taskId: task.taskId,
             entry: "crowd",
-            materialCode: pending.materialCode || state.profile.code,
             materialName: pending.materialName || state.profile.name,
             mode: task.mode === "cached" ? "cached" : "direct",
             cacheTemperature: pending.cacheTemperature || "cold",
@@ -2371,7 +2341,6 @@
                 taskId: created.taskId,
                 entry: "crowd",
                 launchWhenObserved: false,
-                materialCode: state.profile.code,
                 materialName: state.profile.name,
                 mode: experiment.mode,
                 cacheTemperature: "cold",
@@ -2460,7 +2429,6 @@
         var currentPath = state.snapshot && (cached ? state.snapshot.cached : state.snapshot.direct);
         completeResult({
             entry: "single",
-            materialCode: state.profile.code,
             materialName: state.profile.name,
             mode: experiment.mode,
             cacheTemperature: experiment.cacheTemperature,
@@ -2539,7 +2507,6 @@
         }
         completeResult({
             entry: "crowd",
-            materialCode: state.pendingRun.materialCode || state.profile.code,
             materialName: state.pendingRun.materialName || state.profile.name,
             mode: mode,
             cacheTemperature: state.pendingRun.cacheTemperature,
@@ -2566,7 +2533,6 @@
         byId("record-placeholder").hidden = true;
         byId("record-result").hidden = false;
         byId("record-result").dataset.kind = profile.kind;
-        byId("record-result-code").textContent = body.code || profile.code;
         byId("record-result-name").textContent = body.name || profile.name;
         byId("record-result-sigil").textContent = body.sigil || profile.sigil;
         byId("record-rarity").textContent = body.rarity && body.rarity.label || profile.rarity;
@@ -2635,8 +2601,7 @@
             showToast("请先完成一次真实材料查询。", "danger");
             return;
         }
-        window.location.href =
-            "/material-shop?experiment=purchase&material=" + encodeURIComponent(state.profile.code);
+        window.location.href = "/material-shop?experiment=purchase";
     }
 
     async function prepareColdCache() {
@@ -3151,7 +3116,6 @@
                 taskId: "",
                 entry: "crowd",
                 launchWhenObserved: true,
-                materialCode: state.profile.code,
                 materialName: state.profile.name,
                 mode: incomingMode || currentExperiment().mode,
                 cacheTemperature: "cold",
@@ -3165,7 +3129,7 @@
             };
             experimentResults.arm(pendingRun);
         }
-        state.pendingRun = pendingRun && pendingRun.materialCode === state.profile.code ? pendingRun : null;
+        state.pendingRun = pendingRun && pendingRun.materialName === state.profile.name ? pendingRun : null;
         if (state.pendingRun && Number(state.pendingRun.plannedConnections || 0) > 0) {
             state.connectionPlan = {
                 rate: Number(state.pendingRun.expectedRate || 0),

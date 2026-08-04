@@ -1,15 +1,14 @@
 (function () {
     "use strict";
 
-    var STORAGE_KEY = "silas.cache-aside.material-id";
     var experimentState = window.SilasExperimentState;
     var experimentResults = window.SilasExperimentResults;
     var materials = {
-        "ARC-004": { name: "星髓", sigil: "Ⅳ", kind: "star" }
+        "star-marrow": { id: 4, name: "星髓", sigil: "Ⅳ", kind: "star" }
     };
     // 查询、购买和抢购三条实验链路只共享星髓这一项业务样本。
     // 代码仍按 material code 编排，未来扩展目录时无需把业务逻辑改成硬编码分支。
-    var FEATURED_MATERIAL_CODE = "ARC-004";
+    var FEATURED_MATERIAL_CODE = "star-marrow";
     var state = "dialogue";
     var selectedCode = null;
     var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -99,14 +98,6 @@
         byId("event-step").textContent = labels[next] || "事件";
     }
 
-    function rememberMaterial(code) {
-        try {
-            window.sessionStorage.setItem(STORAGE_KEY, code);
-        } catch (_) {
-            // URL 仍会携带材料编号，禁用存储不会阻断流程。
-        }
-    }
-
     function showToast(message) {
         var toast = byId("market-toast");
         toast.textContent = message;
@@ -118,7 +109,7 @@
     }
 
     function materialNumericId() {
-        return selectedCode ? Number(selectedCode.slice(-3)) : 0;
+        return selectedCode && materials[selectedCode] ? materials[selectedCode].id : 0;
     }
 
     function crowdCommand() {
@@ -495,7 +486,7 @@
 
     function updateCrowdTicketCodes() {
         Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-ticket]"), function (ticket) {
-            ticket.textContent = selectedCode || "ARC-???";
+            ticket.textContent = selectedCode && materials[selectedCode] ? materials[selectedCode].name : "星髓";
         });
     }
 
@@ -505,14 +496,12 @@
             return;
         }
         selectedCode = code;
-        byId("record-code").textContent = code;
         byId("record-name").textContent = material.name;
         byId("record-sigil").textContent = material.sigil;
         byId("record-card").dataset.kind = material.kind;
-        byId("accepted-material").textContent = code + " · " + material.name;
+        byId("accepted-material").textContent = material.name;
         updateCrowdTicketCodes();
         renderMarketRequestPreview();
-        rememberMaterial(code);
     }
 
     function openFeaturedMaterial() {
@@ -866,8 +855,7 @@
             var selectedMode = experimentState.get().mode;
             var tier = task && task.tier || crowdTiers[crowdTierID];
             var finalMode = task && task.connectionMode || connectionMode;
-            var query = "/lab?material=" + encodeURIComponent(selectedCode) +
-                "&entry=crowd" +
+            var query = "/lab?entry=crowd" +
                 "&mode=" + encodeURIComponent(task && task.mode || selectedMode) +
                 "&rate=" + encodeURIComponent(tier.rate) +
                 "&connectionMode=" + encodeURIComponent(finalMode);
@@ -910,7 +898,6 @@
                 taskId: "",
                 entry: "crowd",
                 launchWhenObserved: true,
-                materialCode: selectedCode,
                 materialName: materials[selectedCode].name,
                 mode: experiment.mode,
                 cacheTemperature: "cold",
@@ -927,7 +914,6 @@
                 taskId: handoff.taskId,
                 entry: handoff.entry,
                 launchWhenObserved: handoff.launchWhenObserved,
-                materialCode: handoff.materialCode,
                 materialName: handoff.materialName,
                 mode: handoff.mode,
                 cacheTemperature: handoff.cacheTemperature,
@@ -1094,14 +1080,13 @@
             !purchasePlanStrategies[purchasePlanStrategy]) {
             return;
         }
-        rememberMaterial(selectedCode);
         setState("entering_purchase_lab");
         byId("market-announcer").textContent =
-            selectedCode + " 的" + purchasePlanStrategies[purchasePlanStrategy].label +
+            materials[selectedCode].name + "的" + purchasePlanStrategies[purchasePlanStrategy].label +
             "计划已确认，正在前往采购实验室";
         window.setTimeout(function () {
-            window.location.assign("/purchase-lab?material=" + encodeURIComponent(selectedCode) +
-                "&strategy=" + encodeURIComponent(purchasePlanStrategy) + "&intent=new");
+            window.location.assign("/purchase-lab?strategy=" +
+                encodeURIComponent(purchasePlanStrategy) + "&intent=new");
         }, reducedMotion ? 0 : 180);
     }
 
