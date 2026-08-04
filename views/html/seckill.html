@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#ebe2c5" />
-    <meta name="description" content="限量炼金材料真实抽取实验：观察限流、Redis Lua 准入、RocketMQ 异步落单和订单状态机。" />
+    <meta name="description" content="星髓真实抢购实验：观察限流、Redis Lua 准入、RocketMQ 异步落单和订单状态机。" />
     <title>限量材料申领所 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/seckill.css?v=20260804-real-lab" />
@@ -32,7 +32,7 @@
             <div>
                 <p class="chapter-mark">EXPERIMENT Ⅰ · HIGH CONCURRENCY ADMISSION</p>
                 <h1 id="seckill-title">限量材料申领实验</h1>
-                <p>递交一次真实请求。材料由当前剩余库存加权抽取，准入由 Redis Lua 原子裁决，随后交给 RocketMQ 异步建立待支付订单。</p>
+                <p>本场只申领星髓。请求由 Redis Lua 原子裁决，取得库存资格后交给 RocketMQ 异步建立待支付订单。</p>
             </div>
             <div class="truth-seal" aria-label="本页不使用前端模拟数据">
                 <span>REAL</span>
@@ -45,7 +45,7 @@
             <header class="section-heading">
                 <div>
                     <small>LIMITED MATERIAL CATALOG</small>
-                    <h2 id="material-ledger-title">本轮可取得的炼金材料</h2>
+                    <h2 id="material-ledger-title">本场唯一限量材料</h2>
                 </div>
                 <span id="material-count">读取目录中</span>
             </header>

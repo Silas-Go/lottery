@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -15,7 +16,10 @@ const materialDetailCachePrefix = "archive:material-detail:v2:"
 const (
 	materialTradeFactsPerMaterial  = 2500
 	materialReviewFactsPerMaterial = 400
+	starMarrowMaterialID           = 4
 )
+
+var starMarrowCatalogIDs = []int{starMarrowMaterialID, 401, 402, 403}
 
 // ErrMaterialArchiveNotFound 让 service 能把“没有这份材料档案”稳定映射成 404。
 var ErrMaterialArchiveNotFound = errors.New("material archive not found")
@@ -165,37 +169,20 @@ type MaterialDetailDTO struct {
 
 var defaultMaterialRarities = []MaterialRarity{
 	{ID: 1, Code: "common", Label: "COMMON · 常见", Rank: 1},
-	{ID: 2, Code: "rare", Label: "RARE · 稀有", Rank: 2},
-	{ID: 3, Code: "epic", Label: "EPIC · 史诗", Rank: 3},
 	{ID: 4, Code: "legendary", Label: "LEGENDARY · 传说", Rank: 4},
 }
 
 var defaultMaterialSources = []MaterialSource{
-	{ID: 1, Code: "frost-tide-marsh", Name: "霜潮盐沼", Region: "北境潮汐带"},
-	{ID: 2, Code: "mist-sea-vein", Name: "雾海银脉", Region: "西部群岛"},
-	{ID: 3, Code: "red-ridge-volcano", Name: "赤脊火山带", Region: "南境熔岩环"},
 	{ID: 4, Code: "fallen-star-basin", Name: "坠星盆地", Region: "高原观测区"},
 }
 
 var defaultMaterialCatalog = []MaterialCatalog{
-	{ID: 1, Code: "ARC-001", Name: "月盐", IsPrimary: true, Title: "月潮退去后留下的低温结晶", Sigil: "Ⅰ", Accent: "#68cfd1", Summary: "稳定、常见且易于计量的炼成介质。", Oath: "潮水会退去，月盐会留下。", Price: 90, Stock: 64, RarityID: 1, SourceID: 1, Attribute: "低温稳定 · 吸热", Usage: "炼成介质与温控缓冲", Risk: "过量使用会造成局部低温脆化。"},
-	{ID: 2, Code: "ARC-002", Name: "雾银", IsPrimary: true, Title: "能在雾中保持镜面反射的液态银", Sigil: "Ⅱ", Accent: "#83a9c9", Summary: "适合感应器与镜面术式的稀有导体。", Oath: "雾遮住道路，银仍记得光。", Price: 360, Stock: 48, RarityID: 2, SourceID: 2, Attribute: "折射 · 液态金属", Usage: "镜面术式与感应组件", Risk: "强魔力场中形态不稳定，需隔离保存。"},
-	{ID: 3, Code: "ARC-003", Name: "龙息琥珀", IsPrimary: true, Title: "封存古老高温吐息的动力核心", Sigil: "Ⅲ", Accent: "#d08a57", Summary: "持续释放热能，常用于高负荷炼成装置。", Oath: "火焰沉睡，但从未熄灭。", Price: 1280, Stock: 24, RarityID: 3, SourceID: 3, Attribute: "高温封存 · 持续放能", Usage: "动力核心与耐热封装", Risk: "高温或撞击可能触发能量泄漏。"},
 	{ID: 4, Code: "ARC-004", Name: "星髓", IsPrimary: true, Title: "从坠星内部提取的高密度魔力介质", Sigil: "Ⅳ", Accent: "#8877d7", Summary: "只在高阶炼成中使用的稀缺校准材料。", Oath: "群星沉默，星髓仍在迁移。", Price: 5200, Stock: 12, RarityID: 4, SourceID: 4, Attribute: "高密度魔力 · 星光迁移", Usage: "高阶炼成与能量校准", Risk: "高密度魔力会干扰未经屏蔽的仪器。"},
 }
 
 // 组成材料也复用 materials；关系表只保存“成品材料 -> 组成材料”的外键和用量。
 // 这样详情查询必须执行 material_components JOIN materials，页面展示的映射与真实 SQL 保持一致。
 var defaultComponentMaterials = []MaterialCatalog{
-	{ID: 101, Code: "CMP-101", Name: "霜晶粉", RarityID: 1, SourceID: 1},
-	{ID: 102, Code: "CMP-102", Name: "月潮水", RarityID: 1, SourceID: 1},
-	{ID: 103, Code: "CMP-103", Name: "盐沼草灰", RarityID: 1, SourceID: 1},
-	{ID: 201, Code: "CMP-201", Name: "雾银砂", RarityID: 1, SourceID: 2},
-	{ID: 202, Code: "CMP-202", Name: "镜湖凝露", RarityID: 1, SourceID: 2},
-	{ID: 203, Code: "CMP-203", Name: "导魔铜屑", RarityID: 1, SourceID: 2},
-	{ID: 301, Code: "CMP-301", Name: "赤脊树脂", RarityID: 1, SourceID: 3},
-	{ID: 302, Code: "CMP-302", Name: "龙焰灰", RarityID: 1, SourceID: 3},
-	{ID: 303, Code: "CMP-303", Name: "黑曜稳定片", RarityID: 1, SourceID: 3},
 	{ID: 401, Code: "CMP-401", Name: "坠星碎屑", RarityID: 1, SourceID: 4},
 	{ID: 402, Code: "CMP-402", Name: "夜空溶剂", RarityID: 1, SourceID: 4},
 	{ID: 403, Code: "CMP-403", Name: "银线封印", RarityID: 1, SourceID: 4},
@@ -209,15 +196,6 @@ var materialCatalogSeedUpdateColumns = []string{
 }
 
 var defaultMaterialComponents = []MaterialComponent{
-	{ID: 101, MaterialID: 1, ComponentMaterialID: 101, Quantity: 6, Unit: "g", SortOrder: 1},
-	{ID: 102, MaterialID: 1, ComponentMaterialID: 102, Quantity: 12, Unit: "ml", SortOrder: 2},
-	{ID: 103, MaterialID: 1, ComponentMaterialID: 103, Quantity: 2, Unit: "g", SortOrder: 3},
-	{ID: 201, MaterialID: 2, ComponentMaterialID: 201, Quantity: 8, Unit: "g", SortOrder: 1},
-	{ID: 202, MaterialID: 2, ComponentMaterialID: 202, Quantity: 6, Unit: "ml", SortOrder: 2},
-	{ID: 203, MaterialID: 2, ComponentMaterialID: 203, Quantity: 1, Unit: "g", SortOrder: 3},
-	{ID: 301, MaterialID: 3, ComponentMaterialID: 301, Quantity: 10, Unit: "g", SortOrder: 1},
-	{ID: 302, MaterialID: 3, ComponentMaterialID: 302, Quantity: 3, Unit: "g", SortOrder: 2},
-	{ID: 303, MaterialID: 3, ComponentMaterialID: 303, Quantity: 2, Unit: "片", SortOrder: 3},
 	{ID: 401, MaterialID: 4, ComponentMaterialID: 401, Quantity: 5, Unit: "g", SortOrder: 1},
 	{ID: 402, MaterialID: 4, ComponentMaterialID: 402, Quantity: 9, Unit: "ml", SortOrder: 2},
 	{ID: 403, MaterialID: 4, ComponentMaterialID: 403, Quantity: 4, Unit: "圈", SortOrder: 3},
@@ -231,6 +209,9 @@ func (s *Store) EnsureMaterialReadModelSchema() error {
 	}
 	if err := s.db.AutoMigrate(&MaterialRarity{}, &MaterialSource{}, &MaterialCatalog{}, &MaterialComponent{}, &MaterialTrade{}, &MaterialReview{}); err != nil {
 		return fmt.Errorf("migrate material read model: %w", err)
+	}
+	if err := s.removeLegacyBusinessMaterials(); err != nil {
+		return err
 	}
 	for i := range defaultMaterialRarities {
 		row := defaultMaterialRarities[i]
@@ -267,6 +248,42 @@ func (s *Store) EnsureMaterialReadModelSchema() error {
 	}
 	if err := s.ensureMaterialFactFixtures(); err != nil {
 		return err
+	}
+	return nil
+}
+
+// removeLegacyBusinessMaterials 把旧数据卷中的其他商品及其事实数据迁出业务目录。
+// 星髓详情仍需要 401～403 三种组成材料完成真实 JOIN，因此白名单不是只有主商品 ID 4。
+// Redis 缓存先清空、MySQL 后提交：如果数据库清理失败，丢失的只是可重建副本；反向顺序会让
+// 已删除商品的旧 DTO 在缓存清理失败后继续可读，破坏“全项目只展示星髓”的边界。
+func (s *Store) removeLegacyBusinessMaterials() error {
+	var legacyCount int64
+	if err := s.db.Model(&MaterialCatalog{}).
+		Where("id NOT IN ?", starMarrowCatalogIDs).
+		Count(&legacyCount).Error; err != nil {
+		return fmt.Errorf("count legacy business materials: %w", err)
+	}
+	if legacyCount == 0 {
+		return nil
+	}
+	if err := ClearMaterialDetailCache(); err != nil {
+		return fmt.Errorf("clear material cache before single-product migration: %w", err)
+	}
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("material_id <> ? OR component_material_id NOT IN ?", starMarrowMaterialID, starMarrowCatalogIDs).
+			Delete(&MaterialComponent{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("material_id <> ?", starMarrowMaterialID).Delete(&MaterialTrade{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("material_id <> ?", starMarrowMaterialID).Delete(&MaterialReview{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id NOT IN ?", starMarrowCatalogIDs).Delete(&MaterialCatalog{}).Error
+	}); err != nil {
+		return fmt.Errorf("remove legacy business materials: %w", err)
 	}
 	return nil
 }

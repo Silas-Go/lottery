@@ -24,9 +24,6 @@
         generated: null
     };
     var profiles = {
-        1: { code: "ARC-001", name: "月盐" },
-        2: { code: "ARC-002", name: "雾银" },
-        3: { code: "ARC-003", name: "龙息琥珀" },
         4: { code: "ARC-004", name: "星髓" }
     };
     var strategyNames = {
@@ -305,12 +302,12 @@
     function incomingMaterial() {
         var query = new URLSearchParams(window.location.search);
         if (query.has("material")) {
-            return normalizeMaterial(query.get("material"));
+            return normalizeMaterial(query.get("material")) || normalizeMaterial(4);
         }
         try {
-            return normalizeMaterial(window.sessionStorage.getItem(MATERIAL_STORAGE_KEY));
+            return normalizeMaterial(window.sessionStorage.getItem(MATERIAL_STORAGE_KEY)) || normalizeMaterial(4);
         } catch (_) {
-            return null;
+            return normalizeMaterial(4);
         }
     }
 

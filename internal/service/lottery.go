@@ -82,7 +82,7 @@ func NewLotteryService(store *database.Store, opts LotteryOptions) *LotteryServi
 	}
 }
 
-// ListMaterials 读取四种限量材料供实验页面展示。
+// ListMaterials 读取当前抢购活动唯一开放的星髓供实验页面展示。
 // 目录只提供业务语义，不代表真实库存；真实可抢库存以 Redis 中的预扣库存为准。
 func (s *LotteryService) ListMaterials() ([]SeckillMaterialView, *AppError) {
 	gifts, err := s.store.GetAllGiftsWithError()

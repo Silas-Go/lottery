@@ -5,12 +5,10 @@
     var experimentState = window.SilasExperimentState;
     var experimentResults = window.SilasExperimentResults;
     var materials = {
-        "ARC-001": { name: "月盐", sigil: "Ⅰ", kind: "salt" },
-        "ARC-002": { name: "雾银", sigil: "Ⅱ", kind: "silver" },
-        "ARC-003": { name: "龙息琥珀", sigil: "Ⅲ", kind: "amber" },
         "ARC-004": { name: "星髓", sigil: "Ⅳ", kind: "star" }
     };
-    // 当前故事只开放星髓。其余材料映射继续保留，用于兼容旧任务和未来重新开放货架。
+    // 查询、购买和抢购三条实验链路只共享星髓这一项业务样本。
+    // 代码仍按 material code 编排，未来扩展目录时无需把业务逻辑改成硬编码分支。
     var FEATURED_MATERIAL_CODE = "ARC-004";
     var state = "dialogue";
     var selectedCode = null;

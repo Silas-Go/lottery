@@ -1,21 +1,18 @@
 set names utf8mb4 collate utf8mb4_unicode_ci;
 
 create table if not exists inventory(
-    id int auto_increment comment '奖品id，自增',
-    name varchar(20) not null comment '奖品名称',
-    description varchar(100) not null default '' comment '奖品描述',
-    picture varchar(200) not null default '' comment '奖品图片',
+    id int auto_increment comment '限量材料id，自增',
+    name varchar(20) not null comment '材料名称',
+    description varchar(100) not null default '' comment '材料描述',
+    picture varchar(200) not null default '' comment '材料图片',
     price int not null default 0 comment '价值',
     count int not null default 0 comment '库存量',
     primary key (id)
 )default charset=utf8mb4;
 
--- 秒杀库存只保留炼金市已经存在的四种材料语义。库存梯度用于制造不同热度，
--- 但每份请求仍由 Redis Lua 或 MySQL 事务裁决，不能依赖展示库存判断成功。
+-- 查询、购买和抢购实验统一围绕 ARC-004 星髓展开。
+-- inventory 是独立的抢购活动库存，不与 materials.stock 的普通购买库存混用。
 insert into inventory (id,name,description,picture,price,count) values
-(1,'月盐','月潮退去后留下的低温结晶，稳定、常见且易于计量。','img/moon-salt-relic.png',90,3000),
-(2,'雾银','能在雾中保持镜面反射的液态银，适合镜面术式与感应器。','img/mist-silver-relic.png',360,1800),
-(3,'龙息琥珀','封存古老高温吐息的琥珀核心，为高负荷炼成装置持续供能。','img/dragon-breath-amber-relic.png',1280,900),
 (4,'星髓','从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。','img/star-marrow-relic.png',5200,300);
 
 create table if not exists orders(

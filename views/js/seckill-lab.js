@@ -6,21 +6,6 @@
     var experimentState = window.SilasExperimentState;
     var experimentResults = window.SilasExperimentResults;
     var profiles = {
-        1: {
-            code: "ARC-001", name: "月盐", sigil: "Ⅰ", kind: "salt",
-            rarity: "COMMON · 常见", origin: "霜潮盐沼", attribute: "低温稳定 · 吸热",
-            usage: "炼成介质与温控缓冲", risk: "过量使用会造成局部低温脆化。"
-        },
-        2: {
-            code: "ARC-002", name: "雾银", sigil: "Ⅱ", kind: "silver",
-            rarity: "RARE · 稀有", origin: "雾海银脉", attribute: "折射 · 液态金属",
-            usage: "镜面术式与感应组件", risk: "强魔力场中形态不稳定，需隔离保存。"
-        },
-        3: {
-            code: "ARC-003", name: "龙息琥珀", sigil: "Ⅲ", kind: "amber",
-            rarity: "EPIC · 史诗", origin: "赤脊火山带", attribute: "高温封存 · 持续放能",
-            usage: "动力核心与耐热封装", risk: "高温或撞击可能触发能量泄漏。"
-        },
         4: {
             code: "ARC-004", name: "星髓", sigil: "Ⅳ", kind: "star",
             rarity: "LEGENDARY · 传说", origin: "坠星盆地", attribute: "高密度魔力 · 星光迁移",
@@ -289,12 +274,12 @@
     function incomingMaterial() {
         var query = new URLSearchParams(window.location.search);
         if (query.has("material")) {
-            return normalizeMaterial(query.get("material"));
+            return normalizeMaterial(query.get("material")) || normalizeMaterial(4);
         }
         try {
-            return normalizeMaterial(window.sessionStorage.getItem(STORAGE_KEY));
+            return normalizeMaterial(window.sessionStorage.getItem(STORAGE_KEY)) || normalizeMaterial(4);
         } catch (_) {
-            return null;
+            return normalizeMaterial(4);
         }
     }
 

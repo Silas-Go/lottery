@@ -20,9 +20,8 @@ const (
 	PurchaseOutboxCompleted  = "completed"
 	PurchaseOutboxCancelled  = "cancelled"
 
-	// 普通材料保留 300 份教学基线；本章主角星髓固定首发 100 份，
-	// 让 150 个唯一购买请求真实产生 100 次成功与 50 次售罄。
-	purchaseExperimentDefaultStock   = 300
+	// 星髓购买实验固定首发 100 份，让 150 个唯一购买请求真实产生
+	// 100 次成功与 50 次售罄；其他材料不再进入业务目录。
 	starMarrowExperimentInitialStock = 100
 )
 
@@ -98,6 +97,16 @@ func (s *Store) EnsurePurchaseExperimentSchema() error {
 	}
 	if err := s.db.AutoMigrate(&PurchaseLabOrder{}, &PurchaseLabOutbox{}); err != nil {
 		return fmt.Errorf("migrate purchase experiment schema: %w", err)
+	}
+	// 老数据卷可能保存其他材料的购买订单或待发布 Outbox。先删 Outbox 再删订单，
+	// 避免后台 Publisher 在单商品迁移完成后继续传播已经没有业务语义的缓存失效事件。
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("material_id <> ?", 4).Delete(&PurchaseLabOutbox{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("material_id <> ?", 4).Delete(&PurchaseLabOrder{}).Error
+	}); err != nil {
+		return fmt.Errorf("remove legacy purchase materials: %w", err)
 	}
 	return nil
 }
@@ -441,10 +450,7 @@ func (s *Store) PurchaseBatchRecords(batchID string) ([]PurchaseLabOrder, []Purc
 func initialMaterialStock(materialID int) (int, bool) {
 	for _, material := range defaultMaterialCatalog {
 		if material.ID == materialID {
-			if material.ID == 4 {
-				return starMarrowExperimentInitialStock, true
-			}
-			return purchaseExperimentDefaultStock, true
+			return starMarrowExperimentInitialStock, true
 		}
 	}
 	return 0, false

@@ -12,7 +12,7 @@ import (
 type Gift struct {
 	Id int
 
-	// Name 是材料名称，例如“月盐”“星髓”。
+	// Name 是材料名称；当前实验唯一业务材料为“星髓”。
 	Name string
 
 	// Description 是材料在炼金市中的简要业务语义，不参与库存裁决。
@@ -29,13 +29,10 @@ type Gift struct {
 	Count int
 }
 
-// defaultSeckillMaterialCatalog 是秒杀库存使用的四种炼金材料。
-// 名称和价格与 materials 聚合读模型保持一致；count 是独立秒杀活动的库存基线，
+// defaultSeckillMaterialCatalog 是抢购活动唯一开放的星髓目录。
+// 名称和价格与 materials 聚合读模型保持一致；count 是独立抢购活动的库存基线，
 // 不复用购买实验的 materials.stock，避免两个实验互相污染。
 var defaultSeckillMaterialCatalog = []Gift{
-	{Id: 1, Name: "月盐", Description: "月潮退去后留下的低温结晶，稳定、常见且易于计量。", Picture: "img/moon-salt-relic.png", Price: 90, Count: 3000},
-	{Id: 2, Name: "雾银", Description: "能在雾中保持镜面反射的液态银，适合镜面术式与感应器。", Picture: "img/mist-silver-relic.png", Price: 360, Count: 1800},
-	{Id: 3, Name: "龙息琥珀", Description: "封存古老高温吐息的琥珀核心，为高负荷炼成装置持续供能。", Picture: "img/dragon-breath-amber-relic.png", Price: 1280, Count: 900},
 	{Id: 4, Name: "星髓", Description: "从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。", Picture: "img/star-marrow-relic.png", Price: 5200, Count: 300},
 }
 
@@ -88,7 +85,7 @@ func (s *Store) EnsureSeckillMaterialCatalog() (bool, error) {
 		return false, err
 	}
 
-	slog.Warn("legacy prize catalog migrated to alchemy materials", "material_count", len(defaultSeckillMaterialCatalog))
+	slog.Warn("legacy seckill catalog migrated to star marrow", "material_count", len(defaultSeckillMaterialCatalog))
 	return true, nil
 }
 

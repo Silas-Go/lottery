@@ -70,7 +70,7 @@
             grid.appendChild(card);
             materialByID.set(String(material.id), material);
         });
-        setText("material-count", materials.length + " 种材料");
+        setText("material-count", materials.length === 1 ? "ARC-004 · 星髓" : materials.length + " 种材料");
     }
 
     async function loadMaterials() {
@@ -281,7 +281,7 @@
     }
 
     async function resetLab() {
-        if (!window.confirm("这会清空实验订单、临时资格并恢复四种材料库存。确定重置吗？")) {
+        if (!window.confirm("这会清空实验订单、临时资格并恢复星髓活动库存。确定重置吗？")) {
             return;
         }
         byId("reset-seckill").disabled = true;
