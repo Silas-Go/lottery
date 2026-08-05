@@ -8,20 +8,17 @@
     <meta name="description" content="星髓真实秒杀实验：分别验证入口限流、Redis Lua 原子准入和 RocketMQ 异步落单。" />
     <title>限量材料申领所 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/seckill.css?v=20260805-isolated-experiments-v1" />
+    <link rel="stylesheet" href="/css/seckill.css?v=20260805-navigation-v2" />
+    <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
 <body class="seckill-page" data-request-state="idle">
-    <header class="seckill-header">
-        <div class="seckill-brand-area">
+    <header class="seckill-header experiment-shell-header">
+        <div class="seckill-brand-area experiment-brand-slot">
             <a class="seckill-brand" href="/" aria-label="返回实验总览">
                 <span aria-hidden="true">S</span>
                 <div><strong>SILAS</strong><small>LIMITED MATERIAL OFFICE</small></div>
             </a>
-            <nav class="seckill-return-nav" aria-label="秒杀实验页面导航">
-                <a href="/seckill-lab#experiment-config">返回配置页</a>
-                <a href="/">返回实验总览</a>
-            </nav>
         </div>
         <div class="seckill-location">
             <small>暖潮街 17 号 · 左侧</small>
@@ -31,6 +28,10 @@
             <i aria-hidden="true"></i>
             <span id="metrics-connection">正在连接真实指标</span>
         </div>
+        <nav class="experiment-return-nav" aria-label="秒杀实验页面导航">
+            <a href="/seckill-lab#experiment-config"><span aria-hidden="true">←</span>返回配置页</a>
+            <a href="/">返回实验总览</a>
+        </nav>
     </header>
 
     <main class="seckill-main">

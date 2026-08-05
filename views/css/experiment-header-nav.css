@@ -1,0 +1,113 @@
+/* 三个实验页共用同一组返回动作，避免导航被各自的叙事标题吞没。 */
+.experiment-shell-header.experiment-shell-header {
+    grid-template-columns: minmax(190px, auto) minmax(240px, 1fr) auto minmax(256px, auto);
+    gap: clamp(12px, 1.5vw, 24px);
+}
+
+.experiment-brand-slot.experiment-brand-slot {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.experiment-return-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-self: end;
+    width: 256px;
+    padding: 3px;
+    border: 1px solid rgba(82, 72, 52, .34);
+    background: rgba(255, 252, 239, .9);
+    box-shadow: 3px 3px 0 rgba(93, 71, 42, .14);
+}
+
+.experiment-return-nav a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 7px 10px;
+    color: #40524d;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: .02em;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.experiment-return-nav a:first-child { border-right: 1px solid rgba(82, 72, 52, .25); }
+
+.experiment-return-nav a:first-child > span {
+    margin-right: 6px;
+    color: #8f6832;
+    font-family: ui-monospace, Consolas, monospace;
+}
+
+.experiment-return-nav a:last-child { color: #fdf8e9; background: #315f59; }
+
+.experiment-return-nav a:hover { color: #244d48; background: #e6eee3; }
+
+.experiment-return-nav a:last-child:hover {
+    color: #fffdf4;
+    background: #244f4a;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
+}
+
+.experiment-return-nav a:active { transform: translateY(1px); }
+
+.experiment-return-nav a:focus-visible {
+    position: relative;
+    z-index: 1;
+    outline: 2px solid #b67b34;
+    outline-offset: 2px;
+}
+
+@media (max-width: 1180px) {
+    .experiment-shell-header.experiment-shell-header {
+        grid-template-columns: minmax(190px, auto) minmax(256px, 1fr);
+    }
+
+    .experiment-brand-slot.experiment-brand-slot { grid-column: 1; grid-row: 1; }
+    .experiment-return-nav { grid-column: 2; grid-row: 1; }
+
+    .experiment-shell-header > .current-material,
+    .experiment-shell-header > .seckill-location { grid-column: 1; grid-row: 2; }
+
+    .experiment-shell-header > .lab-status-actions,
+    .experiment-shell-header > .purchase-header-status,
+    .experiment-shell-header > .seckill-connection { grid-column: 2; grid-row: 2; }
+}
+
+@media (max-width: 700px) {
+    .experiment-shell-header.experiment-shell-header {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 9px 12px;
+    }
+
+    .experiment-brand-slot.experiment-brand-slot { grid-column: 1; grid-row: 1; }
+
+    .experiment-return-nav {
+        grid-column: 1;
+        grid-row: 2;
+        justify-self: stretch;
+        width: 100%;
+    }
+
+    .experiment-shell-header > .current-material,
+    .experiment-shell-header > .seckill-location { grid-column: 1; grid-row: 3; }
+
+    .experiment-shell-header > .lab-status-actions,
+    .experiment-shell-header > .purchase-header-status,
+    .experiment-shell-header > .seckill-connection {
+        grid-column: 1;
+        grid-row: 4;
+        justify-self: stretch;
+    }
+}
+
+@media (max-width: 420px) {
+    .experiment-return-nav a { min-height: 38px; padding-inline: 6px; font-size: 11px; }
+}

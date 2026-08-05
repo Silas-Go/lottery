@@ -11,22 +11,19 @@
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260805-navigation-v2" />
+    <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
 <body class="lab-page query-focus" data-lab-mode="direct" data-route-state="idle">
     <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
-    <header class="lab-header">
-        <div class="query-brand-area">
+    <header class="lab-header experiment-shell-header">
+        <div class="query-brand-area experiment-brand-slot">
             <a class="lab-brand" href="/" aria-label="返回实验总览">
                 <span>S</span>
                 <div><strong>SILAS</strong><small>CACHE-ASIDE LAB</small></div>
             </a>
-            <nav class="lab-return-nav" aria-label="查询实验页面导航">
-                <a href="/material-shop?experiment=query">返回配置页</a>
-                <a href="/">返回实验总览</a>
-            </nav>
         </div>
 
         <div class="current-material" aria-label="当前实验材料">
@@ -38,6 +35,11 @@
             <span id="connection-state" class="connection-state"><i></i>正在连接 SSE</span>
             <button id="reset-lab" type="button">重置缓存与指标</button>
         </div>
+
+        <nav class="experiment-return-nav" aria-label="查询实验页面导航">
+            <a href="/material-shop?experiment=query"><span aria-hidden="true">←</span>返回配置页</a>
+            <a href="/">返回实验总览</a>
+        </nav>
     </header>
 
     <main class="lab-main">

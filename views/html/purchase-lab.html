@@ -12,21 +12,23 @@
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/purchase-lab-layout.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/purchase-lab.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
 <body class="lab-page purchase-page purchase-observatory purchase-focus" data-purchase-strategy="unselected" data-purchase-status="idle">
     <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
-    <header class="lab-header purchase-lab-header">
-        <div class="purchase-brand-area">
+    <header class="lab-header purchase-lab-header experiment-shell-header">
+        <div class="purchase-brand-area experiment-brand-slot">
             <a class="lab-brand" href="/" aria-label="返回实验总览">
                 <span>S</span>
                 <div><strong>SILAS</strong><small>PURCHASE OBSERVATORY</small></div>
             </a>
-            <nav aria-label="购买实验导航">
-                <a href="/material-shop?experiment=purchase">返回配置页</a>
-                <a href="/">返回实验总览</a>
-            </nav>
+            <!-- 兼容浏览器仍缓存的上一版脚本：旧脚本只会重写这两个隐藏 href，不能再阻断主内容渲染。 -->
+            <span hidden aria-hidden="true">
+                <a id="purchase-shop-link" href="/material-shop?experiment=purchase" tabindex="-1"></a>
+                <a id="back-to-query" href="/material-shop?experiment=purchase" tabindex="-1"></a>
+            </span>
         </div>
         <div class="current-material">
             <small>CURRENT MATERIAL</small>
@@ -37,6 +39,10 @@
             <div><small>STRATEGY</small><strong id="header-strategy">同步缓存失效</strong></div>
             <div><small>STATUS</small><strong id="header-status">准备观察</strong></div>
         </div>
+        <nav class="experiment-return-nav" aria-label="购买实验页面导航">
+            <a href="/material-shop?experiment=purchase"><span aria-hidden="true">←</span>返回配置页</a>
+            <a href="/">返回实验总览</a>
+        </nav>
     </header>
 
     <main class="lab-main purchase-main">
@@ -567,7 +573,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
-    <script src="/js/purchase-lab.js?v=20260804-star-only"></script>
+    <script src="/js/purchase-lab.js?v=20260805-navigation-v2"></script>
 </body>
 
 </html>
