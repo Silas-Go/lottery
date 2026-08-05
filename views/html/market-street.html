@@ -4,107 +4,155 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f6edcf" />
-    <meta name="description" content="暖潮街 17 号：星髓现世，从材料情报店一路进入真实 Cache-Aside 查询与购买实验。" />
-    <title>暖潮街 17 号 · 技术实验街区</title>
+    <meta name="theme-color" content="#f5edda" />
+    <meta name="description" content="围绕唯一材料星髓，进入旁路缓存查询、库存一致性购买与秒杀交易三个平级架构实验。" />
+    <title>星髓架构实验场 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/market-street.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/market-street.css?v=20260805-three-experiments-v1" />
 </head>
 
-<body class="market-street-shell" data-dialogue="street" data-seckill-state="idle">
+<body class="market-street-shell">
     <header class="market-header" data-component="MarketHeader">
-        <a class="market-header__brand" href="/" aria-label="暖潮街 17 号首页">
+        <a class="market-header__brand" href="/" aria-label="星髓架构实验场首页">
             <span class="market-header__seal" aria-hidden="true">S</span>
-            <span><strong>SILAS</strong><small>ALCHEMY MARKET</small></span>
+            <span><strong>SILAS</strong><small>STAR MARROW LABS</small></span>
         </a>
         <div class="market-header__location">
             <i aria-hidden="true"></i>
-            <span><strong>暖潮街 17 号</strong><small>材料店与实验店都在营业</small></span>
+            <span><strong>暖潮街 17 号</strong><small>三个实验均可独立进入</small></span>
         </div>
     </header>
 
-    <main id="market-street-page" class="market-street-page" data-component="MarketStreetPage">
-        <h1 class="sr-only">暖潮街技术实验街区入口</h1>
+    <main id="experiment-home" class="experiment-home">
+        <div class="street-atmosphere" aria-hidden="true">
+            <img src="/img/market-street-bg.svg?v=20260721-placeholder" alt="" />
+            <span class="street-atmosphere__veil"></span>
+            <span class="street-atmosphere__dust street-atmosphere__dust--one"></span>
+            <span class="street-atmosphere__dust street-atmosphere__dust--two"></span>
+            <span class="street-atmosphere__dust street-atmosphere__dust--three"></span>
+        </div>
 
-        <section class="market-stage" aria-label="暖阳下向上延伸的青石坡道与两家实验店铺">
-            <div id="market-scene-canvas" class="market-scene-canvas">
-                <img class="market-scene-background" src="/img/market-street-bg.svg?v=20260721-placeholder" alt="" aria-hidden="true" />
-
-                <article id="seckill-shop" class="shop-interaction scene-positioned" data-scene-key="seckillShop" data-shop="seckill">
-                    <button id="seckill-shop-hitbox" class="shop-interaction__hitbox" type="button" aria-label="进入限量材料秒杀实验室" aria-describedby="seckill-shop-description"></button>
-                    <p id="seckill-shop-description" class="sr-only">进入使用真实 Redis、RocketMQ 和 MySQL 链路的限量材料抽取实验。</p>
-                </article>
-
-                <article id="archive-shop" class="shop-interaction scene-positioned" data-scene-key="archiveShop" data-shop="archive">
-                    <button id="archive-shop-hitbox" class="shop-interaction__hitbox" type="button" aria-label="进入材料情报店和现有 Cache-Aside 实验"></button>
-                </article>
-
-                <div id="submit-slot" class="request-slot scene-positioned" data-scene-key="submitSlot" aria-hidden="true">
-                    <small>递交请求</small><i></i><span class="request-slot__shutter"></span>
-                </div>
-                <div id="result-slot" class="request-slot scene-positioned" data-scene-key="resultSlot" aria-hidden="true">
-                    <small>领取结果</small><i></i>
-                </div>
-
-                <div class="shop-status scene-positioned" data-scene-key="seckillStatus" role="status">
-                    <i aria-hidden="true"></i>
-                    <span><small>WINDOW STATUS</small><strong id="shop-status-text">限量申领开放</strong></span>
-                </div>
-                <span class="shop-preview-ribbon scene-positioned" data-scene-key="seckillRibbon">真实链路 · REDIS + MQ</span>
-
-                <div id="seckill-crowd" class="silhouette-crowd" data-component="SilhouetteCrowd" aria-hidden="true">
-                    <span class="queue-figure scene-positioned" data-scene-key="queue1"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue2"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue3"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue4"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue5"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue6"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue7"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue8"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue9"><i></i></span>
-                    <span class="queue-figure scene-positioned" data-scene-key="queue10"><i></i></span>
-                </div>
-
-                <div class="distant-silhouettes" aria-hidden="true">
-                    <span class="silhouette scene-positioned" data-scene-key="walker1"></span>
-                    <span class="silhouette scene-positioned" data-scene-key="walker2"></span>
-                    <span class="silhouette scene-positioned" data-scene-key="walker3"></span>
-                </div>
-
-                <div id="ambient-particles" class="ambient-particles" data-component="AmbientParticles" aria-hidden="true"></div>
-                <div class="market-vignette" aria-hidden="true"></div>
+        <section class="material-hero" aria-labelledby="material-title">
+            <div class="material-relic" aria-hidden="true">
+                <span class="material-relic__orbit material-relic__orbit--outer"></span>
+                <span class="material-relic__orbit material-relic__orbit--inner"></span>
+                <span class="material-relic__ray material-relic__ray--left"></span>
+                <span class="material-relic__ray material-relic__ray--right"></span>
+                <span class="material-relic__frame">
+                    <img src="/img/star-marrow-relic.png" alt="" />
+                </span>
+            </div>
+            <div class="material-hero__copy">
+                <small>ONE MATERIAL · THREE SYSTEM PROBLEMS</small>
+                <h1 id="material-title">星髓</h1>
+                <p>同一份材料，分别面对高频读取、写后缓存一致性与高并发库存争抢。</p>
             </div>
         </section>
 
-        <section class="event-dialogue" data-component="EventDialogue" aria-live="polite">
-            <div id="street-dialogue" class="event-dialogue__view event-dialogue__view--street">
-                <div class="event-dialogue__heading">
-                    <span>街道事件 · 稀有材料现世</span>
-                    <small>RARE MATERIAL ALERT</small>
+        <section class="experiment-section" aria-labelledby="experiment-heading">
+            <header class="experiment-section__heading">
+                <div>
+                    <small>ARCHITECTURE EXPERIMENTS</small>
+                    <h2 id="experiment-heading">选择一个技术问题</h2>
                 </div>
-                <h2>坠星盆地送来一枚星髓</h2>
-                <p>材料情报店刚把实物摆上柜台：法师公会正在持续生成查询卷轴，可用查询潮汐验证这份热点档案。</p>
-                <div class="street-rare-notice" aria-label="星髓事件摘要">
-                    <img src="/img/star-marrow-relic.png" alt="深蓝晶体中流动着金色星光的星髓" />
-                    <span><strong>星髓</strong><small>先验证热点查询，再独立发出 150 个唯一购买请求争购 100 份库存。</small></span>
-                </div>
-                <div class="event-choices" aria-label="选择前往的店铺">
-                    <button id="dialogue-seckill" type="button">
-                        <span aria-hidden="true">Ⅰ</span><strong>进入限量材料申领所<small>真实抽取材料，观察 Redis 准入与 MQ 落单</small></strong>
+                <p><span class="desktop-instruction">悬停预览，点击名称可锁定展开。</span><span class="touch-instruction">点击方片展开。</span> 三项实验互不构成前置条件。</p>
+            </header>
+
+            <div id="experiment-deck" class="experiment-deck">
+                <article class="experiment-tile experiment-tile--query" data-experiment="query">
+                    <button class="experiment-summary" type="button" aria-expanded="false" aria-pressed="false" aria-controls="query-details">
+                        <span class="experiment-number">01</span>
+                        <span class="experiment-title">
+                            <small>READ PATH</small>
+                            <strong>旁路缓存查询</strong>
+                            <em>缓存如何提升读取性能？</em>
+                        </span>
+                        <span class="experiment-toggle" aria-hidden="true">＋</span>
                     </button>
-                    <button id="dialogue-archive" type="button">
-                        <span aria-hidden="true">Ⅱ</span><strong>进入材料情报店<small>亲眼查验星髓，再跟随查询卷轴进入实验</small></strong>
+                    <div id="query-details" class="experiment-details" aria-hidden="true">
+                        <div class="experiment-observation">
+                            <small>你会观察到什么</small>
+                            <p>同一份星髓档案分别经过 MySQL Direct 与 Redis Cache-Aside，在真实查询潮汐下呈现不同的延迟、SQL 次数与连接池压力。</p>
+                        </div>
+                        <div class="experiment-learning">
+                            <small>你能学到什么</small>
+                            <ul>
+                                <li>Cache-Aside 命中与回源</li>
+                                <li>热点数据与缓存击穿</li>
+                                <li>缓存对数据库压力的影响</li>
+                            </ul>
+                        </div>
+                        <a class="experiment-enter" href="/material-shop?experiment=query" data-enter-experiment="query">
+                            <span>进入查询实验</span><b aria-hidden="true">→</b>
+                        </a>
+                    </div>
+                </article>
+
+                <article class="experiment-tile experiment-tile--purchase" data-experiment="purchase">
+                    <button class="experiment-summary" type="button" aria-expanded="false" aria-pressed="false" aria-controls="purchase-details">
+                        <span class="experiment-number">02</span>
+                        <span class="experiment-title">
+                            <small>WRITE CONSISTENCY</small>
+                            <strong>库存一致性购买</strong>
+                            <em>数据库与缓存如何最终收敛？</em>
+                        </span>
+                        <span class="experiment-toggle" aria-hidden="true">＋</span>
                     </button>
-                </div>
+                    <div id="purchase-details" class="experiment-details" aria-hidden="true">
+                        <div class="experiment-observation">
+                            <small>你会观察到什么</small>
+                            <p>星髓库存提交到 MySQL 后，对比同步删除 Redis 与 Outbox + MQ 异步失效，观察响应路径、旧读窗口和最终库存。</p>
+                        </div>
+                        <div class="experiment-learning">
+                            <small>你能学到什么</small>
+                            <ul>
+                                <li>数据库与缓存的权威边界</li>
+                                <li>本地事务与可靠事件</li>
+                                <li>最终一致性的时间窗口</li>
+                            </ul>
+                        </div>
+                        <a class="experiment-enter" href="/material-shop?experiment=purchase" data-enter-experiment="purchase">
+                            <span>进入购买实验</span><b aria-hidden="true">→</b>
+                        </a>
+                    </div>
+                </article>
+
+                <article class="experiment-tile experiment-tile--seckill" data-experiment="seckill">
+                    <button class="experiment-summary" type="button" aria-expanded="false" aria-pressed="false" aria-controls="seckill-details">
+                        <span class="experiment-number">03</span>
+                        <span class="experiment-title">
+                            <small>CONCURRENT ADMISSION</small>
+                            <strong>秒杀交易</strong>
+                            <em>大量请求如何安全争抢有限库存？</em>
+                        </span>
+                        <span class="experiment-toggle" aria-hidden="true">＋</span>
+                    </button>
+                    <div id="seckill-details" class="experiment-details" aria-hidden="true">
+                        <div class="experiment-observation">
+                            <small>你会观察到什么</small>
+                            <p>让唯一用户并发争抢星髓活动库存，并把限流保护单独测量，观察 Lua 准入、MQ 削峰和订单状态推进。</p>
+                        </div>
+                        <div class="experiment-learning">
+                            <small>你能学到什么</small>
+                            <ul>
+                                <li>令牌桶入口限流</li>
+                                <li>Redis Lua 原子库存准入</li>
+                                <li>异步落单与幂等状态机</li>
+                            </ul>
+                        </div>
+                        <a class="experiment-enter" href="/seckill-lab" data-enter-experiment="seckill">
+                            <span>进入秒杀实验</span><b aria-hidden="true">→</b>
+                        </a>
+                    </div>
+                </article>
             </div>
 
+            <p class="experiment-boundary"><i aria-hidden="true"></i>三项实验共享星髓业务语境，各自拥有独立、可重置的数据边界。</p>
         </section>
     </main>
 
-    <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
-    <script src="/js/market-scene-config.js?v=20260721-static-scene"></script>
-    <script src="/js/market-street.js?v=20260804-real-seckill-entry"></script>
+    <div id="market-announcer" class="sr-only" aria-live="polite"></div>
+    <script src="/js/market-street.js?v=20260805-three-experiments-v1"></script>
 </body>
 
 </html>

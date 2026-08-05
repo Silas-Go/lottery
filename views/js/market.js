@@ -333,7 +333,8 @@
 
     function incomingFoyerExperiment() {
         var query = new URLSearchParams(window.location.search);
-        return query.get("experiment") === "purchase" ? "purchase" : "";
+        var experiment = query.get("experiment");
+        return experiment === "query" || experiment === "purchase" ? experiment : "";
     }
 
     function updateFoyerExperimentQuery(experiment) {
@@ -1194,10 +1195,16 @@
         restoreActiveTask().then(function () {
             if (requestedExperiment === "purchase" && !isTaskActive()) {
                 openPurchaseMode();
+            } else if (requestedExperiment === "query" && !isTaskActive()) {
+                openFeaturedMaterial();
+                openCrowdMode();
             }
         }, function () {
             if (requestedExperiment === "purchase" && !isTaskActive()) {
                 openPurchaseMode();
+            } else if (requestedExperiment === "query" && !isTaskActive()) {
+                openFeaturedMaterial();
+                openCrowdMode();
             }
         });
     });
