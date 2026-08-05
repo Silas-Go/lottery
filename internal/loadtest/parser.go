@@ -8,28 +8,33 @@ import (
 )
 
 var (
-	requestsPattern = regexp.MustCompile(`^\s*([0-9]+) requests in ([0-9.]+)(us|ms|s),`)
-	qpsPattern      = regexp.MustCompile(`^Requests/sec:\s+([0-9.]+)`)
-	latencyPattern  = regexp.MustCompile(`^\s*(50|75|90|99)\.0+%\s+([0-9.]+)(us|ms|s)`)
-	socketPattern   = regexp.MustCompile(`Socket errors: connect ([0-9]+), read ([0-9]+), write ([0-9]+), timeout ([0-9]+)`)
-	non2xxPattern   = regexp.MustCompile(`Non-2xx or 3xx responses: ([0-9]+)`)
+	requestsPattern      = regexp.MustCompile(`^\s*([0-9]+) requests in ([0-9.]+)(us|ms|s),`)
+	qpsPattern           = regexp.MustCompile(`^Requests/sec:\s+([0-9.]+)`)
+	latencyPattern       = regexp.MustCompile(`^\s*(50|75|90|99)\.0+%\s+([0-9.]+)(us|ms|s)`)
+	socketPattern        = regexp.MustCompile(`Socket errors: connect ([0-9]+), read ([0-9]+), write ([0-9]+), timeout ([0-9]+)`)
+	non2xxPattern        = regexp.MustCompile(`Non-2xx or 3xx responses: ([0-9]+)`)
+	latencySafetyPattern = regexp.MustCompile(
+		`Latency safety: schedule fallbacks ([0-9]+), histogram drops ([0-9]+)`,
+	)
 )
 
 type wrkResult struct {
-	Requests        int64
-	QPS             float64
-	Duration        float64
-	P50MS           float64
-	P90MS           float64
-	P95MS           float64
-	P99MS           float64
-	RequestP50MS    float64
-	RequestP90MS    float64
-	RequestP95MS    float64
-	RequestP99MS    float64
-	Timeouts        int64
-	SocketErrors    int64
-	Non2xxResponses int64
+	Requests                 int64
+	QPS                      float64
+	Duration                 float64
+	P50MS                    float64
+	P90MS                    float64
+	P95MS                    float64
+	P99MS                    float64
+	RequestP50MS             float64
+	RequestP90MS             float64
+	RequestP95MS             float64
+	RequestP99MS             float64
+	Timeouts                 int64
+	SocketErrors             int64
+	Non2xxResponses          int64
+	LatencyScheduleFallbacks int64
+	LatencySamplesDropped    int64
 }
 
 type percentilePoint struct {
@@ -102,6 +107,11 @@ func parseWrkOutput(output string) wrkResult {
 		if match := non2xxPattern.FindStringSubmatch(line); len(match) == 2 {
 			value, _ := strconv.ParseInt(match[1], 10, 64)
 			result.Non2xxResponses += value
+			continue
+		}
+		if match := latencySafetyPattern.FindStringSubmatch(line); len(match) == 3 {
+			result.LatencyScheduleFallbacks, _ = strconv.ParseInt(match[1], 10, 64)
+			result.LatencySamplesDropped, _ = strconv.ParseInt(match[2], 10, 64)
 			continue
 		}
 		if strings.Contains(line, "Detailed Percentile spectrum") {

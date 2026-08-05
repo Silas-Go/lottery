@@ -1,0 +1,155 @@
+diff --git a/src/hdr_histogram.c b/src/hdr_histogram.c
+index e0c7614..cc6d8b2 100644
+--- a/src/hdr_histogram.c
++++ b/src/hdr_histogram.c
+@@ -433,6 +433,12 @@ int hdr_init(
+ 
+ bool hdr_record_value(struct hdr_histogram* h, int64_t value)
+ {
++    // counts_index_for() asserts before it can report an out-of-range value.
++    // Reject corrupt samples at the public boundary instead of aborting wrk2.
++    if (value < 0 || value > h->highest_trackable_value)
++    {
++        return false;
++    }
+     int32_t counts_index = counts_index_for(h, value);
+ 
+     if (counts_index < 0 || h->counts_len <= counts_index)
+@@ -448,6 +453,11 @@ bool hdr_record_value(struct hdr_histogram* h, int64_t value)
+ 
+ bool hdr_record_values(struct hdr_histogram* h, int64_t value, int64_t count)
+ {
++    // Keep bulk recording behind the same assertion-safe boundary.
++    if (value < 0 || value > h->highest_trackable_value)
++    {
++        return false;
++    }
+     int32_t counts_index = counts_index_for(h, value);
+ 
+     if (counts_index < 0 || h->counts_len <= counts_index)
+diff --git a/src/wrk.c b/src/wrk.c
+index 787ae98..079585d 100644
+--- a/src/wrk.c
++++ b/src/wrk.c
+@@ -5,6 +5,7 @@
+ #include "hdr_histogram.h"
+ #include "stats.h"
+ 
++#include <time.h>
+ // Max recordable latency of 1 day
+ #define MAX_LATENCY 24L * 60 * 60 * 1000000
+ 
+@@ -113,6 +114,8 @@ int main(int argc, char **argv) {
+     uint64_t start    = time_us();
+     uint64_t complete = 0;
+     uint64_t bytes    = 0;
++    uint64_t latency_schedule_fallbacks = 0;
++    uint64_t latency_samples_dropped = 0;
+     errors errors     = { 0 };
+ 
+     struct hdr_histogram* latency_histogram;
+@@ -133,6 +136,8 @@ int main(int argc, char **argv) {
+         errors.write   += t->errors.write;
+         errors.timeout += t->errors.timeout;
+         errors.status  += t->errors.status;
++        latency_schedule_fallbacks += t->latency_schedule_fallbacks;
++        latency_samples_dropped += t->latency_samples_dropped;
+ 
+         hdr_add(latency_histogram, t->latency_histogram);
+         hdr_add(u_latency_histogram, t->u_latency_histogram);
+@@ -178,6 +183,10 @@ int main(int argc, char **argv) {
+         printf("  Non-2xx or 3xx responses: %d\n", errors.status);
+     }
+ 
++    // Always expose safety activity so callers can distinguish a clean run from a recovered one.
++    printf("  Latency safety: schedule fallbacks %"PRIu64", histogram drops %"PRIu64"\n",
++           latency_schedule_fallbacks, latency_samples_dropped);
++
+     printf("Requests/sec: %9.2Lf\n", req_per_s);
+     printf("Transfer/sec: %10sB\n", format_binary(bytes_per_s));
+ 
+@@ -478,28 +487,19 @@ static int response_complete(http_parser *parser) {
+     uint64_t expected_latency_start = c->thread_start +
+             (c->complete_at_last_batch_start / c->throughput);
+ 
+-    int64_t expected_latency_timing = now - expected_latency_start;
+-
+-    if (expected_latency_timing < 0) {
+-        printf("\n\n ---------- \n\n");
+-        printf("We are about to crash and die (recoridng a negative #)");
+-        printf("This wil never ever ever happen...");
+-        printf("But when it does. The following information will help in debugging");
+-        printf("response_complete:\n");
+-        printf("  expected_latency_timing = %lld\n", expected_latency_timing);
+-        printf("  now = %lld\n", now);
+-        printf("  expected_latency_start = %lld\n", expected_latency_start);
+-        printf("  c->thread_start = %lld\n", c->thread_start);
+-        printf("  c->complete = %lld\n", c->complete);
+-        printf("  throughput = %g\n", c->throughput);
+-        printf("  latest_should_send_time = %lld\n", c->latest_should_send_time);
+-        printf("  latest_expected_start = %lld\n", c->latest_expected_start);
+-        printf("  latest_connect = %lld\n", c->latest_connect);
+-        printf("  latest_write = %lld\n", c->latest_write);
+-
+-        expected_latency_start = c->thread_start +
+-                ((c->complete ) / c->throughput);
+-        printf("  next expected_latency_start = %lld\n", expected_latency_start);
++    uint64_t actual_latency_timing = now >= c->actual_latency_start ?
++            now - c->actual_latency_start : 1;
++    if (actual_latency_timing == 0) {
++        actual_latency_timing = 1;
++    }
++    uint64_t expected_latency_timing = now >= expected_latency_start ?
++            now - expected_latency_start : actual_latency_timing;
++    // A corrected latency cannot be smaller than the request's observed latency.
++    // If wrk2's schedule accounting briefly disagrees, preserve the real sample and
++    // count the fallback instead of converting a negative delta into a huge uint64.
++    if (now < expected_latency_start || expected_latency_timing < actual_latency_timing) {
++        expected_latency_timing = actual_latency_timing;
++        thread->latency_schedule_fallbacks++;
+     }
+ 
+     c->latest_should_send_time = 0;
+@@ -519,10 +511,12 @@ static int response_complete(http_parser *parser) {
+ 
+     // Record if needed, either last in batch or all, depending in cfg:
+     if (cfg.record_all_responses || !c->has_pending) {
+-        hdr_record_value(thread->latency_histogram, expected_latency_timing);
+-
+-        uint64_t actual_latency_timing = now - c->actual_latency_start;
+-        hdr_record_value(thread->u_latency_histogram, actual_latency_timing);
++        if (!hdr_record_value(thread->latency_histogram, expected_latency_timing)) {
++            thread->latency_samples_dropped++;
++        }
++        if (!hdr_record_value(thread->u_latency_histogram, actual_latency_timing)) {
++            thread->latency_samples_dropped++;
++        }
+     }
+ 
+ 
+@@ -668,9 +662,9 @@ static void socket_readable(aeEventLoop *loop, int fd, void *data, int mask) {
+ }
+ 
+ static uint64_t time_us() {
+-    struct timeval t;
+-    gettimeofday(&t, NULL);
+-    return (t.tv_sec * 1000000) + t.tv_usec;
++    struct timespec t;
++    clock_gettime(CLOCK_MONOTONIC, &t);
++    return (t.tv_sec * 1000000) + (t.tv_nsec / 1000);
+ }
+ 
+ static char *copy_url_part(char *url, struct http_parser_url *parts, enum http_parser_url_fields field) {
+diff --git a/src/wrk.h b/src/wrk.h
+index 81ad637..227dff8 100644
+--- a/src/wrk.h
++++ b/src/wrk.h
+@@ -39,6 +39,8 @@ typedef struct {
+     uint64_t mean;
+     struct hdr_histogram *latency_histogram;
+     struct hdr_histogram *u_latency_histogram;
++    uint64_t latency_schedule_fallbacks;
++    uint64_t latency_samples_dropped;
+     tinymt64_t rand;
+     lua_State *L;
+     errors errors;

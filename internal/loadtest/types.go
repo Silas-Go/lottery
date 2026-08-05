@@ -261,12 +261,16 @@ type TaskMetrics struct {
 	ErrorRate            float64 `json:"errorRate"`
 	Timeouts             int64   `json:"timeouts"`
 	SocketErrors         int64   `json:"socketErrors"`
-	RedisHits            int64   `json:"redisHits"`
-	MySQLFallbacks       int64   `json:"mysqlFallbacks"`
-	SQLQueries           int64   `json:"sqlQueries"`
-	CacheHitRate         float64 `json:"cacheHitRate"`
-	PoolPeak             int64   `json:"poolPeak"`
-	PoolCapacity         int64   `json:"poolCapacity"`
+	// LatencyScheduleFallbacks 是 wrk2 发现修正延迟时序矛盾后改用真实请求延迟的样本数。
+	LatencyScheduleFallbacks int64 `json:"latencyScheduleFallbacks"`
+	// LatencySamplesDropped 是仍被 HDR Histogram 边界拒绝的非法延迟样本数。
+	LatencySamplesDropped int64   `json:"latencySamplesDropped"`
+	RedisHits             int64   `json:"redisHits"`
+	MySQLFallbacks        int64   `json:"mysqlFallbacks"`
+	SQLQueries            int64   `json:"sqlQueries"`
+	CacheHitRate          float64 `json:"cacheHitRate"`
+	PoolPeak              int64   `json:"poolPeak"`
+	PoolCapacity          int64   `json:"poolCapacity"`
 
 	// 以下字段只用于秒杀实验，避免把预期的 429、售罄和系统异常混成一个 Error Rate。
 	AllowedRequests     int64   `json:"allowedRequests,omitempty"`

@@ -464,9 +464,9 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 	if task.Experiment == ExperimentSeckillRateLimit {
 		targetURL = r.appBaseURL + "/api/seckill/rate-limit-probe"
 	}
-	// Cache-Aside 命中时延可低于 2ms。wrk2 上游在多线程共享极低延迟直方图时会偶发
-	// counts_index 断言崩溃；单线程仍能用 96 条连接稳定产生 3000 req/s，且避免该采样器缺陷。
-	// 这里的线程数同样是 Runner 固定参数，前端不能覆盖。
+	// 单线程让两条读取路径保持一致的调度条件；真实并发仍由 -c 持久连接承担。
+	// wrk2 镜像另有单调时钟、修正延迟回退和 HDR Histogram 入参校验三层保护，
+	// 因此这里不再把 -t1 当作避免上游断言崩溃的唯一可靠性边界。
 	args := wrkArguments(task, r.scriptPath, targetURL)
 	command := exec.Command(r.wrk2Path, args...)
 	configureProcess(command)
@@ -591,6 +591,8 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 	metrics.TargetCompletionRate = targetCompletionRate(parsed.QPS, task.Tier.Rate)
 	metrics.Timeouts = parsed.Timeouts
 	metrics.SocketErrors = parsed.SocketErrors
+	metrics.LatencyScheduleFallbacks = parsed.LatencyScheduleFallbacks
+	metrics.LatencySamplesDropped = parsed.LatencySamplesDropped
 	// Socket Errors 是连接层事件计数，可能与请求不是一一对应，因此必须单列；
 	// ErrorRate 只使用收到 HTTP 响应后的 non-2xx/3xx 数量，避免复合计数超过 100%。
 	if task.Experiment == ExperimentSeckillRateLimit {
@@ -627,6 +629,13 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 				"检测到 Socket Errors %d 个、HTTP 非成功响应 %d 个",
 				parsed.SocketErrors,
 				parsed.Non2xxResponses,
+			))
+		}
+		if parsed.LatencyScheduleFallbacks > 0 || parsed.LatencySamplesDropped > 0 {
+			r.appendLogLocked(record, "warning", fmt.Sprintf(
+				"压测器计时保护已介入：修正延迟回退 %d 个、非法直方图样本丢弃 %d 个",
+				parsed.LatencyScheduleFallbacks,
+				parsed.LatencySamplesDropped,
 			))
 		}
 		r.appendLogLocked(record, "success", "指标解析完成")

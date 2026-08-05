@@ -1,3 +1,5 @@
 # Linux containers require Unix line endings for executable scripts.
 *.sh text eol=lf
 *.lua text eol=lf
+# wrk2 源码补丁会在 Linux 构建阶段直接交给 git apply，必须保留 Unix 行尾。
+*.patch text eol=lf

@@ -35,6 +35,11 @@ RUN --mount=type=cache,id=wrk2-apt-archives-${TARGETARCH},target=/var/cache/apt,
     done; \
     test "$installed" = 1
 
+# 两个架构锁定版本共享同一段计时与 HDR Histogram 代码。补丁把计时切到单调时钟，
+# 并在修正延迟与直方图边界各设一道防线，避免异常样本让整个压测进程 SIGABRT。
+COPY docker/wrk2/wrk2-latency-safety.patch /tmp/wrk2-latency-safety.patch
+COPY docker/wrk2/verify-latency-safety.c /tmp/verify-latency-safety.c
+
 WORKDIR /src
 RUN set -eux; \
     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
@@ -49,7 +54,11 @@ RUN set -eux; \
     git remote add origin "$repo"; \
     git fetch --depth 1 origin "$ref"; \
     git checkout --detach FETCH_HEAD; \
-    git submodule update --init --recursive --depth 1
+    git submodule update --init --recursive --depth 1; \
+    git apply --check /tmp/wrk2-latency-safety.patch; \
+    git apply /tmp/wrk2-latency-safety.patch; \
+    gcc -Isrc /tmp/verify-latency-safety.c src/hdr_histogram.c -lm -o /tmp/verify-latency-safety; \
+    /tmp/verify-latency-safety
 
 WORKDIR /src/wrk2
 RUN make

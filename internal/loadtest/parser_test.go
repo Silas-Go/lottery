@@ -36,12 +36,14 @@ func TestParseWrkOutput(t *testing.T) {
   60000 requests in 20.00s, 15.23MB read
   Socket errors: connect 0, read 1, write 0, timeout 2
   Non-2xx or 3xx responses: 3
+  Latency safety: schedule fallbacks 4, histogram drops 1
 Requests/sec:   3000.00
 Transfer/sec:    779.63KB`
 
 	result := parseWrkOutput(output)
 	if result.Requests != 60000 || result.Timeouts != 2 || result.SocketErrors != 3 ||
-		result.Non2xxResponses != 3 {
+		result.Non2xxResponses != 3 || result.LatencyScheduleFallbacks != 4 ||
+		result.LatencySamplesDropped != 1 {
 		t.Fatalf("unexpected counts: %+v", result)
 	}
 	assertNear(t, result.QPS, 3000)

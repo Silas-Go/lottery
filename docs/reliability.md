@@ -82,9 +82,10 @@ HTTP/1.1 链路中通常要等上一请求返回后才能继续。QPS、连接�
 - 创建请求的 HTTP 生命周期不拥有任务 context；页面关闭只断开 SSE，不能停止任务。停止必须显式调用 `/api/loadtests/:id/stop`。
 - 任务快照和有限事件历史写入 `loadtest-runner-data`。Runner 重启后发现 `starting/resetting/running/collecting` 遗留状态会标记为 `failed`，不会永久占锁。
 - SSE 使用事件 ID 回放，浏览器断线后同时通过状态查询恢复。任务创建响应到店内任务 SSE 建立之间的事件同样由该历史回放覆盖；前端对 GET、轮询和 SSE 做单调合并，旧快照或首次历史回放不能把 `running/completed` 倒退到早期状态。日志只记录重置、启动、目标速率、异常、结束和解析，不逐请求输出。
-- 最终对比表只使用 wrk2 汇总与两组完整直方图：Requests、目标/实际 QPS、目标完成率、实际时长、`wrk2 -c` 配置、uncorrected 实际请求 P50/P90/P95/P99、corrected 需求侧 P50/P90/P95/P99、Socket Errors 和 Error Rate；服务端 SQL、连接池、缓存命中率与实时应用 P99 只留在 SSE 观测区，不再混入最终胜负口径。`-c` 是计划保持的连接数，不是独立测得的成功 TCP Socket 数；建连异常必须结合 Socket Errors 判断。
+- 最终对比表只使用 wrk2 汇总与两组完整直方图：Requests、目标/实际 QPS、目标完成率、实际时长、`wrk2 -c` 配置、uncorrected 实际请求 P50/P90/P95/P99、corrected 需求侧 P50/P90/P95/P99、Socket Errors 和 Error Rate；服务端 SQL、连接池、缓存命中率与实时应用 P99 只留在 SSE 观测区，不再混入最终胜负口径。`-c` 是计划保持的连接数，不是独立测得的成功 TCP Socket 数；建连异常必须结合 Socket Errors 判断。Runner 还持久化 `latencyScheduleFallbacks` 与 `latencySamplesDropped`，它们是压测器计时质量信号，不参与 Direct / Cache-Aside 胜负计算。
 - uncorrected latency 从请求真正写入连接开始计时，到收到响应为止；coordinated-omission corrected latency 从计划投递时刻计时，额外包含连接不足或响应过慢导致请求未按时发出的容量欠账。corrected 值不得标成“客户真实等待时间”，入口积压动画也只能发生在通路入口，不能暗示请求已经进入 MySQL 后等待。
-- wrk2 对极低延迟多线程直方图存在上游断言缺陷，因此只读实验固定一个 wrk2 线程；这不代表只有一个用户或一条连接，实际并发由本轮 70 / 140 / 300 / 500 条 HTTP 持久通路承担。
+- wrk2 两个架构的锁定源码都会在镜像构建时应用 `docker/wrk2/wrk2-latency-safety.patch`：所有相对时间改用单调时钟；修正延迟若早于实际请求延迟，则退回实际请求延迟并累计 `latencyScheduleFallbacks`；HDR Histogram 在计算桶索引前拒绝负值和超过一天上限的样本，并累计 `latencySamplesDropped`。这三层边界避免异常样本触发 `counts_index` 断言而杀死整个子进程，但不会把保护介入静默伪装成干净样本。
+- 只读实验仍固定一个 wrk2 线程，以保持 Direct 与 Cache-Aside 的调度条件简单且一致；这不代表只有一个用户或一条连接，实际并发由本轮 70 / 140 / 300 / 500 条 HTTP 持久通路承担。`-t1` 不是上述断言缺陷的唯一兜底。
 
 任务正常状态机：
 

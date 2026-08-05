@@ -48,6 +48,11 @@ http://localhost:5678/
 
 仓库通过 `.gitattributes` 强制 Shell 和 Lua 脚本使用 LF，避免 Windows 的 CRLF 让 Linux 容器入口启动失败。首次构建 wrk2 需要下载编译工具链；Dockerfile 会按 CPU 架构隔离 apt 缓存，并对镜像源的临时 5xx 和中断下载自动重试。
 
+两个架构的锁定源码都会应用仓库内的延迟安全补丁：计时使用单调时钟，异常的 corrected
+latency 回退为本次请求的实际延迟，HDR Histogram 也会在桶索引计算前拒绝非法值。Runner
+把回退数和丢弃数分别记录为 `latencyScheduleFallbacks`、`latencySamplesDropped`，只要保护
+介入就写入任务警告日志，避免偶发计时异常再次以 `counts_index` 断言结束整轮实验。
+
 `docker compose up -d --build` 会同时启动不暴露宿主机端口的常驻
 `loadtest-runner`。页面通过主应用创建受控任务，Runner 在 Compose 网络内启动 wrk2；
 Windows、macOS 和 Linux 都只需配置“查询潮汐”并开始实验，不依赖宿主机终端语法。
@@ -95,7 +100,9 @@ Socket”。配置页尚未启动时，当前压测进程明确显示 0 条；�
 `requestP99Ms` 来自 wrk2 uncorrected histogram，表示请求真正发出到收到响应的时间；
 `p50Ms` / `p90Ms` / `p95Ms` / `p99Ms` 来自 coordinated-omission corrected
 histogram，表示从计划投递时刻到收到响应的需求侧延迟，包含未能及时发送形成的容量欠账。
-后者不能标记为“客户真实等待时间”。购买实验的 150 个唯一购买请求是另一轮独立负载，
+后者不能标记为“客户真实等待时间”。若 `latencyScheduleFallbacks` 大于 0，本轮曾有 corrected
+时序矛盾，相关样本已保守回退为实际请求延迟；若 `latencySamplesDropped` 大于 0，则仍有超出
+直方图边界的非法样本被明确丢弃，这两个计数不参与两条路径的性能胜负。购买实验的 150 个唯一购买请求是另一轮独立负载，
 与查询潮汐、通路数量和 `actualRequests` 均无人数换算关系。
 
 终端命令仍保留在“查看等价命令”折叠区，只用于学习和调试，不是正常操作路径。
