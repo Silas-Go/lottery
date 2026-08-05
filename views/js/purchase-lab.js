@@ -3022,8 +3022,6 @@
         document.body.dataset.materialKind = "star";
         byId("purchase-current-name").textContent = material.profile.name;
         byId("story-material-name").textContent = material.profile.name;
-        byId("purchase-shop-link").href = "/material-shop";
-        byId("back-to-query").href = "/lab";
         byId("purchase-empty").hidden = true;
         byId("purchase-content").hidden = false;
         return true;

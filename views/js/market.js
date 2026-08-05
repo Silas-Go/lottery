@@ -523,7 +523,6 @@
         byId("record-name").textContent = material.name;
         byId("record-sigil").textContent = material.sigil;
         byId("record-card").dataset.kind = material.kind;
-        byId("accepted-material").textContent = material.name;
         updateCrowdTicketCodes();
         renderMarketRequestPreview();
     }
@@ -1113,16 +1112,6 @@
     }
 
     function bindEvents() {
-        byId("star-query-entry").addEventListener("click", function () {
-            if (state !== "dialogue") {
-                return;
-            }
-            // 查询入口只建立材料上下文；只读实验不能重置购买库存或购买报告。
-            openFeaturedMaterial();
-            openCrowdMode();
-        });
-        byId("star-purchase-entry").addEventListener("click", openPurchaseMode);
-
         byId("start-crowd-test").addEventListener("click", startCrowdTest);
         byId("enter-crowd-lab").addEventListener("click", function () {
             enterCrowdLabView();

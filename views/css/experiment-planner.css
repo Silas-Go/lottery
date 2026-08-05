@@ -296,6 +296,72 @@ html[data-planner="purchase"] .purchase-plan-confirmation .crowd-run-actions { m
 
 html[data-planner] .market-toast { z-index: 100; }
 
+/* 配置页以讲清参数为第一目标；字号统一按可持续阅读而不是装饰标签来定。 */
+html[data-planner] .planner-context__copy small { font-size: 10px; }
+html[data-planner] .planner-context__copy p { font-size: 13px; }
+
+html[data-planner] .task-draft-header > div small { font-size: 10px; }
+html[data-planner] .task-draft-header > div strong { font-size: 24px; }
+html[data-planner] .task-draft-header p { font-size: 12px; }
+
+html[data-planner] .task-lifecycle li { font-size: 11px; }
+html[data-planner] .task-lifecycle li i { width: 22px; height: 22px; font-size: 8px; }
+
+html[data-planner] .task-contract-strip > div { gap: 6px; padding: 11px 12px; }
+html[data-planner] .task-contract-strip small { font-size: 10px; }
+html[data-planner] .task-contract-strip output,
+html[data-planner] .task-contract-strip strong { font-size: 13px !important; }
+
+html[data-planner] .task-intent-panel > header > span,
+html[data-planner] .runner-plan-panel > header > span { font-size: 10px; }
+html[data-planner] .task-intent-panel > header > strong,
+html[data-planner] .runner-plan-panel > header > strong { font-size: 15px; }
+
+html[data-planner] .query-path-options button { gap: 5px; padding: 13px 14px; }
+html[data-planner] .query-path-options button.is-active { padding: 13px 14px; }
+html[data-planner] .query-path-options small { font-size: 10px !important; }
+html[data-planner] .query-path-options strong { font-size: 13px !important; }
+html[data-planner] .query-path-options span { font-size: 11px; }
+
+html[data-planner] .task-intent-panel .crowd-tier-options button { min-height: 62px; padding: 9px 10px; }
+html[data-planner] .task-intent-panel .crowd-tier-options span { font-size: 13px; }
+html[data-planner] .task-intent-panel .crowd-tier-options strong { font-size: 12px; }
+html[data-planner] .task-intent-panel .crowd-tier-options small { font-size: 10px; }
+
+html[data-planner] .conduit-mode-control small,
+html[data-planner] .conduit-mode-options button,
+html[data-planner] .manual-conduit-options button { font-size: 11px; }
+html[data-planner] .runner-plan-detail summary { font-size: 11px; }
+html[data-planner] .runner-plan-detail p { font-size: 11px; }
+html[data-planner] .runner-plan-detail > small { font-size: 10px !important; }
+
+html[data-planner] .query-plan-preview > small { font-size: 10px; }
+html[data-planner] .query-plan-preview > strong { font-size: 20px; }
+html[data-planner] .query-plan-material small { font-size: 9px; }
+html[data-planner] .query-plan-material b { font-size: 16px; }
+html[data-planner] .query-plan-preview > code { font-size: 12px; }
+html[data-planner] .query-plan-preview > p { font-size: 13px; }
+html[data-planner] .query-plan-preview dt { font-size: 10px; }
+html[data-planner] .query-plan-preview dd { font-size: 12px; }
+html[data-planner] .query-plan-preview .query-plan-boundary { font-size: 12px; }
+
+html[data-planner] .crowd-confirmation-bar .crowd-status strong { font-size: 13px; }
+html[data-planner] .crowd-confirmation-bar .crowd-status small { font-size: 10px; }
+html[data-planner] .crowd-confirmation-bar .event-primary { font-size: 12px; }
+
+html[data-planner] .purchase-plan-panel > header small { font-size: 10px; }
+html[data-planner] .purchase-plan-config-sheet > header strong,
+html[data-planner] .purchase-plan-preview > strong { font-size: 16px; }
+html[data-planner] .purchase-outbox-rationale header small { font-size: 9px; }
+html[data-planner] .purchase-outbox-rationale header strong { font-size: 14px; }
+html[data-planner] .purchase-outbox-rationale p,
+html[data-planner] .purchase-plan-preview > p { font-size: 13px; }
+html[data-planner] .purchase-plan-fixed-copy { font-size: 11px !important; }
+html[data-planner] .purchase-plan-preview > small,
+html[data-planner] .purchase-plan-preview dt { font-size: 9px; }
+html[data-planner] .purchase-plan-preview code,
+html[data-planner] .purchase-plan-preview dd { font-size: 11px; }
+
 @media (max-width: 980px) {
     html[data-planner="query"] .crowd-workbench,
     html[data-planner="purchase"] .purchase-plan-workbench { grid-template-columns: minmax(0, 1fr); }
@@ -335,7 +401,7 @@ html[data-planner] .market-toast { z-index: 100; }
     html[data-planner] .planner-context { grid-template-columns: 58px minmax(0, 1fr); gap: 11px; }
     html[data-planner] .planner-context > img { width: 58px; }
     html[data-planner] .planner-context__copy h1 { font-size: 20px; }
-    html[data-planner] .planner-context__copy p { font-size: 9px; }
+    html[data-planner] .planner-context__copy p { font-size: 11px; }
     html[data-planner] .task-draft-header { align-items: start !important; }
     html[data-planner] .task-lifecycle { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding: 0; }
     html[data-planner="query"] .task-contract-strip,

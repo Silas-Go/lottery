@@ -13,10 +13,16 @@
 
 <body class="seckill-page" data-request-state="idle">
     <header class="seckill-header">
-        <a class="seckill-brand" href="/" aria-label="返回暖潮街 17 号">
-            <span aria-hidden="true">S</span>
-            <div><strong>SILAS</strong><small>LIMITED MATERIAL OFFICE</small></div>
-        </a>
+        <div class="seckill-brand-area">
+            <a class="seckill-brand" href="/" aria-label="返回实验总览">
+                <span aria-hidden="true">S</span>
+                <div><strong>SILAS</strong><small>LIMITED MATERIAL OFFICE</small></div>
+            </a>
+            <nav class="seckill-return-nav" aria-label="秒杀实验页面导航">
+                <a href="/seckill-lab#experiment-config">返回配置页</a>
+                <a href="/">返回实验总览</a>
+            </nav>
+        </div>
         <div class="seckill-location">
             <small>暖潮街 17 号 · 左侧</small>
             <strong>限量材料申领所</strong>
@@ -41,7 +47,7 @@
             </div>
         </section>
 
-        <nav class="experiment-map lab-card" aria-label="秒杀实验导航">
+        <nav id="experiment-config" class="experiment-map lab-card" aria-label="秒杀实验配置">
             <a href="#single-experiment"><b>01</b><span><strong>单次链路</strong><small>一个请求怎样走</small></span></a>
             <a href="#stock-experiment" class="is-primary"><b>02</b><span><strong>库存争抢</strong><small>主实验 · 是否超卖</small></span></a>
             <a href="#limit-experiment"><b>03</b><span><strong>入口限流</strong><small>辅助实验 · 过载保护</small></span></a>
@@ -169,7 +175,7 @@
                 <article><span>P95</span><strong id="metric-p95">—</strong></article>
                 <article><span>超卖</span><strong id="metric-oversold">—</strong></article>
             </div>
-            <div class="desk-actions"><a href="/">返回暖潮街</a><button id="reset-seckill" type="button">重置完整实验</button></div>
+            <div class="desk-actions"><button id="reset-seckill" type="button">重置完整实验</button></div>
         </section>
 
         <section class="event-board lab-card" aria-labelledby="event-title">

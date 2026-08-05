@@ -55,6 +55,13 @@ func registerPages(engine *gin.Engine) {
 		ctx.HTML(http.StatusOK, "market-street.html", nil)
 	})
 	engine.GET("/material-shop", func(ctx *gin.Context) {
+		// 材料店前厅已经被实验总览取代；二级页只接受首页签发的明确实验意图，
+		// 避免无参数访问重新落回一层没有技术职责的世界观中转页面。
+		experiment := ctx.Query("experiment")
+		if experiment != "query" && experiment != "purchase" {
+			ctx.Redirect(http.StatusFound, "/")
+			return
+		}
 		ctx.HTML(http.StatusOK, "market.html", nil)
 	})
 	engine.GET("/seckill-lab", func(ctx *gin.Context) {

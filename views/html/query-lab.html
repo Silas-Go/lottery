@@ -18,15 +18,20 @@
     <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
     <header class="lab-header">
-        <a class="lab-brand" href="/" aria-label="返回 Silas 炼金市">
-            <span>S</span>
-            <div><strong>SILAS</strong><small>CACHE-ASIDE LAB</small></div>
-        </a>
+        <div class="query-brand-area">
+            <a class="lab-brand" href="/" aria-label="返回实验总览">
+                <span>S</span>
+                <div><strong>SILAS</strong><small>CACHE-ASIDE LAB</small></div>
+            </a>
+            <nav class="lab-return-nav" aria-label="查询实验页面导航">
+                <a href="/material-shop?experiment=query">返回配置页</a>
+                <a href="/">返回实验总览</a>
+            </nav>
+        </div>
 
         <div class="current-material" aria-label="当前实验材料">
             <small>CURRENT MATERIAL</small>
             <strong id="lab-current-name">星髓</strong>
-            <a href="/material-shop">回到材料店门口</a>
         </div>
 
         <div class="lab-status-actions">
@@ -39,8 +44,7 @@
         <section id="empty-state" class="lab-empty" hidden>
             <span>MATERIAL CONTEXT REQUIRED</span>
             <h1>尚未载入星髓实验</h1>
-            <p>请先回到材料情报店，开启星髓档案。</p>
-            <a href="/material-shop">返回材料情报店</a>
+            <p>请使用页首导航重新载入星髓查询实验。</p>
         </section>
 
         <div id="lab-content" class="lab-content" hidden>
@@ -107,7 +111,6 @@
                                             <span id="lab-connection-plan-copy">创建任务时锁定最终配置</span>
                                         </div>
                                     </details>
-                                    <a href="/material-shop">返回任务配置</a>
                                 </aside>
                             </div>
                             <button id="query-archive" class="query-button" type="button">

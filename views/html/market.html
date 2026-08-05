@@ -29,67 +29,6 @@
     <main class="market-event" aria-labelledby="event-title">
         <h1 id="event-title" class="sr-only">星髓实验计划工作台</h1>
 
-        <section class="market-scene" aria-label="阳光下的炼金市场材料店铺">
-            <div class="market-sky" aria-hidden="true">
-                <i class="market-sun"></i>
-                <i class="cloud cloud-one"></i>
-                <i class="cloud cloud-two"></i>
-            </div>
-
-            <div class="town-depth" aria-hidden="true">
-                <span class="distant-tower"><i></i></span>
-                <span class="distant-house house-one"></span>
-                <span class="distant-house house-two"></span>
-                <span class="distant-house house-three"></span>
-                <span class="town-flag flag-one"></span>
-                <span class="town-flag flag-two"></span>
-            </div>
-
-            <div class="alchemy-shop">
-                <div class="shop-roof"></div>
-                <div class="shop-beam beam-left"></div>
-                <div class="shop-beam beam-right"></div>
-                <div class="shop-sign"><strong>SILAS</strong><span>MATERIAL ARCHIVES</span></div>
-                <div class="shop-awning"><i></i><i></i><i></i><i></i><i></i></div>
-                <div class="shop-window">
-                    <span class="bottle bottle-one"></span>
-                    <span class="bottle bottle-two"></span>
-                    <span class="bottle bottle-three"></span>
-                </div>
-                <div class="archive-machine">
-                    <span>ARCHIVE READER</span>
-                    <div id="archive-slot" class="archive-slot"><i></i></div>
-                    <small>INSERT RECORD</small>
-                </div>
-                <div class="shop-counter"></div>
-            </div>
-
-            <div class="character shopkeeper" aria-label="材料情报店主">
-                <i class="character-head"></i>
-                <i class="character-hair"></i>
-                <i class="character-body"></i>
-                <i class="character-arm"></i>
-            </div>
-            <div class="character visitor" aria-label="来到柜台前的访客">
-                <i class="character-head"></i>
-                <i class="character-hair"></i>
-                <i class="character-body"></i>
-                <i class="visitor-satchel"></i>
-            </div>
-
-            <div class="stone-street" aria-hidden="true"></div>
-            <div class="sun-shade" aria-hidden="true"></div>
-            <div class="dust-field" aria-hidden="true">
-                <i></i><i></i><i></i><i></i><i></i><i></i>
-            </div>
-
-            <div id="accepted-stamp" class="accepted-stamp" role="status" aria-live="polite" aria-hidden="true">
-                <span>ARCHIVE ACCEPTED</span>
-                <strong id="accepted-material">星髓</strong>
-            </div>
-            <div class="slot-focus" aria-hidden="true"></div>
-        </section>
-
         <section class="event-card" aria-live="polite">
             <header class="planner-context">
                 <img src="/img/star-marrow-relic.png" alt="深蓝晶体中流动着金色星光的星髓" />
@@ -108,27 +47,6 @@
             <div class="event-heading">
                 <span id="event-kicker">STAR MARROW · EXPERIMENT PLANNER</span>
                 <small id="event-step">可行动</small>
-            </div>
-
-            <div id="dialogue-copy" class="dialogue-copy">
-                <div class="rare-material-feature">
-                    <img src="/img/star-marrow-relic.png" alt="深蓝晶体中流动着金色星光的星髓" />
-                    <div>
-                        <small>LEGENDARY · 首批发售</small>
-                        <strong>星髓</strong>
-                        <p>“同一枚星髓有两张独立委托：查询台研究读取路径，采购台研究写入后的缓存一致性。”</p>
-                        <dl>
-                            <div><dt>查询实验</dt><dd>100–1500/s</dd></div>
-                            <div><dt>购买实验</dt><dd>150 请求</dd></div>
-                            <div><dt>首批库存</dt><dd>100</dd></div>
-                        </dl>
-                    </div>
-                </div>
-                <div class="rare-material-actions">
-                    <button id="star-query-entry" class="event-primary" type="button">配置查询潮汐</button>
-                    <button id="star-purchase-entry" class="event-secondary event-purchase" type="button">配置购买实验</button>
-                </div>
-                <small class="purchase-boundary">两项实验共享库存与缓存，请勿并行运行。</small>
             </div>
 
             <div id="record-selection" class="record-selection">
