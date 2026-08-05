@@ -97,3 +97,36 @@ func TestCreateRequestRejectsUncontrolledInputs(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateSeckillExperimentsKeepVariablesIsolated(t *testing.T) {
+	rateTier, message := ValidateCreateRequest(CreateRequest{
+		Experiment: ExperimentSeckillRateLimit,
+		Rate:       1500,
+	})
+	if message != "" {
+		t.Fatalf("valid rate-limit request rejected: %s", message)
+	}
+	if rateTier.Rate != 1500 || rateTier.DurationSeconds != SeckillRateDurationSeconds || rateTier.Connections != 70 {
+		t.Fatalf("unexpected rate-limit tier: %+v", rateTier)
+	}
+
+	stockTier, message := ValidateCreateRequest(CreateRequest{Experiment: ExperimentSeckillStockBurst})
+	if message != "" {
+		t.Fatalf("valid stock burst rejected: %s", message)
+	}
+	if stockTier.Connections != SeckillStockConcurrency || stockTier.Rate != 0 {
+		t.Fatalf("unexpected stock burst tier: %+v", stockTier)
+	}
+
+	invalid := []CreateRequest{
+		{Experiment: ExperimentSeckillRateLimit, Rate: 500},
+		{Experiment: ExperimentSeckillRateLimit, Rate: 800, ArchiveID: 4},
+		{Experiment: ExperimentSeckillStockBurst, Rate: 300},
+		{Experiment: ExperimentSeckillStockBurst, Connections: 70},
+	}
+	for _, input := range invalid {
+		if _, detail := ValidateCreateRequest(input); detail == "" {
+			t.Fatalf("expected isolated seckill workload to reject %+v", input)
+		}
+	}
+}

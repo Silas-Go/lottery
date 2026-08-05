@@ -65,6 +65,19 @@ func (h *GiftHandler) GetAllMaterials(ctx *gin.Context) {
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", data)
 }
 
+// ProbeRateLimit 只验证 /lucky 共用的入口令牌桶。
+// 204 表示获得令牌，429 表示被保护线拦截；它不会进入任何库存或订单链路。
+func (h *GiftHandler) ProbeRateLimit(ctx *gin.Context) {
+	start := time.Now()
+	allowed := h.lottery.ProbeRateLimit()
+	metrics.RecordRateLimitProbe(allowed, time.Since(start))
+	if !allowed {
+		writeAPIError(ctx, http.StatusTooManyRequests, service.CodeRateLimited, "请求超过秒杀入口保护线", nil)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
 // Lottery 处理一次抽奖请求。
 // 成功抢到时会把临时资格写入 cookie，支付页再用 uid/gid 完成资格认领；
 // 如果没有库存则保持历史协议返回 "0"，避免旧前端误判为系统错误。

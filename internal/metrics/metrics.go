@@ -33,6 +33,9 @@ type Event struct {
 type Snapshot struct {
 	At string `json:"at"`
 
+	// RateLimitQPS 是当前进程秒杀入口令牌桶的保护线；页面只读取真实配置，不硬编码 800。
+	RateLimitQPS int64 `json:"rateLimitQps"`
+
 	// ActivityStock 是活动初始库存总数，来自 MySQL inventory.count。
 	ActivityStock int64 `json:"activityStock"`
 
@@ -57,6 +60,12 @@ type Snapshot struct {
 	// MQPending 是已经入队但尚未消费的 RocketMQ 延时取消消息数量估计值。
 	MQPending int64 `json:"mqPending"`
 
+	// CreateOrderEnqueued/CreateOrderConsumed 单独描述普通 CREATE_ORDER 削峰链路。
+	// 它们不能和上面的延迟取消消息混用，否则页面会把支付超时积压误解为异步落单积压。
+	CreateOrderEnqueued int64 `json:"createOrderEnqueued"`
+	CreateOrderConsumed int64 `json:"createOrderConsumed"`
+	CreateOrderBacklog  int64 `json:"createOrderBacklog"`
+
 	// CompletedOrders 是已经进入 paid 终态的订单数。
 	CompletedOrders int64 `json:"completedOrders"`
 
@@ -79,6 +88,9 @@ type Snapshot struct {
 	// 当前判断基于内存指标：Redis 库存小于 0，或正式订单数超过活动初始库存。
 	Oversold bool `json:"oversold"`
 
+	// SystemErrors 是本轮秒杀实验记录到的基础设施或未知业务错误总数。
+	SystemErrors int64 `json:"systemErrors"`
+
 	// SimulationTotal/SimulationDone 是前端实验室展示字段，当前都使用真实请求数。
 	SimulationTotal int64 `json:"simulationTotal"`
 	SimulationDone  int64 `json:"simulationDone"`
@@ -96,6 +108,9 @@ type Snapshot struct {
 
 	// ArchiveRead 是第一章独立的只读 Cache-Aside 实验，不与库存方案混用。
 	ArchiveRead ArchiveReadSnapshot `json:"archiveRead"`
+
+	// RateLimitProbe 是不进入 Redis/MQ/MySQL 的真实令牌桶探针指标。
+	RateLimitProbe RateLimitProbeSnapshot `json:"rateLimitProbe"`
 }
 
 type meter struct {
@@ -108,11 +123,20 @@ type meter struct {
 	mqPending       int64
 	completedOrders int64
 	maxLatency      int64
+	rateLimitQPS    int64
+	createEnqueued  int64
+	createConsumed  int64
+	systemErrors    int64
 
 	mu             sync.Mutex
 	latencySamples []int64
 	secondBuckets  map[int64]int64
 	events         []Event
+}
+
+// SetRateLimitQPS 保存应用实际启动配置，供页面和 Runner 展示真实保护线。
+func SetRateLimitQPS(qps int) {
+	atomic.StoreInt64(&defaultMeter.rateLimitQPS, int64(qps))
 }
 
 var defaultMeter = &meter{
@@ -140,6 +164,9 @@ func ResetAll(activityStock int64, redisStock int64) {
 	atomic.StoreInt64(&defaultMeter.mqPending, 0)
 	atomic.StoreInt64(&defaultMeter.completedOrders, 0)
 	atomic.StoreInt64(&defaultMeter.maxLatency, 0)
+	atomic.StoreInt64(&defaultMeter.createEnqueued, 0)
+	atomic.StoreInt64(&defaultMeter.createConsumed, 0)
+	atomic.StoreInt64(&defaultMeter.systemErrors, 0)
 
 	defaultMeter.mu.Lock()
 	defaultMeter.latencySamples = nil
@@ -149,6 +176,7 @@ func ResetAll(activityStock int64, redisStock int64) {
 
 	resetCacheAsideMetrics()
 	resetPreDeductMySQLMetrics()
+	ResetRateLimitProbe()
 	defaultMeter.addEvent("实验重置", fmt.Sprintf("已清空订单、临时资格和指标，活动库存恢复为 %d。", activityStock), "success")
 }
 
@@ -248,6 +276,17 @@ func RecordMQConsumed(timeoutRollback bool) {
 	}
 }
 
+// RecordCreateOrderEnqueued 记录普通异步落单消息发送成功。
+func RecordCreateOrderEnqueued() {
+	atomic.AddInt64(&defaultMeter.createEnqueued, 1)
+}
+
+// RecordCreateOrderConsumed 只在普通异步落单首次推进到 pending_payment 时记录。
+// 重投、迟到旧消息和幂等读取不增加计数，避免实验重置后的旧消息污染当前积压。
+func RecordCreateOrderConsumed() {
+	atomic.AddInt64(&defaultMeter.createConsumed, 1)
+}
+
 // RecordOrderCompleted 记录订单成功进入 paid 终态。
 func RecordOrderCompleted(giftID int) {
 	n := atomic.AddInt64(&defaultMeter.completedOrders, 1)
@@ -265,6 +304,7 @@ func RecordGiveUp(giftID int) {
 // RecordSystemError 记录系统异常事件。
 // title 应使用中文描述业务位置；err 保留原始错误，方便从页面和日志一起定位问题。
 func RecordSystemError(title string, err error) {
+	atomic.AddInt64(&defaultMeter.systemErrors, 1)
 	detail := title
 	if err != nil {
 		detail = fmt.Sprintf("%s：%s", title, err.Error())
@@ -295,30 +335,42 @@ func SnapshotNow() Snapshot {
 	if mqPending < 0 {
 		mqPending = 0
 	}
+	createEnqueued := atomic.LoadInt64(&defaultMeter.createEnqueued)
+	createConsumed := atomic.LoadInt64(&defaultMeter.createConsumed)
+	createBacklog := createEnqueued - createConsumed
+	if createBacklog < 0 {
+		createBacklog = 0
+	}
 
 	return Snapshot{
-		At:              now.Format(time.RFC3339),
-		ActivityStock:   activityStock,
-		RedisStock:      redisStock,
-		DBStock:         dbStockText(activityStock, completedOrders),
-		TotalRequests:   totalRequests,
-		QueueSuccess:    atomic.LoadInt64(&defaultMeter.queueSuccess),
-		RateLimited:     atomic.LoadInt64(&defaultMeter.rateLimited),
-		StockFailed:     atomic.LoadInt64(&defaultMeter.stockFailed),
-		MQPending:       mqPending,
-		CompletedOrders: completedOrders,
-		AvgLatency:      average(latencies),
-		MaxLatency:      atomic.LoadInt64(&defaultMeter.maxLatency),
-		P95:             percentile(latencies, 0.95),
-		P99:             percentile(latencies, 0.99),
-		QPS:             qps,
-		Oversold:        redisStock < 0 || (activityStock > 0 && completedOrders > activityStock),
-		SimulationTotal: totalRequests,
-		SimulationDone:  totalRequests,
-		Events:          events,
-		CacheAside:      SnapshotCacheAside(),
-		PreDeductMySQL:  SnapshotPreDeductMySQL(),
-		ArchiveRead:     SnapshotArchiveRead(ArchiveCacheTTL),
+		At:                  now.Format(time.RFC3339),
+		RateLimitQPS:        atomic.LoadInt64(&defaultMeter.rateLimitQPS),
+		ActivityStock:       activityStock,
+		RedisStock:          redisStock,
+		DBStock:             dbStockText(activityStock, completedOrders),
+		TotalRequests:       totalRequests,
+		QueueSuccess:        atomic.LoadInt64(&defaultMeter.queueSuccess),
+		RateLimited:         atomic.LoadInt64(&defaultMeter.rateLimited),
+		StockFailed:         atomic.LoadInt64(&defaultMeter.stockFailed),
+		MQPending:           mqPending,
+		CreateOrderEnqueued: createEnqueued,
+		CreateOrderConsumed: createConsumed,
+		CreateOrderBacklog:  createBacklog,
+		CompletedOrders:     completedOrders,
+		AvgLatency:          average(latencies),
+		MaxLatency:          atomic.LoadInt64(&defaultMeter.maxLatency),
+		P95:                 percentile(latencies, 0.95),
+		P99:                 percentile(latencies, 0.99),
+		QPS:                 qps,
+		Oversold:            redisStock < 0 || (activityStock > 0 && completedOrders > activityStock),
+		SystemErrors:        atomic.LoadInt64(&defaultMeter.systemErrors),
+		SimulationTotal:     totalRequests,
+		SimulationDone:      totalRequests,
+		Events:              events,
+		CacheAside:          SnapshotCacheAside(),
+		PreDeductMySQL:      SnapshotPreDeductMySQL(),
+		ArchiveRead:         SnapshotArchiveRead(ArchiveCacheTTL),
+		RateLimitProbe:      SnapshotRateLimitProbe(),
 	}
 }
 

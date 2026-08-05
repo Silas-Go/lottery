@@ -33,3 +33,15 @@ func TestTokenBucketLimiterDisabled(t *testing.T) {
 		}
 	}
 }
+
+func TestTokenBucketLimiterResetRestoresFullBurst(t *testing.T) {
+	limiter := newTokenBucketLimiter(2)
+	if !limiter.Allow() || !limiter.Allow() || limiter.Allow() {
+		t.Fatal("expected the initial two-token burst to be exhausted")
+	}
+
+	limiter.Reset()
+	if !limiter.Allow() || !limiter.Allow() || limiter.Allow() {
+		t.Fatal("reset should restore exactly one full burst")
+	}
+}

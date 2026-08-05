@@ -6,10 +6,15 @@ import (
 )
 
 const (
-	ExperimentCacheAsideRead = "cache-aside-read"
-	StarMarrowArchiveID      = 4
-	MaxDurationSeconds       = 30
-	DefaultDurationSeconds   = 30
+	ExperimentCacheAsideRead    = "cache-aside-read"
+	ExperimentSeckillRateLimit  = "seckill-rate-limit"
+	ExperimentSeckillStockBurst = "seckill-stock-burst"
+	StarMarrowArchiveID         = 4
+	MaxDurationSeconds          = 30
+	DefaultDurationSeconds      = 30
+	SeckillRateDurationSeconds  = 10
+	SeckillStockRequests        = 600
+	SeckillStockConcurrency     = 600
 )
 
 // TierID 是公开挡位的稳定标识；它不携带任何可执行参数。
@@ -64,6 +69,12 @@ var rateConfigs = map[int]TierConfig{
 	1500: {ID: TierQPS1500, Label: "1500 卷轴/秒", Rate: 1500, DurationSeconds: DefaultDurationSeconds},
 }
 
+var seckillRateConfigs = map[int]TierConfig{
+	300:  {ID: "seckill_qps_300", Label: "低于保护线", Rate: 300, Connections: 70, DurationSeconds: SeckillRateDurationSeconds},
+	800:  {ID: "seckill_qps_800", Label: "触及保护线", Rate: 800, Connections: 70, DurationSeconds: SeckillRateDurationSeconds},
+	1500: {ID: "seckill_qps_1500", Label: "超过保护线", Rate: 1500, Connections: 70, DurationSeconds: SeckillRateDurationSeconds},
+}
+
 var manualConnectionOptions = map[int]struct{}{
 	70:  {},
 	140: {},
@@ -81,6 +92,12 @@ func ResolveTier(id TierID) (TierConfig, bool) {
 // ResolveRate 把“查询潮汐”速率转换为 Runner 的固定白名单参数。
 func ResolveRate(rate int) (TierConfig, bool) {
 	config, ok := rateConfigs[rate]
+	return config, ok
+}
+
+// ResolveSeckillRate 把限流实验的固定速率映射为不可由浏览器篡改的 wrk2 参数。
+func ResolveSeckillRate(rate int) (TierConfig, bool) {
+	config, ok := seckillRateConfigs[rate]
 	return config, ok
 }
 
@@ -149,8 +166,30 @@ type CreateRequest struct {
 // ValidateCreateRequest 在主应用和 Runner 两侧重复执行白名单校验。
 // 双重校验不能替代网络隔离，但可以避免绕过浏览器后把任意参数交给 wrk2。
 func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
-	if request.Experiment != ExperimentCacheAsideRead {
-		return TierConfig{}, "experiment must be cache-aside-read"
+	switch request.Experiment {
+	case ExperimentSeckillRateLimit:
+		if request.ArchiveID != 0 || request.Mode != "" || request.Tier != "" ||
+			request.ConnectionMode != "" || request.Connections != 0 {
+			return TierConfig{}, "seckill rate-limit only accepts experiment and rate"
+		}
+		tier, ok := ResolveSeckillRate(request.Rate)
+		if !ok {
+			return TierConfig{}, "seckill rate must be one of 300, 800 or 1500"
+		}
+		return tier, ""
+	case ExperimentSeckillStockBurst:
+		if request.ArchiveID != 0 || request.Mode != "" || request.Tier != "" || request.Rate != 0 ||
+			request.ConnectionMode != "" || request.Connections != 0 {
+			return TierConfig{}, "seckill stock burst does not accept custom workload parameters"
+		}
+		return TierConfig{
+			ID: "stock_600", Label: "600 人争抢 300 份星髓",
+			Connections: SeckillStockConcurrency, DurationSeconds: 15,
+		}, ""
+	case ExperimentCacheAsideRead:
+		// 继续执行下面的查询实验兼容校验。
+	default:
+		return TierConfig{}, "experiment is not supported"
 	}
 	if request.ArchiveID != StarMarrowArchiveID {
 		return TierConfig{}, "archiveId must be 4 (star marrow)"
@@ -228,6 +267,26 @@ type TaskMetrics struct {
 	CacheHitRate         float64 `json:"cacheHitRate"`
 	PoolPeak             int64   `json:"poolPeak"`
 	PoolCapacity         int64   `json:"poolCapacity"`
+
+	// 以下字段只用于秒杀实验，避免把预期的 429、售罄和系统异常混成一个 Error Rate。
+	AllowedRequests     int64   `json:"allowedRequests,omitempty"`
+	RateLimitQPS        int64   `json:"rateLimitQps,omitempty"`
+	AllowedQPS          float64 `json:"allowedQps,omitempty"`
+	RateLimited         int64   `json:"rateLimited,omitempty"`
+	LimitedQPS          float64 `json:"limitedQps,omitempty"`
+	RateLimitRate       float64 `json:"rateLimitRate,omitempty"`
+	AdmissionSuccess    int64   `json:"admissionSuccess,omitempty"`
+	StockFailed         int64   `json:"stockFailed,omitempty"`
+	ActivityStock       int64   `json:"activityStock,omitempty"`
+	RedisStock          int64   `json:"redisStock,omitempty"`
+	SystemErrors        int64   `json:"systemErrors,omitempty"`
+	CreateOrderEnqueued int64   `json:"createOrderEnqueued,omitempty"`
+	CreateOrderConsumed int64   `json:"createOrderConsumed,omitempty"`
+	CreateOrderBacklog  int64   `json:"createOrderBacklog,omitempty"`
+	HTTP2xx             int64   `json:"http2xx,omitempty"`
+	HTTP429             int64   `json:"http429,omitempty"`
+	HTTPUnexpected      int64   `json:"httpUnexpected,omitempty"`
+	Oversold            bool    `json:"oversold"`
 }
 
 // TaskLog 只保存任务级关键事件，不保存逐请求日志。
@@ -247,6 +306,8 @@ type Task struct {
 	ConnectionMode       ConnectionMode `json:"connectionMode,omitempty"`
 	RequestedConnections int            `json:"requestedConnections,omitempty"`
 	ConnectionReason     string         `json:"connectionReason,omitempty"`
+	PlannedRequests      int            `json:"plannedRequests,omitempty"`
+	Concurrency          int            `json:"concurrency,omitempty"`
 	Status               TaskStatus     `json:"status"`
 	CreatedAt            time.Time      `json:"createdAt"`
 	StartedAt            *time.Time     `json:"startedAt,omitempty"`

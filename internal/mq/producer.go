@@ -147,6 +147,7 @@ func SendCreateOrder(order database.Order) error {
 	if _, err := producer.Send(ctx, msg); err != nil {
 		return fmt.Errorf("send create order to rocketmq: %w", err)
 	}
+	metrics.RecordCreateOrderEnqueued()
 	slog.Info("send async create order success", "uid", order.UserId, "gid", order.GiftId, "topic", OrderTopic())
 	return nil
 }

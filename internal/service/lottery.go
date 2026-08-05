@@ -75,10 +75,22 @@ type SeckillMaterialView struct {
 // 否则压测流量可能把依赖打满，导致演示结果变成基础设施故障。
 func NewLotteryService(store *database.Store, opts LotteryOptions) *LotteryService {
 	slog.Info("lottery service initialized", "rate_limit_qps", opts.RateLimitQPS)
+	metrics.SetRateLimitQPS(opts.RateLimitQPS)
 	return &LotteryService{
 		store:   store,
 		limiter: newTokenBucketLimiter(opts.RateLimitQPS),
 	}
+}
+
+// ProbeRateLimit 使用 /lucky 的同一个令牌桶，但通过后立即结束。
+// 它用于隔离验证入口保护，不读取库存、不发送 MQ、也不创建订单。
+func (s *LotteryService) ProbeRateLimit() bool {
+	return s.limiter.Allow()
+}
+
+// ResetRateLimiter 把实验用令牌桶恢复为满桶，保证库存争抢批次不会继承上一轮探针消耗。
+func (s *LotteryService) ResetRateLimiter() {
+	s.limiter.Reset()
 }
 
 // ListMaterials 读取当前抢购活动唯一开放的星髓供实验页面展示。

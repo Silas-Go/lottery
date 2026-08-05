@@ -32,6 +32,20 @@ const (
 
 var autoConnectionOptions = [...]int{70, 140, 300, 500}
 
+func plannedRequestsFor(experiment string) int {
+	if experiment == ExperimentSeckillStockBurst {
+		return SeckillStockRequests
+	}
+	return 0
+}
+
+func concurrencyFor(experiment string) int {
+	if experiment == ExperimentSeckillStockBurst {
+		return SeckillStockConcurrency
+	}
+	return 0
+}
+
 type RunnerOptions struct {
 	AppBaseURL string
 	StatePath  string
@@ -105,7 +119,13 @@ func (r *Runner) PlanConnections(request CreateRequest) (ConnectionPlanResponse,
 
 	connectionMode := request.ConnectionMode
 	reason := "旧协议固定配置"
-	if request.Rate > 0 {
+	if request.Experiment == ExperimentSeckillRateLimit {
+		connectionMode = ConnectionModeAuto
+		reason = "限流探针固定通路，避免连接配置成为额外变量"
+	} else if request.Experiment == ExperimentSeckillStockBurst {
+		connectionMode = ConnectionModeAuto
+		reason = "定量并发批次固定 600 个唯一请求同时起跑"
+	} else if request.Rate > 0 {
 		if connectionMode == "" {
 			connectionMode = ConnectionModeAuto
 		}
@@ -143,7 +163,15 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 	requestedConnections := 0
 	connectionLog := ""
 	connectionReason := ""
-	if request.Rate > 0 {
+	if request.Experiment == ExperimentSeckillRateLimit {
+		connectionMode = ConnectionModeAuto
+		connectionReason = "限流探针固定 70 条通路"
+		connectionLog = fmt.Sprintf("配置 wrk2 -c %d（固定限流探针）", tier.Connections)
+	} else if request.Experiment == ExperimentSeckillStockBurst {
+		connectionMode = ConnectionModeAuto
+		connectionReason = "定量并发批次固定 600 个唯一请求同时起跑"
+		connectionLog = "配置 600 个唯一用户并发争抢 300 份星髓"
+	} else if request.Rate > 0 {
 		if connectionMode == "" {
 			connectionMode = ConnectionModeAuto
 		}
@@ -173,6 +201,8 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 			ConnectionMode:       connectionMode,
 			RequestedConnections: requestedConnections,
 			ConnectionReason:     connectionReason,
+			PlannedRequests:      plannedRequestsFor(request.Experiment),
+			Concurrency:          concurrencyFor(request.Experiment),
 			Status:               StatusStarting,
 			CreatedAt:            now,
 			RemainingSeconds:     tier.DurationSeconds,
@@ -401,10 +431,18 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 		}
 	}()
 
-	if !r.transition(id, StatusResetting, "正在重置缓存与章节指标") {
+	task, taskErr := r.Get(id)
+	if taskErr != nil {
 		return
 	}
-	if err := r.resetChapter(taskContext); err != nil {
+	resetMessage := "正在重置缓存与章节指标"
+	if task.Experiment != ExperimentCacheAsideRead {
+		resetMessage = "正在重置秒杀库存、订单、令牌桶与指标"
+	}
+	if !r.transition(id, StatusResetting, resetMessage) {
+		return
+	}
+	if err := r.resetExperiment(taskContext, task); err != nil {
 		if taskContext.Err() != nil {
 			r.finishContextEnd(id, taskContext, "重置阶段")
 			return
@@ -414,11 +452,18 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 	}
 	r.emitStep(id, EventResetCompleted, "数据重置完成", "success")
 
-	task, taskErr := r.Get(id)
+	task, taskErr = r.Get(id)
 	if taskErr != nil {
 		return
 	}
+	if task.Experiment == ExperimentSeckillStockBurst {
+		r.runStockBurst(taskContext, id, task)
+		return
+	}
 	targetURL := fmt.Sprintf("%s/api/archives/%d/%s", r.appBaseURL, task.ArchiveID, task.Mode)
+	if task.Experiment == ExperimentSeckillRateLimit {
+		targetURL = r.appBaseURL + "/api/seckill/rate-limit-probe"
+	}
 	// Cache-Aside 命中时延可低于 2ms。wrk2 上游在多线程共享极低延迟直方图时会偶发
 	// counts_index 断言崩溃；单线程仍能用 96 条连接稳定产生 3000 req/s，且避免该采样器缺陷。
 	// 这里的线程数同样是 Runner 固定参数，前端不能覆盖。
@@ -479,7 +524,7 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 			r.collectAndComplete(taskContext, id, output.String())
 			return
 		case now := <-ticker.C:
-			metrics, err := r.fetchAppMetrics(taskContext, task.Mode)
+			metrics, err := r.fetchAppMetrics(taskContext, task)
 			if err == nil {
 				r.updateProgress(id, now.UTC(), metrics)
 				if !targetRateLogged && metrics.ActualQPS >= float64(task.Tier.Rate)*0.9 {
@@ -519,7 +564,7 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 		return
 	}
 	parsed := parseWrkOutput(output)
-	metrics, metricsErr := r.fetchAppMetrics(taskContext, task.Mode)
+	metrics, metricsErr := r.fetchAppMetrics(taskContext, task)
 	if metricsErr != nil {
 		r.finish(id, StatusFailed, CodeRunnerFailure, "指标收集失败："+metricsErr.Error(), EventFailed)
 		return
@@ -548,7 +593,30 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 	metrics.SocketErrors = parsed.SocketErrors
 	// Socket Errors 是连接层事件计数，可能与请求不是一一对应，因此必须单列；
 	// ErrorRate 只使用收到 HTTP 响应后的 non-2xx/3xx 数量，避免复合计数超过 100%。
-	metrics.ErrorRate = float64(parsed.Non2xxResponses) * 100 / float64(parsed.Requests)
+	if task.Experiment == ExperimentSeckillRateLimit {
+		// 限流结论以应用探针闭合的 allowed+limited 为权威请求总数。
+		// wrk2 结束边界可能仍有极少量已到达应用但未进入自身汇总的响应，若混用两个总数会出现
+		// “放行数大于请求数”的假矛盾；延迟直方图仍使用 wrk2 的完整结果。
+		metrics.ActualRequests = metrics.AllowedRequests + metrics.RateLimited
+		if parsed.Duration > 0 {
+			metrics.ActualQPS = float64(metrics.ActualRequests) / parsed.Duration
+		}
+		metrics.TargetCompletionRate = targetCompletionRate(metrics.ActualQPS, task.Tier.Rate)
+		metrics.HTTP2xx = metrics.AllowedRequests
+		metrics.HTTP429 = metrics.RateLimited
+		if parsed.Duration > 0 {
+			metrics.AllowedQPS = float64(metrics.AllowedRequests) / parsed.Duration
+			metrics.LimitedQPS = float64(metrics.RateLimited) / parsed.Duration
+		}
+		unexpected := parsed.Non2xxResponses - metrics.RateLimited
+		if unexpected < 0 {
+			unexpected = 0
+		}
+		metrics.HTTPUnexpected = unexpected
+		metrics.ErrorRate = float64(unexpected) * 100 / float64(parsed.Requests)
+	} else {
+		metrics.ErrorRate = float64(parsed.Non2xxResponses) * 100 / float64(parsed.Requests)
+	}
 
 	r.mu.Lock()
 	if record := r.records[id]; record != nil && record.Task.Status == StatusCollecting {
@@ -576,8 +644,12 @@ func (r *Runner) finishContextEnd(id string, ctx context.Context, stage string) 
 	r.finish(id, StatusStopped, "", "压测已在"+stage+"停止", EventStopped)
 }
 
-func (r *Runner) resetChapter(ctx context.Context) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, r.appBaseURL+"/api/chapters/cache-aside/reset", nil)
+func (r *Runner) resetExperiment(ctx context.Context, task Task) error {
+	resetPath := "/api/chapters/cache-aside/reset"
+	if task.Experiment != ExperimentCacheAsideRead {
+		resetPath = "/api/lab/reset"
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, r.appBaseURL+resetPath, nil)
 	if err != nil {
 		return err
 	}
@@ -607,7 +679,7 @@ type archiveMetricPath struct {
 	PoolCapacity  int64 `json:"poolCapacity"`
 }
 
-func (r *Runner) fetchAppMetrics(ctx context.Context, mode string) (TaskMetrics, error) {
+func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, error) {
 	requestContext, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	request, err := http.NewRequestWithContext(requestContext, http.MethodGet, r.appBaseURL+"/api/metrics/snapshot", nil)
@@ -623,6 +695,29 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, mode string) (TaskMetrics,
 		return TaskMetrics{}, fmt.Errorf("metrics returned HTTP %d", response.StatusCode)
 	}
 	var snapshot struct {
+		RateLimitQPS        int64 `json:"rateLimitQps"`
+		ActivityStock       int64 `json:"activityStock"`
+		RedisStock          int64 `json:"redisStock"`
+		TotalRequests       int64 `json:"totalRequests"`
+		QueueSuccess        int64 `json:"queueSuccess"`
+		RateLimited         int64 `json:"rateLimited"`
+		StockFailed         int64 `json:"stockFailed"`
+		SystemErrors        int64 `json:"systemErrors"`
+		CreateOrderEnqueued int64 `json:"createOrderEnqueued"`
+		CreateOrderConsumed int64 `json:"createOrderConsumed"`
+		CreateOrderBacklog  int64 `json:"createOrderBacklog"`
+		Oversold            bool  `json:"oversold"`
+		QPS                 int64 `json:"qps"`
+		P95                 int64 `json:"p95"`
+		P99                 int64 `json:"p99"`
+		RateLimitProbe      struct {
+			TotalRequests int64 `json:"totalRequests"`
+			Allowed       int64 `json:"allowed"`
+			Limited       int64 `json:"limited"`
+			QPS           int64 `json:"qps"`
+			P95           int64 `json:"p95"`
+			P99           int64 `json:"p99"`
+		} `json:"rateLimitProbe"`
 		ArchiveRead struct {
 			Direct archiveMetricPath `json:"direct"`
 			Cached archiveMetricPath `json:"cached"`
@@ -631,12 +726,53 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, mode string) (TaskMetrics,
 	if err := json.NewDecoder(response.Body).Decode(&snapshot); err != nil {
 		return TaskMetrics{}, err
 	}
+	if task.Experiment == ExperimentSeckillRateLimit {
+		probe := snapshot.RateLimitProbe
+		limitedRate := float64(0)
+		if probe.TotalRequests > 0 {
+			limitedRate = float64(probe.Limited) * 100 / float64(probe.TotalRequests)
+		}
+		return TaskMetrics{
+			ActualRequests:  probe.TotalRequests,
+			ActualQPS:       float64(probe.QPS),
+			AllowedRequests: probe.Allowed,
+			RateLimitQPS:    snapshot.RateLimitQPS,
+			RateLimited:     probe.Limited,
+			RateLimitRate:   limitedRate,
+			P95MS:           float64(probe.P95),
+			P99MS:           float64(probe.P99),
+		}, nil
+	}
+	if task.Experiment == ExperimentSeckillStockBurst {
+		allowed := snapshot.TotalRequests - snapshot.RateLimited
+		if allowed < 0 {
+			allowed = 0
+		}
+		return TaskMetrics{
+			ActualRequests:      snapshot.TotalRequests,
+			ActualQPS:           float64(snapshot.QPS),
+			AllowedRequests:     allowed,
+			RateLimitQPS:        snapshot.RateLimitQPS,
+			RateLimited:         snapshot.RateLimited,
+			AdmissionSuccess:    snapshot.QueueSuccess,
+			StockFailed:         snapshot.StockFailed,
+			ActivityStock:       snapshot.ActivityStock,
+			RedisStock:          snapshot.RedisStock,
+			SystemErrors:        snapshot.SystemErrors,
+			CreateOrderEnqueued: snapshot.CreateOrderEnqueued,
+			CreateOrderConsumed: snapshot.CreateOrderConsumed,
+			CreateOrderBacklog:  snapshot.CreateOrderBacklog,
+			Oversold:            snapshot.Oversold,
+			P95MS:               float64(snapshot.P95),
+			P99MS:               float64(snapshot.P99),
+		}, nil
+	}
 	path := snapshot.ArchiveRead.Direct
-	if mode == "cached" {
+	if task.Mode == "cached" {
 		path = snapshot.ArchiveRead.Cached
 	}
 	mysqlFallbacks := path.TotalRequests
-	if mode == "cached" {
+	if task.Mode == "cached" {
 		mysqlFallbacks = path.CacheMisses
 	}
 	errorRate := float64(0)

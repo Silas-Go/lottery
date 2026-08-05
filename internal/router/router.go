@@ -82,6 +82,7 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.POST("/api/purchase-lab/:id/query", handlers.PurchaseLab.Query)
 	engine.GET("/api/purchase-lab/runs/:requestId", handlers.PurchaseLab.GetRun)
 	engine.GET("/api/seckill/materials", handlers.Gift.GetAllMaterials)
+	engine.GET("/api/seckill/rate-limit-probe", handlers.Gift.ProbeRateLimit)
 	engine.GET("/gifts", handlers.Gift.GetAllMaterials) // 兼容旧转盘页面与压测脚本。
 	engine.GET("/lucky", handlers.Gift.Lottery)
 	engine.GET("/lucky/cacheaside", handlers.Gift.LotteryCacheAside)

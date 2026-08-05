@@ -60,6 +60,18 @@ func (l *tokenBucketLimiter) Allow() bool {
 	return true
 }
 
+// Reset 恢复满桶，只供受控实验重置使用。
+// 必须与 Allow 共用同一把锁，否则重置和并发扣令牌竞争时会制造超过 burst 的额外放行。
+func (l *tokenBucketLimiter) Reset() {
+	if l == nil || l.rate <= 0 {
+		return
+	}
+	l.mu.Lock()
+	l.tokens = l.burst
+	l.lastRefill = time.Now()
+	l.mu.Unlock()
+}
+
 // refill 根据距离上次补充的真实时间恢复令牌。
 // 使用时间差而不是定时 goroutine，是为了减少后台协程和退出清理成本；
 // 边界情况是长时间无请求后令牌不能无限累积，最多只恢复到 burst。

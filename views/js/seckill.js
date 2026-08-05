@@ -8,6 +8,12 @@
     var toastTimer = null;
     var chainTimers = [];
     var statusTimer = null;
+    var selectedLimitRate = 300;
+    var activeTask = null;
+    var taskPollTimer = null;
+    var taskStream = null;
+    var taskRefreshBusy = false;
+    var TASK_STORAGE_KEY = "silas.seckill.active-task.v1";
 
     function byId(id) {
         return document.getElementById(id);
@@ -239,6 +245,7 @@
         setText("metric-limited", Number(snapshot.rateLimited || 0).toLocaleString("zh-CN"));
         setText("metric-failed", Number(snapshot.stockFailed || 0).toLocaleString("zh-CN"));
         setText("metric-mq", Number(snapshot.mqPending || 0).toLocaleString("zh-CN"));
+        setText("metric-create-backlog", Number(snapshot.createOrderBacklog || 0).toLocaleString("zh-CN"));
         setText("metric-paid", Number(snapshot.completedOrders || 0).toLocaleString("zh-CN"));
         setText("metric-qps", Number(snapshot.qps || 0).toLocaleString("zh-CN"));
         setText("metric-p95", Number(snapshot.p95 || 0) + " ms");
@@ -246,7 +253,280 @@
         oversold.textContent = snapshot.oversold ? "是" : "否";
         oversold.dataset.value = snapshot.oversold ? "danger" : "safe";
         setText("metrics-time", snapshot.at || "实时快照");
+        setText("limit-threshold", Number(snapshot.rateLimitQps || 0).toLocaleString("zh-CN"));
         renderEvents(snapshot.events);
+    }
+
+    function formatNumber(value, digits) {
+        var number = Number(value || 0);
+        if (digits !== undefined) {
+            return number.toFixed(digits);
+        }
+        return number.toLocaleString("zh-CN");
+    }
+
+    async function requestJSON(url, options) {
+        var response = await fetch(url, options || {});
+        if (!response.ok) {
+            throw new Error(await errorMessage(response));
+        }
+        return response.json();
+    }
+
+    function taskIsActive(task) {
+        return Boolean(task && ["starting", "resetting", "running", "collecting"].indexOf(task.status) >= 0);
+    }
+
+    function taskStatusLabel(status) {
+        return {
+            starting: "准备任务",
+            resetting: "重置基线",
+            running: "真实运行中",
+            collecting: "收集结果",
+            completed: "实验完成",
+            failed: "实验失败",
+            stopped: "已停止"
+        }[status] || "尚未运行";
+    }
+
+    function taskKind(task) {
+        return task && task.experiment === "seckill-stock-burst" ? "stock" : "limit";
+    }
+
+    function setTaskControls(task) {
+        var active = taskIsActive(task);
+        byId("start-stock-test").disabled = active;
+        byId("start-limit-test").disabled = active;
+        byId("stop-stock-test").disabled = !(active && taskKind(task) === "stock");
+        byId("stop-limit-test").disabled = !(active && taskKind(task) === "limit");
+        byId("reset-seckill").disabled = active;
+        Array.prototype.forEach.call(document.querySelectorAll("[data-limit-rate]"), function (button) {
+            button.disabled = active;
+        });
+    }
+
+    function renderTaskLogs(kind, logs) {
+        var list = byId(kind + "-task-logs");
+        list.innerHTML = "";
+        if (!logs || logs.length === 0) {
+            list.innerHTML = "<li>等待 Runner 日志</li>";
+            return;
+        }
+        logs.slice(-8).reverse().forEach(function (log) {
+            var item = document.createElement("li");
+            item.dataset.level = log.level || "info";
+            item.textContent = new Date(log.at).toLocaleTimeString("zh-CN", { hour12: false }) + " · " + log.message;
+            list.appendChild(item);
+        });
+    }
+
+    function renderStockTask(task) {
+        var metrics = task.metrics || {};
+        var badge = byId("stock-task-status");
+        badge.textContent = taskStatusLabel(task.status);
+        badge.dataset.status = task.status;
+        setText("stock-progress", taskIsActive(task) ?
+            "已完成 " + formatNumber(metrics.actualRequests) + " / " + formatNumber(task.plannedRequests || 600) + " 个请求" :
+            "本轮任务 " + task.taskId);
+        setText("stock-result-total", formatNumber(metrics.actualRequests));
+        setText("stock-result-limited", formatNumber(metrics.rateLimited));
+        setText("stock-result-admitted", formatNumber(metrics.admissionSuccess));
+        setText("stock-result-failed", formatNumber(metrics.stockFailed));
+        setText("stock-result-remaining", formatNumber(metrics.redisStock));
+        setText("stock-result-errors", formatNumber(Number(metrics.systemErrors || 0) + Number(metrics.httpUnexpected || 0)));
+        setText("stock-result-enqueued", formatNumber(metrics.createOrderEnqueued));
+        setText("stock-result-consumed", formatNumber(metrics.createOrderConsumed));
+        setText("stock-result-backlog", formatNumber(metrics.createOrderBacklog));
+        setText("stock-result-oversold", metrics.oversold ? "是" : "否");
+        renderTaskLogs("stock", task.logs);
+
+        var verdict = byId("stock-verdict");
+        verdict.removeAttribute("data-tone");
+        if (task.status === "completed") {
+            var allowed = Number(metrics.allowedRequests || 0);
+            var accountingClosed = Number(metrics.admissionSuccess || 0) + Number(metrics.stockFailed || 0) === allowed;
+            var enqueued = Number(metrics.createOrderEnqueued || 0);
+            var consumed = Number(metrics.createOrderConsumed || 0);
+            var backlog = Number(metrics.createOrderBacklog || 0);
+            var mqAccountingClosed = enqueued === Number(metrics.admissionSuccess || 0) &&
+                consumed <= enqueued && backlog === enqueued - consumed;
+            var passed = Number(metrics.actualRequests || 0) === Number(task.plannedRequests || 600) &&
+                Number(metrics.rateLimited || 0) === 0 &&
+                Number(metrics.admissionSuccess || 0) === Number(metrics.activityStock || 300) &&
+                Number(metrics.redisStock || 0) === 0 &&
+                Number(metrics.systemErrors || 0) === 0 &&
+                Number(metrics.httpUnexpected || 0) === 0 &&
+                !metrics.oversold && accountingClosed && mqAccountingClosed;
+            verdict.dataset.tone = passed ? "success" : "danger";
+            verdict.textContent = passed ?
+                (backlog === 0 ?
+                    "库存结论成立：600 个唯一请求全部越过限流器，Lua 恰好放行 300 个，剩余请求售罄，库存归零且没有超卖；普通落单消息也已排空。" :
+                    "库存结论成立：600 个唯一请求全部越过限流器，Lua 恰好放行 300 个，剩余请求售罄，库存归零且没有超卖。普通落单已消费 " + consumed + " 条、仍积压 " + backlog + " 条，这是异步削峰的独立证据，不参与库存正确性判定。") :
+                "本轮没有满足全部不变量。请查看限流、系统异常、库存记账和普通落单积压，不能把这轮结果宣称为“无超卖证明”。";
+        } else if (task.status === "failed" || task.status === "stopped") {
+            verdict.dataset.tone = "danger";
+            verdict.textContent = task.errorMessage || "任务没有完整结束，本轮不能形成库存正确性结论。";
+        } else {
+            verdict.textContent = "实验运行中：限流、库存和 MQ 指标均来自当前服务端任务。";
+        }
+    }
+
+    function renderLimitTask(task) {
+        var metrics = task.metrics || {};
+        var badge = byId("limit-task-status");
+        badge.textContent = taskStatusLabel(task.status);
+        badge.dataset.status = task.status;
+        setText("limit-progress", taskIsActive(task) ?
+            "已运行 " + formatNumber(task.elapsedSeconds) + " 秒，剩余约 " + formatNumber(task.remainingSeconds) + " 秒" :
+            "本轮任务 " + task.taskId);
+        setText("limit-result-target", formatNumber(task.tier && task.tier.rate));
+        setText("limit-result-actual", formatNumber(metrics.actualQps, 1));
+        setText("limit-result-allowed-qps", formatNumber(metrics.allowedQps, 1));
+        setText("limit-result-total", formatNumber(metrics.actualRequests));
+        setText("limit-result-allowed", formatNumber(metrics.allowedRequests));
+        setText("limit-result-limited", formatNumber(metrics.rateLimited));
+        setText("limit-result-rate", formatNumber(metrics.rateLimitRate, 1) + "%");
+        setText("limit-result-errors", formatNumber(metrics.httpUnexpected));
+        renderTaskLogs("limit", task.logs);
+
+        var verdict = byId("limit-verdict");
+        verdict.removeAttribute("data-tone");
+        if (task.status === "completed") {
+            var target = Number(task.tier && task.tier.rate || 0);
+            var threshold = Number(byId("limit-threshold").textContent.replace(/,/g, "")) || 800;
+            var unexpected = Number(metrics.httpUnexpected || 0);
+            var passed;
+            if (target > threshold) {
+                passed = Number(metrics.rateLimited || 0) > 0 && Number(metrics.allowedQps || 0) <= threshold * 1.15 && unexpected === 0;
+            } else {
+                passed = Number(metrics.rateLimitRate || 0) <= 3 && Number(metrics.allowedQps || 0) >= target * .85 && unexpected === 0;
+            }
+            verdict.dataset.tone = passed ? "success" : "danger";
+            verdict.textContent = passed ?
+                (target > threshold ?
+                    "结论成立：实际到达速率超过保护线后产生了真实 429；令牌放行速率被控制在保护线及一秒突发容量允许的范围内。" :
+                    "结论成立：目标流量没有超过保护线，绝大多数探针获得令牌，并且没有访问库存、MQ 或 MySQL。") :
+                "本轮没有形成清晰的限流结论：检查实际到达速率、429、令牌放行 QPS 和非预期错误后再解释。";
+        } else if (task.status === "failed" || task.status === "stopped") {
+            verdict.dataset.tone = "danger";
+            verdict.textContent = task.errorMessage || "任务没有完整结束，本轮不能形成限流结论。";
+        } else {
+            verdict.textContent = "限流探针运行中：这一轮不会读取或扣减星髓库存。";
+        }
+    }
+
+    function renderTask(task) {
+        activeTask = task;
+        if (taskKind(task) === "stock") {
+            renderStockTask(task);
+        } else {
+            renderLimitTask(task);
+        }
+        setTaskControls(task);
+        try {
+            window.sessionStorage.setItem(TASK_STORAGE_KEY, JSON.stringify({ id: task.taskId, experiment: task.experiment }));
+        } catch (_) {
+            // 任务真相保存在 Runner；sessionStorage 失败只影响刷新后的自动恢复。
+        }
+        if (!taskIsActive(task)) {
+            window.clearInterval(taskPollTimer);
+            taskPollTimer = null;
+            if (taskStream) {
+                taskStream.close();
+                taskStream = null;
+            }
+        }
+    }
+
+    async function refreshTask(taskID) {
+        if (taskRefreshBusy) {
+            return;
+        }
+        taskRefreshBusy = true;
+        try {
+            renderTask(await requestJSON("/api/loadtests/" + encodeURIComponent(taskID)));
+        } finally {
+            taskRefreshBusy = false;
+        }
+    }
+
+    function observeTask(taskID) {
+        window.clearInterval(taskPollTimer);
+        if (taskStream) {
+            taskStream.close();
+        }
+        taskPollTimer = window.setInterval(function () {
+            refreshTask(taskID).catch(function (error) { showToast(error.message); });
+        }, 500);
+        if (window.EventSource) {
+            taskStream = new EventSource("/api/loadtests/" + encodeURIComponent(taskID) + "/events");
+            ["task_started", "reset_completed", "loadtest_started", "progress", "metric", "log", "completed", "failed", "stopped"].forEach(function (name) {
+                taskStream.addEventListener(name, function () {
+                    refreshTask(taskID).catch(function (error) { showToast(error.message); });
+                });
+            });
+        }
+    }
+
+    async function startTask(experiment) {
+        if (taskIsActive(activeTask)) {
+            showToast("已有实验正在运行");
+            return;
+        }
+        var question = experiment === "seckill-stock-burst" ?
+            "将重置秒杀订单与库存，然后让 600 个唯一用户同时争抢 300 份星髓。开始吗？" :
+            "将重置令牌桶与实验指标，然后运行 10 秒限流探针。探针不会扣库存。开始吗？";
+        if (!window.confirm(question)) {
+            return;
+        }
+        var body = { experiment: experiment };
+        if (experiment === "seckill-rate-limit") {
+            body.rate = selectedLimitRate;
+        }
+        setTaskControls({ status: "starting", experiment: experiment });
+        try {
+            var created = await requestJSON("/api/loadtests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body)
+            });
+            clearOrderCookies();
+            byId("request-receipt").hidden = true;
+            await refreshTask(created.taskId);
+            observeTask(created.taskId);
+            showToast("服务器端实验任务已创建");
+        } catch (error) {
+            activeTask = null;
+            setTaskControls(null);
+            showToast(error.message);
+        }
+    }
+
+    async function stopTask(kind) {
+        if (!taskIsActive(activeTask) || taskKind(activeTask) !== kind) {
+            return;
+        }
+        try {
+            renderTask(await requestJSON("/api/loadtests/" + encodeURIComponent(activeTask.taskId) + "/stop", { method: "POST" }));
+            showToast("任务已停止并回收");
+        } catch (error) {
+            showToast(error.message);
+        }
+    }
+
+    async function restoreTask() {
+        try {
+            var saved = JSON.parse(window.sessionStorage.getItem(TASK_STORAGE_KEY) || "null");
+            if (!saved || !saved.id || ["seckill-stock-burst", "seckill-rate-limit"].indexOf(saved.experiment) < 0) {
+                return;
+            }
+            await refreshTask(saved.id);
+            if (taskIsActive(activeTask)) {
+                observeTask(saved.id);
+            }
+        } catch (_) {
+            // Runner 不存在旧任务时保留空白实验台，不伪造恢复结果。
+        }
     }
 
     async function loadMetricsSnapshot() {
@@ -310,6 +590,18 @@
     document.addEventListener("DOMContentLoaded", async function () {
         byId("draw-material").addEventListener("click", drawMaterial);
         byId("reset-seckill").addEventListener("click", resetLab);
+        byId("start-stock-test").addEventListener("click", function () { startTask("seckill-stock-burst"); });
+        byId("stop-stock-test").addEventListener("click", function () { stopTask("stock"); });
+        byId("start-limit-test").addEventListener("click", function () { startTask("seckill-rate-limit"); });
+        byId("stop-limit-test").addEventListener("click", function () { stopTask("limit"); });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-limit-rate]"), function (button) {
+            button.addEventListener("click", function () {
+                selectedLimitRate = Number(button.dataset.limitRate);
+                Array.prototype.forEach.call(document.querySelectorAll("[data-limit-rate]"), function (candidate) {
+                    candidate.classList.toggle("is-selected", candidate === button);
+                });
+            });
+        });
         try {
             await Promise.all([loadMaterials(), loadMetricsSnapshot()]);
         } catch (error) {
@@ -317,5 +609,7 @@
             showToast(error.message);
         }
         connectMetrics();
+        setTaskControls(null);
+        restoreTask();
     });
 }());

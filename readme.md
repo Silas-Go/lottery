@@ -12,6 +12,11 @@
 `/lucky`、订单状态与服务端 SSE 指标；点击右侧进入 `/material-shop`，继续查询和购买实验。
 秒杀页的材料目录不返回实时库存，避免展示数据被误当成 Redis 准入的权威结果。
 
+左侧把三个问题明确隔离：单次请求只解释 `HTTP -> 限流 -> Redis Lua -> RocketMQ -> MySQL`；
+库存主实验由 Runner 精确生成 600 个唯一用户同时争抢 300 份星髓，批次小于默认 800 的满桶容量，
+因此正常结果应是 0 个限流、300 个准入、300 个售罄且不超卖；限流辅助实验则使用与 `/lucky`
+共享的令牌桶探针持续运行 10 秒，探针通过后立即返回，不访问库存、MQ 或 MySQL。
+
 室外街道、店铺轮廓和远景统一由 `views/img/market-street-bg.svg` 提供；热区、槽口、
 剪影和粒子坐标集中在 `views/js/market-scene-config.js`。替换背景时只需重新标定这一份配置，
 不要重新使用 CSS 几何块拼接街道。
@@ -164,6 +169,7 @@ Browser / wrk2 -> Go API -> Redis
 | `/api/loadtests/:id` | GET | 查询任务状态、时间、日志和最终指标 |
 | `/api/loadtests/:id/events` | GET | 任务 SSE：进度、指标、日志和终态 |
 | `/api/loadtests/:id/stop` | POST | 停止任务并回收 wrk2 子进程 |
+| `/api/seckill/rate-limit-probe` | GET | 共享 `/lucky` 令牌桶的隔离探针；204 放行，429 限流，不进入业务链路 |
 | `/api/purchase-lab/:id/state` | GET | 读取购买实验共享的 MySQL / Redis 库存 |
 | `/api/purchase-lab/:id/reset` | POST | 重置 `materials.stock` 并重新预热材料 DTO |
 | `/api/purchase-lab/:id/run` | POST | 执行同步失效或 Outbox + MQ 购买实验，最多 150 个唯一请求 |

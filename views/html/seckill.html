@@ -5,10 +5,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#ebe2c5" />
-    <meta name="description" content="星髓真实抢购实验：观察限流、Redis Lua 准入、RocketMQ 异步落单和订单状态机。" />
+    <meta name="description" content="星髓真实秒杀实验：分别验证入口限流、Redis Lua 原子准入和 RocketMQ 异步落单。" />
     <title>限量材料申领所 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/seckill.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/seckill.css?v=20260805-isolated-experiments-v1" />
 </head>
 
 <body class="seckill-page" data-request-state="idle">
@@ -31,8 +31,8 @@
         <section class="lab-intro" aria-labelledby="seckill-title">
             <div>
                 <p class="chapter-mark">EXPERIMENT Ⅰ · HIGH CONCURRENCY ADMISSION</p>
-                <h1 id="seckill-title">限量材料申领实验</h1>
-                <p>本场只申领星髓。请求由 Redis Lua 原子裁决，取得库存资格后交给 RocketMQ 异步建立待支付订单。</p>
+                <h1 id="seckill-title">星髓秒杀实验室</h1>
+                <p>不再用一轮混合流量同时证明所有结论：单次请求解释链路，定量并发验证库存原子性，稳态探针单独验证入口限流。</p>
             </div>
             <div class="truth-seal" aria-label="本页不使用前端模拟数据">
                 <span>REAL</span>
@@ -41,101 +41,140 @@
             </div>
         </section>
 
+        <nav class="experiment-map lab-card" aria-label="秒杀实验导航">
+            <a href="#single-experiment"><b>01</b><span><strong>单次链路</strong><small>一个请求怎样走</small></span></a>
+            <a href="#stock-experiment" class="is-primary"><b>02</b><span><strong>库存争抢</strong><small>主实验 · 是否超卖</small></span></a>
+            <a href="#limit-experiment"><b>03</b><span><strong>入口限流</strong><small>辅助实验 · 过载保护</small></span></a>
+        </nav>
+
         <section class="material-ledger lab-card" aria-labelledby="material-ledger-title">
             <header class="section-heading">
-                <div>
-                    <small>LIMITED MATERIAL CATALOG</small>
-                    <h2 id="material-ledger-title">本场唯一限量材料</h2>
-                </div>
+                <div><small>ONE PRODUCT · THREE QUESTIONS</small><h2 id="material-ledger-title">唯一实验货物</h2></div>
                 <span id="material-count">读取目录中</span>
             </header>
             <div id="material-grid" class="material-grid" aria-live="polite"></div>
-            <p class="catalog-note">目录接口不泄露实时库存；最终是否取得材料，以 Redis Lua 准入结果为准。</p>
+            <p class="catalog-note">材料始终只有星髓。读模型库存、购买实验库存与秒杀活动库存彼此有明确权威边界。</p>
         </section>
 
-        <div class="lab-columns">
-            <section class="request-desk lab-card" aria-labelledby="request-desk-title">
-                <header class="section-heading">
-                    <div>
-                        <small>REQUEST DESK</small>
-                        <h2 id="request-desk-title">递交一次真实申领</h2>
-                    </div>
-                    <span id="request-badge" class="state-badge">等待递交</span>
-                </header>
-
-                <div id="request-ritual" class="request-ritual" aria-hidden="true">
-                    <span class="ritual-ring ritual-ring--outer"></span>
-                    <span class="ritual-ring ritual-ring--inner"></span>
-                    <i></i><i></i><i></i><i></i>
-                    <strong id="ritual-mark">S</strong>
-                </div>
-
-                <p id="request-message" class="request-message" role="status">一次点击只发送一个 <code>GET /lucky</code> 请求，不在浏览器制造假并发。</p>
-                <button id="draw-material" class="primary-action" type="button">递交真实申领</button>
-
-                <article id="request-receipt" class="request-receipt" hidden aria-live="polite">
-                    <img id="receipt-image" src="" alt="" />
-                    <div>
-                        <small>库存资格</small>
-                        <h3 id="receipt-name">等待材料</h3>
-                        <p id="receipt-status">正在确认订单状态</p>
-                    </div>
-                    <a id="open-order" href="/result">查看并处理订单</a>
-                </article>
-
-                <div class="desk-actions">
-                    <a href="/">返回暖潮街</a>
-                    <button id="reset-seckill" type="button">重置实验数据</button>
-                </div>
-            </section>
-
-            <section class="runtime-board lab-card" aria-labelledby="runtime-title">
-                <header class="section-heading">
-                    <div>
-                        <small>SERVER-SIDE OBSERVATORY</small>
-                        <h2 id="runtime-title">真实运行观测</h2>
-                    </div>
-                    <time id="metrics-time">等待快照</time>
-                </header>
-
-                <div class="metric-grid" aria-live="polite">
-                    <article><span>Redis 可用库存</span><strong id="metric-stock">—</strong></article>
-                    <article><span>请求总数</span><strong id="metric-requests">—</strong></article>
-                    <article><span>准入并入队</span><strong id="metric-queued">—</strong></article>
-                    <article><span>限流拦截</span><strong id="metric-limited">—</strong></article>
-                    <article><span>库存 / 重复失败</span><strong id="metric-failed">—</strong></article>
-                    <article><span>MQ 待检查</span><strong id="metric-mq">—</strong></article>
-                    <article><span>已支付订单</span><strong id="metric-paid">—</strong></article>
-                    <article><span>实时 QPS</span><strong id="metric-qps">—</strong></article>
-                    <article><span>P95</span><strong id="metric-p95">—</strong></article>
-                    <article><span>超卖</span><strong id="metric-oversold">—</strong></article>
-                </div>
-            </section>
-        </div>
-
-        <section class="chain-board lab-card" aria-labelledby="chain-title">
+        <section id="single-experiment" class="experiment-section lab-card" aria-labelledby="single-title">
             <header class="section-heading">
-                <div>
-                    <small>AUTHORITATIVE REQUEST PATH</small>
-                    <h2 id="chain-title">这次申领究竟经过哪里</h2>
-                </div>
-                <span>成功响应表示取得资格，不等于已经支付</span>
+                <div><small>01 · REQUEST TRACE</small><h2 id="single-title">单次链路：一个请求怎样走</h2></div>
+                <span id="request-badge" class="state-badge">等待递交</span>
             </header>
-            <ol class="request-chain">
-                <li data-chain-step="http"><b>01</b><div><strong>Gin HTTP</strong><span>接收 /lucky，生成本次 uid</span></div></li>
-                <li data-chain-step="limit"><b>02</b><div><strong>入口限流</strong><span>本机令牌桶先挡住过载请求</span></div></li>
-                <li data-chain-step="redis"><b>03</b><div><strong>Redis Lua</strong><span>查重、验库存、扣减、写入资格一次完成</span></div></li>
-                <li data-chain-step="mq"><b>04</b><div><strong>RocketMQ</strong><span>普通消息异步落单，延迟消息检查超时</span></div></li>
-                <li data-chain-step="mysql"><b>05</b><div><strong>MySQL</strong><span>最终账本进入 pending_payment</span></div></li>
-            </ol>
+            <div class="single-layout">
+                <div class="request-desk">
+                    <div id="request-ritual" class="request-ritual" aria-hidden="true">
+                        <span class="ritual-ring ritual-ring--outer"></span><span class="ritual-ring ritual-ring--inner"></span>
+                        <i></i><i></i><i></i><i></i><strong id="ritual-mark">S</strong>
+                    </div>
+                    <p id="request-message" class="request-message" role="status">一次点击只发送一个真实 <code>GET /lucky</code>。</p>
+                    <button id="draw-material" class="primary-action" type="button">递交一次真实申领</button>
+                    <article id="request-receipt" class="request-receipt" hidden aria-live="polite">
+                        <img id="receipt-image" src="" alt="" />
+                        <div><small>库存资格</small><h3 id="receipt-name">等待材料</h3><p id="receipt-status">正在确认订单状态</p></div>
+                        <a id="open-order" href="/result">查看并处理订单</a>
+                    </article>
+                </div>
+                <ol class="request-chain compact-chain">
+                    <li data-chain-step="http"><b>01</b><div><strong>Gin HTTP</strong><span>接收 /lucky 与 uid</span></div></li>
+                    <li data-chain-step="limit"><b>02</b><div><strong>入口限流</strong><span>共享令牌桶先裁决</span></div></li>
+                    <li data-chain-step="redis"><b>03</b><div><strong>Redis Lua</strong><span>查重、扣库存、写资格</span></div></li>
+                    <li data-chain-step="mq"><b>04</b><div><strong>RocketMQ</strong><span>普通消息异步落单</span></div></li>
+                    <li data-chain-step="mysql"><b>05</b><div><strong>MySQL</strong><span>进入 pending_payment</span></div></li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="stock-experiment" class="experiment-section experiment-section--primary lab-card" aria-labelledby="stock-title">
+            <header class="section-heading">
+                <div><small>02 · ATOMIC STOCK ADMISSION · MAIN</small><h2 id="stock-title">库存争抢：600 人抢 300 份星髓</h2></div>
+                <span id="stock-task-status" class="state-badge">尚未运行</span>
+            </header>
+            <p class="experiment-question">只回答一个问题：600 个不同用户同时到达时，Redis Lua 能否恰好放行 300 个，并保证库存不为负、不超卖？</p>
+            <div class="contract-grid">
+                <article><small>请求总量</small><strong>600</strong><span>精确批次，不按持续 QPS 猜测</span></article>
+                <article><small>唯一用户</small><strong>600</strong><span>排除重复参与干扰</span></article>
+                <article><small>活动库存</small><strong>300</strong><span>实验重置后的权威基线</span></article>
+                <article><small>限流条件</small><strong>&lt; 800</strong><span>满桶容量内，限流不应介入</span></article>
+            </div>
+            <div class="experiment-actions">
+                <button id="start-stock-test" class="primary-action" type="button">开始定量争抢</button>
+                <button id="stop-stock-test" class="secondary-action" type="button" disabled>停止本轮</button>
+                <span id="stock-progress">等待创建服务器端任务</span>
+            </div>
+            <div class="result-grid" aria-live="polite">
+                <article><span>已完成请求</span><strong id="stock-result-total">—</strong></article>
+                <article><span>限流拦截</span><strong id="stock-result-limited">—</strong></article>
+                <article><span>Lua 准入成功</span><strong id="stock-result-admitted">—</strong></article>
+                <article><span>售罄 / 重复</span><strong id="stock-result-failed">—</strong></article>
+                <article><span>Redis 剩余</span><strong id="stock-result-remaining">—</strong></article>
+                <article><span>系统异常</span><strong id="stock-result-errors">—</strong></article>
+                <article><span>普通落单入队</span><strong id="stock-result-enqueued">—</strong></article>
+                <article><span>普通落单消费</span><strong id="stock-result-consumed">—</strong></article>
+                <article><span>普通落单积压</span><strong id="stock-result-backlog">—</strong></article>
+                <article><span>超卖</span><strong id="stock-result-oversold">—</strong></article>
+            </div>
+            <p id="stock-verdict" class="experiment-verdict">完成一轮后，这里会按不变量给出结论，不用动画代替证据。</p>
+            <ol id="stock-task-logs" class="task-logs"><li>尚无任务日志</li></ol>
+        </section>
+
+        <section id="limit-experiment" class="experiment-section lab-card" aria-labelledby="limit-title">
+            <header class="section-heading">
+                <div><small>03 · TOKEN BUCKET · ISOLATED</small><h2 id="limit-title">入口限流：只测保护线，不抢库存</h2></div>
+                <span id="limit-task-status" class="state-badge">尚未运行</span>
+            </header>
+            <p class="experiment-question">探针与 <code>/lucky</code> 共用同一个令牌桶；获得令牌后立即返回 204，不访问 Redis、MQ 或 MySQL。</p>
+            <div class="limit-config">
+                <div><small>真实保护线</small><strong><span id="limit-threshold">—</span> QPS</strong></div>
+                <fieldset>
+                    <legend>选择持续 10 秒的目标流量</legend>
+                    <button type="button" data-limit-rate="300" class="is-selected">300 QPS<small>低于保护线</small></button>
+                    <button type="button" data-limit-rate="800">800 QPS<small>触及保护线</small></button>
+                    <button type="button" data-limit-rate="1500">1500 QPS<small>超过保护线</small></button>
+                </fieldset>
+            </div>
+            <div class="experiment-actions">
+                <button id="start-limit-test" class="primary-action" type="button">开始限流实验</button>
+                <button id="stop-limit-test" class="secondary-action" type="button" disabled>停止本轮</button>
+                <span id="limit-progress">不会扣减一份星髓</span>
+            </div>
+            <div class="result-grid result-grid--limit" aria-live="polite">
+                <article><span>目标 QPS</span><strong id="limit-result-target">—</strong></article>
+                <article><span>实际请求 QPS</span><strong id="limit-result-actual">—</strong></article>
+                <article><span>令牌放行 QPS</span><strong id="limit-result-allowed-qps">—</strong></article>
+                <article><span>探针请求</span><strong id="limit-result-total">—</strong></article>
+                <article><span>获得令牌</span><strong id="limit-result-allowed">—</strong></article>
+                <article><span>429 限流</span><strong id="limit-result-limited">—</strong></article>
+                <article><span>限流比例</span><strong id="limit-result-rate">—</strong></article>
+                <article><span>非预期错误</span><strong id="limit-result-errors">—</strong></article>
+            </div>
+            <p id="limit-verdict" class="experiment-verdict">300、800、1500 QPS 各自形成独立结果，不与售罄指标混算。</p>
+            <ol id="limit-task-logs" class="task-logs"><li>尚无任务日志</li></ol>
+        </section>
+
+        <section class="runtime-board lab-card" aria-labelledby="runtime-title">
+            <header class="section-heading">
+                <div><small>SERVER-SIDE OBSERVATORY</small><h2 id="runtime-title">秒杀业务实时状态</h2></div>
+                <time id="metrics-time">等待快照</time>
+            </header>
+            <div class="metric-grid" aria-live="polite">
+                <article><span>Redis 可用库存</span><strong id="metric-stock">—</strong></article>
+                <article><span>/lucky 请求</span><strong id="metric-requests">—</strong></article>
+                <article><span>准入并入队</span><strong id="metric-queued">—</strong></article>
+                <article><span>业务限流</span><strong id="metric-limited">—</strong></article>
+                <article><span>库存 / 重复失败</span><strong id="metric-failed">—</strong></article>
+                <article><span>普通落单积压</span><strong id="metric-create-backlog">—</strong></article>
+                <article><span>延迟取消待检查</span><strong id="metric-mq">—</strong></article>
+                <article><span>实时 QPS</span><strong id="metric-qps">—</strong></article>
+                <article><span>P95</span><strong id="metric-p95">—</strong></article>
+                <article><span>超卖</span><strong id="metric-oversold">—</strong></article>
+            </div>
+            <div class="desk-actions"><a href="/">返回暖潮街</a><button id="reset-seckill" type="button">重置完整实验</button></div>
         </section>
 
         <section class="event-board lab-card" aria-labelledby="event-title">
             <header class="section-heading">
-                <div>
-                    <small>RECENT BUSINESS EVENTS</small>
-                    <h2 id="event-title">服务端最近事件</h2>
-                </div>
+                <div><small>RECENT BUSINESS EVENTS</small><h2 id="event-title">服务端最近事件</h2></div>
                 <span>来自 SSE 指标快照</span>
             </header>
             <ol id="server-events" class="server-events"><li class="is-empty">等待服务端事件</li></ol>
@@ -143,7 +182,7 @@
     </main>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="assertive"></div>
-    <script src="/js/seckill.js?v=20260804-star-only"></script>
+    <script src="/js/seckill.js?v=20260805-isolated-experiments-v1"></script>
 </body>
 
 </html>

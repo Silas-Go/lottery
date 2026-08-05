@@ -78,6 +78,7 @@ func (s *OrderService) CreateRedisPendingOrder(command database.Order) error {
 		return err
 	}
 	if advanced {
+		metrics.RecordCreateOrderConsumed()
 		slog.Info("async order entered pending_payment", "order_id", order.Id, "uid", command.UserId, "gid", command.GiftId)
 		return nil
 	}
