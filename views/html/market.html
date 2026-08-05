@@ -5,27 +5,29 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f2c77d" />
-    <meta name="description" content="星髓现世：在材料情报店查验实物，并进入真实 Cache-Aside 查询与限量购买实验。" />
-    <title>Silas 炼金市 · 材料情报店</title>
+    <meta name="description" content="围绕星髓配置旁路缓存查询或库存一致性购买实验计划。" />
+    <title>星髓实验计划工作台 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
+    <script src="/js/market-planner-bootstrap.js?v=20260805-planner-workbench-v1"></script>
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/material-shop.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260805-planner-workbench-v1" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
     <header class="market-topbar">
-        <a class="market-brand" href="/" aria-label="返回暖潮街">
+        <a class="market-brand" href="/" aria-label="星髓实验总览">
             <span class="market-brand-mark">S</span>
-            <span><strong>SILAS</strong><small>ALCHEMY MARKET</small></span>
+            <span><strong>SILAS</strong><small>STAR MARROW LABS</small></span>
         </a>
         <div class="market-location">
-            <i></i><span>材料情报店 · 暖潮街 17 号</span><a href="/">返回街道</a>
+            <i></i><span>星髓实验计划工作台</span><a href="/">返回实验总览</a>
         </div>
     </header>
 
     <main class="market-event" aria-labelledby="event-title">
-        <h1 id="event-title" class="sr-only">星髓材料实验前厅</h1>
+        <h1 id="event-title" class="sr-only">星髓实验计划工作台</h1>
 
         <section class="market-scene" aria-label="阳光下的炼金市场材料店铺">
             <div class="market-sky" aria-hidden="true">
@@ -89,8 +91,22 @@
         </section>
 
         <section class="event-card" aria-live="polite">
+            <header class="planner-context">
+                <img src="/img/star-marrow-relic.png" alt="深蓝晶体中流动着金色星光的星髓" />
+                <div class="planner-context__copy planner-context__copy--query">
+                    <small>01 · CACHE-ASIDE READ</small>
+                    <h1>旁路缓存查询</h1>
+                    <p><strong>当前问题：</strong>缓存如何提升星髓档案的读取性能？</p>
+                </div>
+                <div class="planner-context__copy planner-context__copy--purchase">
+                    <small>02 · WRITE CONSISTENCY</small>
+                    <h1>库存一致性购买</h1>
+                    <p><strong>当前问题：</strong>数据库库存与 Redis 查询副本如何最终收敛？</p>
+                </div>
+            </header>
+
             <div class="event-heading">
-                <span id="event-kicker">RARE MATERIAL EVENT · STAR MARROW</span>
+                <span id="event-kicker">STAR MARROW · EXPERIMENT PLANNER</span>
                 <small id="event-step">可行动</small>
             </div>
 
@@ -129,14 +145,15 @@
                             <div>
                                 <small>QUERY LOAD TEST · 星髓</small>
                                 <strong>配置查询压测计划</strong>
+                                <p>先确定读取路径和流量模型，再进入实验室观察真实服务端指标。</p>
                             </div>
-                            <button id="leave-crowd-mode" type="button">返回实验前厅</button>
+                            <button id="leave-crowd-mode" type="button">返回实验总览</button>
                         </header>
 
                         <ol id="market-task-lifecycle" class="task-lifecycle" aria-label="压测任务流程">
-                            <li data-market-stage="plan" class="is-current"><i>01</i><span>店外配置</span></li>
-                            <li data-market-stage="lab"><i>02</i><span>店内执行</span></li>
-                            <li data-market-stage="result"><i>03</i><span>结果结算</span></li>
+                            <li data-market-stage="plan" class="is-current"><i>01</i><span>计划配置</span></li>
+                            <li data-market-stage="lab"><i>02</i><span>实验执行</span></li>
+                            <li data-market-stage="result"><i>03</i><span>结果报告</span></li>
                         </ol>
 
                         <div class="task-contract-strip task-plan-summary" role="status" aria-live="polite" aria-label="本轮查询压测计划">
@@ -144,6 +161,7 @@
                             <div class="is-intent"><small>目标速率</small><output id="crowd-size-value">1,500 req/s</output></div>
                             <div class="is-config"><small>Runner 计划</small><strong id="crowd-connection-plan">计算中</strong></div>
                             <div class="is-fact"><small>任务状态</small><strong id="crowd-connection-current">尚未创建</strong></div>
+                            <div class="is-duration"><small>持续时间</small><strong>30 秒</strong></div>
                         </div>
 
                         <div class="crowd-workbench">
@@ -206,22 +224,41 @@
                                     </details>
                                 </section>
 
-                                <div class="crowd-confirmation-bar">
-                                    <div class="crowd-status" role="status" aria-live="polite">
-                                        <i></i>
-                                        <span><strong id="crowd-status-title">计划等待确认</strong><small id="crowd-status-copy">进入实验室且观测就绪后，Runner 才会启动。</small></span>
-                                        <time id="crowd-clock" hidden>00:00 / 00:30</time>
-                                    </div>
-                                    <div class="crowd-run-actions">
-                                        <button id="start-crowd-test" class="event-primary" type="button">确认计划并进入实验室</button>
-                                        <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入实验室查看</button>
-                                    </div>
+                            </div>
+
+                            <aside class="query-plan-preview" aria-labelledby="query-plan-preview-heading">
+                                <small>RUN PLAN PREVIEW</small>
+                                <strong id="query-plan-preview-heading">本轮计划摘要</strong>
+                                <div class="query-plan-material">
+                                    <img src="/img/star-marrow-relic.png" alt="" />
+                                    <span><small>实验材料</small><b>星髓</b></span>
+                                </div>
+                                <code id="query-preview-route">GET /api/archives/4/direct</code>
+                                <p id="query-preview-copy">请求直接进入 MySQL，每次现场组装同一份 MaterialDetailDTO。</p>
+                                <dl>
+                                    <div><dt>读取路径</dt><dd id="query-preview-path">MySQL Direct</dd></div>
+                                    <div><dt>目标速率</dt><dd id="query-preview-rate">1,500 req/s</dd></div>
+                                    <div><dt>连接计划</dt><dd id="query-preview-connections">计算中</dd></div>
+                                    <div><dt>持续时间</dt><dd>30 秒</dd></div>
+                                </dl>
+                                <p class="query-plan-boundary">这里只保存计划；进入实验室且观测就绪后，Runner 才会创建真实任务。</p>
+                            </aside>
+
+                            <div class="crowd-confirmation-bar">
+                                <div class="crowd-status" role="status" aria-live="polite">
+                                    <i></i>
+                                    <span><strong id="crowd-status-title">计划等待确认</strong><small id="crowd-status-copy">进入实验室且观测就绪后，Runner 才会启动。</small></span>
+                                    <time id="crowd-clock" hidden>00:00 / 00:30</time>
+                                </div>
+                                <div class="crowd-run-actions">
+                                    <button id="start-crowd-test" class="event-primary" type="button">确认计划并进入实验室</button>
+                                    <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入实验室查看</button>
                                 </div>
                             </div>
 
                             <aside id="market-mechanism" class="market-mechanism" data-flow-state="planned" data-task-phase="planned" data-capacity-state="unknown" aria-labelledby="market-mechanism-heading">
                                 <header>
-                                    <div><small>TRAFFIC REHEARSAL</small><strong id="market-mechanism-heading">店外流量预演装置</strong></div>
+                                    <div><small>TRAFFIC REHEARSAL</small><strong id="market-mechanism-heading">流量路径预演</strong></div>
                                     <span id="market-flow-status">计划预演</span>
                                 </header>
 
@@ -273,7 +310,7 @@ Connection: keep-alive</code></pre>
                                                 <span>GO</span><b id="market-backend-icon">SQL</b>
                                             </div>
                                             <small>SYSTEM GATE</small>
-                                            <strong id="market-backend-name">门后 · Go API → MySQL</strong>
+                                            <strong id="market-backend-name">Go API → MySQL</strong>
                                         </section>
                                     </div>
 
@@ -281,7 +318,7 @@ Connection: keep-alive</code></pre>
                                         <span class="market-preview-response-token" aria-hidden="true">RES</span>
                                         <section class="market-archive-station is-response" aria-label="HTTP 响应归档台">
                                             <div class="market-response-scroll-art" aria-hidden="true"><i></i><b>RES</b></div>
-                                            <span><small>RESPONSE ARCHIVE</small><strong id="market-response-rate">等待店内运行</strong></span>
+                                            <span><small>RESPONSE ARCHIVE</small><strong id="market-response-rate">等待实验运行</strong></span>
                                         </section>
                                         <div class="market-return-route" aria-label="紫色 HTTP 响应从店门返回归档台">
                                             <i aria-hidden="true"></i><span>紫色 HTTP response 返回 · 通路释放并复用</span>
@@ -291,7 +328,7 @@ Connection: keep-alive</code></pre>
 
                                 <dl class="market-observation-strip">
                                     <div><dt>目标</dt><dd id="market-flow-target">1,500 req/s</dd></div>
-                                    <div><dt id="market-flow-actual-label">运行事实</dt><dd id="market-flow-actual">店内观测</dd></div>
+                                    <div><dt id="market-flow-actual-label">运行事实</dt><dd id="market-flow-actual">实验室观测</dd></div>
                                     <div><dt>Socket Errors</dt><dd id="market-flow-errors">—</dd></div>
                                 </dl>
                             </aside>
@@ -317,14 +354,15 @@ Connection: keep-alive</code></pre>
                             <div>
                                 <small>PURCHASE EXPERIMENT · 星髓</small>
                                 <strong>配置购买实验计划</strong>
+                                <p>选择缓存失效策略，再进入实验室观察响应路径与最终一致性窗口。</p>
                             </div>
-                            <button id="leave-purchase-mode" type="button">返回实验前厅</button>
+                            <button id="leave-purchase-mode" type="button">返回实验总览</button>
                         </header>
 
                         <ol class="task-lifecycle" aria-label="购买实验流程">
-                            <li class="is-current"><i>01</i><span>店外配置</span></li>
-                            <li><i>02</i><span>店内执行</span></li>
-                            <li><i>03</i><span>报告归档</span></li>
+                            <li class="is-current"><i>01</i><span>计划配置</span></li>
+                            <li><i>02</i><span>实验执行</span></li>
+                            <li><i>03</i><span>结果报告</span></li>
                         </ol>
 
                         <div class="task-contract-strip purchase-plan-summary" role="status" aria-live="polite" aria-label="本轮购买实验计划">

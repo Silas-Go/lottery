@@ -41,7 +41,7 @@
     var connectionPlanRequest = 0;
     var marketPreviewTimer = null;
     var marketPreviewSignature = "";
-    // 购买实验没有 wrk2 或目标 QPS；店外只配置后端真实支持的缓存失效路径。
+    // 购买实验没有 wrk2 或目标 QPS；计划工作台只配置后端真实支持的缓存失效路径。
     var purchasePlanStrategies = Object.freeze({
         "sync-invalidate": Object.freeze({
             label: "同步删除缓存",
@@ -67,7 +67,7 @@
         } catch (_) {
             arrivingFromStreet = false;
         }
-        if (!arrivingFromStreet || reducedMotion) {
+        if (document.documentElement.dataset.planner || !arrivingFromStreet || reducedMotion) {
             return;
         }
         document.body.classList.add("is-arriving-from-street");
@@ -84,6 +84,11 @@
     function setState(next) {
         state = next;
         document.body.dataset.eventState = next;
+        if (next === "crowd_preparing" || next === "crowd_armed" || next === "crowd_submitting") {
+            document.documentElement.dataset.planner = "query";
+        } else if (next === "purchase_preparing" || next === "entering_purchase_lab") {
+            document.documentElement.dataset.planner = "purchase";
+        }
         var labels = {
             arrival: "抵达",
             dialogue: "交谈",
@@ -93,7 +98,7 @@
             purchase_preparing: "配置购买实验",
             crowd_armed: "计划已确认",
             crowd_submitting: "卷轴投递",
-            entering_purchase_lab: "前往采购台"
+            entering_purchase_lab: "进入购买实验室"
         };
         byId("event-step").textContent = labels[next] || "事件";
     }
@@ -162,6 +167,7 @@
     function renderMarketRequestPreview() {
         var path = marketRequestPath();
         byId("market-request-line").textContent = "GET " + path;
+        byId("query-preview-route").textContent = "GET " + path;
         byId("market-request-preview").textContent =
             "GET " + path + " HTTP/1.1\n" +
             "Host: app:5678\n" +
@@ -174,8 +180,8 @@
         byId("market-mechanism").classList.remove("is-previewing");
     }
 
-    // 店外只播放一次“计划将如何流动”的预演反馈，不代表 Runner 已经启动。
-    // 保存计划或进入真实任务状态后必须立刻停止，真实请求动画只由店内观测驱动。
+    // 计划工作台只播放一次“计划将如何流动”的预演反馈，不代表 Runner 已经启动。
+    // 保存计划或进入真实任务状态后必须立刻停止，真实请求动画只由实验室观测驱动。
     function replayMarketPreview(signature, targetRate) {
         if (!signature || signature === marketPreviewSignature) {
             return;
@@ -198,7 +204,7 @@
     }
 
     // 金色卷轴只表示“把本轮配置交给实验室”，不是 HTTP 请求。
-    // 它发生在任何 Runner 任务创建之前，蓝色请求卷轴仍只允许由店内真实指标驱动。
+    // 它发生在任何 Runner 任务创建之前，蓝色请求卷轴仍只允许由实验室真实指标驱动。
     function animateTaskOrderHandoff(handoff) {
         return new Promise(function (resolve) {
             var template = byId("market-task-order-template");
@@ -305,7 +311,7 @@
             modeCopy = "Runner 尚未发送";
         } else if (phase === "running") {
             prefix = "运行配置";
-            modeCopy = "店内运行中";
+            modeCopy = "实验室运行中";
         } else if (phase === "collecting" || phase === "completed" ||
             phase === "failed" || phase === "stopped") {
             prefix = "本轮配置";
@@ -315,6 +321,8 @@
         byId("market-conduit-count").textContent = safeConnections > 0 ?
             prefix + " · -c " + safeConnections.toLocaleString("zh-CN") :
             "Runner 计划计算中";
+        byId("query-preview-connections").textContent = safeConnections > 0 ?
+            "-c " + safeConnections.toLocaleString("zh-CN") : "计算中";
         byId("market-conduit-mode").textContent = modeCopy;
         byId("market-conduit-scale").textContent = safeConnections > 0 ?
             visualCount + " 束预演通路 · 连接容量档位" :
@@ -402,6 +410,8 @@
             }
             byId("crowd-connection-plan").textContent = connectionMode === "manual" ?
                 "手动 · -c " + manualConnections : "自动计划暂不可用";
+            byId("query-preview-connections").textContent = connectionMode === "manual" ?
+                "-c " + manualConnections : "暂不可用";
             byId("crowd-connection-copy").textContent =
                 "Runner 暂时无法计算：" + error.message;
         }
@@ -415,9 +425,14 @@
         });
         byId("crowd-summary-path").textContent =
             next.mode === "cached" ? "Redis Cache-Aside" : "MySQL Direct";
+        byId("query-preview-path").textContent =
+            next.mode === "cached" ? "Redis Cache-Aside" : "MySQL Direct";
+        byId("query-preview-copy").textContent = next.mode === "cached" ?
+            "请求先查询 Redis；命中直接返回，MISS 时回源 MySQL 并回填同一份 MaterialDetailDTO。" :
+            "请求直接进入 MySQL，每次现场组装同一份 MaterialDetailDTO。";
         byId("market-backend-icon").textContent = next.mode === "cached" ? "REDIS" : "SQL";
         byId("market-backend-name").textContent = next.mode === "cached" ?
-            "门后 · Go API → Redis；MISS → MySQL" : "门后 · Go API → MySQL";
+            "Go API → Redis；MISS → MySQL" : "Go API → MySQL";
         byId("market-mechanism").dataset.path = next.mode;
         renderMarketRequestPreview();
         if (selectedCode && state === "crowd_preparing" && !isTaskActive()) {
@@ -449,16 +464,17 @@
         });
         var plannedConnections = renderConnectionPlan();
         byId("crowd-size-value").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
+        byId("query-preview-rate").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("crowd-size-note").textContent = connectionMode === "auto" ?
-            "固定运行 " + tier.duration + " 秒；店内观测就绪后创建任务并锁定自动配置。" :
-            "固定运行 " + tier.duration + " 秒；店内观测就绪后创建任务并锁定手动配置。";
+            "固定运行 " + tier.duration + " 秒；实验室观测就绪后创建任务并锁定自动配置。" :
+            "固定运行 " + tier.duration + " 秒；实验室观测就绪后创建任务并锁定手动配置。";
         byId("market-source-rate").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("market-flow-target").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("market-flow-actual-label").textContent = "运行事实";
-        byId("market-flow-actual").textContent = "店内观测";
+        byId("market-flow-actual").textContent = "实验室观测";
         byId("market-flow-errors").textContent = "—";
         byId("market-queue-state").textContent = "任务尚未创建";
-        byId("market-response-rate").textContent = "等待店内运行";
+        byId("market-response-rate").textContent = "等待实验运行";
         byId("market-flow-status").textContent = "计划预演";
         byId("market-mechanism").dataset.flowState = plannedConnections > 0 ? "planned" : "waiting";
         byId("market-mechanism").dataset.taskPhase = plannedConnections > 0 ? "planned" : "waiting";
@@ -621,7 +637,7 @@
             draft: "计划预览",
             starting: "任务已创建",
             resetting: "正在重置数据",
-            running: overloaded ? "店内运行 · 入口欠账" : "任务正在店内运行",
+            running: overloaded ? "实验室运行 · 入口欠账" : "任务正在实验室运行",
             collecting: "正在结算",
             completed: "结果已输出",
             failed: "任务失败",
@@ -638,7 +654,7 @@
         byId("market-flow-target").textContent = target.toLocaleString("zh-CN") + " req/s";
         renderMarketConduits(resolvedConnections, status);
         byId("market-queue-state").textContent = overloaded ? "入口投递欠账" :
-            (status === "running" ? "店内按计划投递" :
+            (status === "running" ? "实验室按计划投递" :
                 (status === "collecting" ? "停止产生新请求" :
                     (status === "completed" ? "本轮投递已结束" :
                         (status === "resetting" ? "重置中 · 尚未发送" :
@@ -651,14 +667,14 @@
                 (status === "collecting" ? "正在结算响应" :
                     (status === "running" ? "响应结果等待结算" :
                         (status === "failed" || status === "stopped" ?
-                            "未形成完整归档" : "等待店内运行")));
+                            "未形成完整归档" : "等待实验运行")));
         byId("market-flow-actual-label").textContent =
             status === "completed" ? "完成速率" :
                 (status === "running" ? "后端已接收" : "运行事实");
         byId("market-flow-actual").textContent =
             (status === "running" || status === "completed") && requests > 0 ?
                 actualQPS.toLocaleString("zh-CN", { maximumFractionDigits: 1 }) + " req/s" :
-                (status === "collecting" ? "正在结算" : "店内观测");
+                (status === "collecting" ? "正在结算" : "实验室观测");
         byId("market-flow-errors").textContent = socketErrorsAvailable ?
             socketErrors.toLocaleString("zh-CN") :
             (status === "failed" || status === "stopped" ? "未形成完整结算" :
@@ -721,8 +737,8 @@
             resetting: "正在清空缓存与指标；wrk2 尚未启动。",
             running: "请求正在连接、后端与响应之间循环。",
             collecting: "请求已停止产生，正在输出结果。",
-            completed: "本轮已结束，动态卷轴已停止；创建新任务可在店内观看请求与响应往返。",
-            failed: task.errorMessage || "实验未能完成，可进入店内查看原因。",
+            completed: "本轮已结束，动态卷轴已停止；创建新任务可在实验室观看请求与响应往返。",
+            failed: task.errorMessage || "实验未能完成，可进入实验室查看原因。",
             stopped: "本轮查询潮汐已经停止。"
         };
         setState(task.status === "running" ? "crowd_submitting" : "crowd_preparing");
@@ -734,7 +750,7 @@
         byId("start-crowd-test").textContent = active ? activeButtonCopy :
             (task.status === "completed" ? "配置下一轮实验" : "重新确认计划");
         byId("enter-crowd-lab").hidden = !task.taskId;
-        byId("enter-crowd-lab").textContent = active ? "进入店内查看" : "进入店内查看结果";
+        byId("enter-crowd-lab").textContent = active ? "进入实验室查看" : "进入实验室查看结果";
         byId("crowd-status-title").textContent = titles[task.status] || "等待查询潮汐";
         byId("crowd-status-copy").textContent = copies[task.status] || "任务状态正在同步。";
         byId("crowd-clock").textContent = formatClock(task.elapsedSeconds) + " / " +
@@ -849,16 +865,16 @@
         document.body.classList.add("crowd-lab-handoff");
         byId("crowd-status-title").textContent = "计划已确认";
         byId("crowd-status-copy").textContent = task ?
-            "正在进入店内恢复任务观测。" :
+            "正在进入实验室恢复任务观测。" :
             "正在进入实验室建立观测；Runner 尚未创建，没有请求发出。";
-        byId("market-flow-status").textContent = task ? "恢复任务观测" : "等待店内观测";
+        byId("market-flow-status").textContent = task ? "恢复任务观测" : "等待实验室观测";
         byId("market-announcer").textContent = task ?
-            "正在进入材料情报店恢复任务观测" :
+            "正在进入实验室恢复任务观测" :
             "压测计划已确认，正在进入实验室建立观测，当前没有真实请求";
         if (plan) {
             await animateTaskOrderHandoff(plan);
             byId("crowd-status-copy").textContent =
-                "任务指令已送达店门；即将进入店内建立观测，Runner 仍未创建。";
+                "实验计划已确认；即将进入实验室建立观测，Runner 仍未创建。";
             byId("market-flow-status").textContent = "任务指令已送达";
         }
         document.body.classList.add("is-crowd-lab-departing");
@@ -893,7 +909,7 @@
         byId("start-crowd-test").disabled = true;
         byId("start-crowd-test").textContent = "正在交接计划";
         byId("crowd-status-title").textContent = "正在交接实验计划";
-        byId("crowd-status-copy").textContent = "进入店内并接通指标观测前，Runner 不会创建任务。";
+        byId("crowd-status-copy").textContent = "进入实验室并接通指标观测前，Runner 不会创建任务。";
         byId("crowd-connection-current").textContent = "尚未创建";
         byId("market-flow-status").textContent = "计划交接中";
         byId("market-mechanism").dataset.flowState = "planned";
@@ -963,6 +979,7 @@
         enteringCrowdLab = false;
         marketPreviewSignature = "";
         setState("crowd_preparing");
+        updateFoyerExperimentQuery("query");
         renderCrowdTier();
         renderCrowdShell();
         refreshConnectionPlan();
@@ -1017,9 +1034,7 @@
         if (state !== "purchase_preparing") {
             return;
         }
-        updateFoyerExperimentQuery("");
-        setState("dialogue");
-        byId("star-purchase-entry").focus({ preventScroll: true });
+        window.location.assign("/");
     }
 
     function beginNextMarketDraft() {
@@ -1064,11 +1079,7 @@
         if (state !== "crowd_preparing" || isTaskActive()) {
             return;
         }
-        activeTask = null;
-        marketPreviewSignature = "";
-        stopMarketPreview();
-        setState("dialogue");
-        byId("star-query-entry").focus({ preventScroll: true });
+        window.location.assign("/");
     }
 
     async function restoreActiveTask() {
