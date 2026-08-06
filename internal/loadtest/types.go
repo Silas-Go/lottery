@@ -7,6 +7,8 @@ import (
 
 const (
 	ExperimentCacheAsideRead    = "cache-aside-read"
+	ExperimentCacheBreakdown    = "cache-breakdown"
+	ExperimentCachePenetration  = "cache-penetration"
 	ExperimentSeckillRateLimit  = "seckill-rate-limit"
 	ExperimentSeckillStockBurst = "seckill-stock-burst"
 	StarMarrowArchiveID         = 4
@@ -15,6 +17,9 @@ const (
 	SeckillRateDurationSeconds  = 10
 	SeckillStockRequests        = 600
 	SeckillStockConcurrency     = 600
+	CachePenetrationMissingID   = 900004
+	ProtectionNone              = "none"
+	ProtectionNegativeCache     = "negative-cache"
 )
 
 // TierID 是公开挡位的稳定标识；它不携带任何可执行参数。
@@ -146,6 +151,9 @@ const (
 	EventProgress        EventType = "progress"
 	EventMetric          EventType = "metric"
 	EventLog             EventType = "log"
+	EventCacheEvicted    EventType = "cache_evicted"
+	EventCacheRebuilt    EventType = "cache_rebuilt"
+	EventCacheRecovered  EventType = "cache_recovered"
 	EventCompleted       EventType = "completed"
 	EventFailed          EventType = "failed"
 	EventStopped         EventType = "stopped"
@@ -161,6 +169,7 @@ type CreateRequest struct {
 	Rate           int            `json:"rate,omitempty"`
 	ConnectionMode ConnectionMode `json:"connectionMode,omitempty"`
 	Connections    int            `json:"connections,omitempty"`
+	Protection     string         `json:"protection,omitempty"`
 }
 
 // ValidateCreateRequest 在主应用和 Runner 两侧重复执行白名单校验。
@@ -169,7 +178,7 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 	switch request.Experiment {
 	case ExperimentSeckillRateLimit:
 		if request.ArchiveID != 0 || request.Mode != "" || request.Tier != "" ||
-			request.ConnectionMode != "" || request.Connections != 0 {
+			request.ConnectionMode != "" || request.Connections != 0 || request.Protection != "" {
 			return TierConfig{}, "seckill rate-limit only accepts experiment and rate"
 		}
 		tier, ok := ResolveSeckillRate(request.Rate)
@@ -179,7 +188,7 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 		return tier, ""
 	case ExperimentSeckillStockBurst:
 		if request.ArchiveID != 0 || request.Mode != "" || request.Tier != "" || request.Rate != 0 ||
-			request.ConnectionMode != "" || request.Connections != 0 {
+			request.ConnectionMode != "" || request.Connections != 0 || request.Protection != "" {
 			return TierConfig{}, "seckill stock burst does not accept custom workload parameters"
 		}
 		return TierConfig{
@@ -187,7 +196,32 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 			Connections: SeckillStockConcurrency, DurationSeconds: 15,
 		}, ""
 	case ExperimentCacheAsideRead:
-		// 继续执行下面的查询实验兼容校验。
+		if request.Protection != "" {
+			return TierConfig{}, "steady cache-aside read does not accept protection"
+		}
+	case ExperimentCacheBreakdown:
+		if request.Mode != "cached" || request.Protection != "" {
+			return TierConfig{}, "cache breakdown requires cached mode and no protection"
+		}
+		if request.Rate == 0 || request.Tier != "" {
+			return TierConfig{}, "cache breakdown requires the controlled rate protocol"
+		}
+		if request.ConnectionMode == ConnectionModeManual || request.Connections != 0 {
+			return TierConfig{}, "cache breakdown uses runner-controlled connections"
+		}
+	case ExperimentCachePenetration:
+		if request.Mode != "cached" {
+			return TierConfig{}, "cache penetration requires cached mode"
+		}
+		if request.Protection != ProtectionNone && request.Protection != ProtectionNegativeCache {
+			return TierConfig{}, "cache penetration protection must be none or negative-cache"
+		}
+		if request.Rate == 0 || request.Tier != "" {
+			return TierConfig{}, "cache penetration requires the controlled rate protocol"
+		}
+		if request.ConnectionMode == ConnectionModeManual || request.Connections != 0 {
+			return TierConfig{}, "cache penetration uses runner-controlled connections"
+		}
 	default:
 		return TierConfig{}, "experiment is not supported"
 	}
@@ -271,6 +305,31 @@ type TaskMetrics struct {
 	CacheHitRate          float64 `json:"cacheHitRate"`
 	PoolPeak              int64   `json:"poolPeak"`
 	PoolCapacity          int64   `json:"poolCapacity"`
+	RedisMisses           int64   `json:"redisMisses,omitempty"`
+	CoalescedAfterMiss    int64   `json:"coalescedAfterMiss,omitempty"`
+	CacheRebuilds         int64   `json:"cacheRebuilds,omitempty"`
+	NegativeCacheHits     int64   `json:"negativeCacheHits,omitempty"`
+	NegativeCacheWrites   int64   `json:"negativeCacheWrites,omitempty"`
+	NonexistentRequests   int64   `json:"nonexistentRequests,omitempty"`
+	InvalidMySQLQueries   int64   `json:"invalidMySQLQueries,omitempty"`
+	ExpectedNotFound      int64   `json:"expectedNotFound,omitempty"`
+	CurrentRequests       int64   `json:"currentRequests,omitempty"`
+	CurrentPositiveHits   int64   `json:"currentPositiveHits,omitempty"`
+	CurrentRedisMisses    int64   `json:"currentRedisMisses,omitempty"`
+	CurrentNegativeHits   int64   `json:"currentNegativeHits,omitempty"`
+	CurrentMySQLFallbacks int64   `json:"currentMySQLFallbacks,omitempty"`
+	CurrentHitRate        float64 `json:"currentHitRate,omitempty"`
+	CurrentP95MS          int64   `json:"currentP95Ms,omitempty"`
+	CurrentMaxLatencyMS   int64   `json:"currentMaxLatencyMs,omitempty"`
+	RunMaxLatencyMS       int64   `json:"runMaxLatencyMs,omitempty"`
+	ScenarioPhase         string  `json:"scenarioPhase,omitempty"`
+	KeyPresent            bool    `json:"keyPresent"`
+	KeyPTTLMillis         int64   `json:"keyPttlMillis,omitempty"`
+	EvictedAt             string  `json:"evictedAt,omitempty"`
+	RebuiltAt             string  `json:"rebuiltAt,omitempty"`
+	StableAt              string  `json:"stableAt,omitempty"`
+	RebuildDurationMS     int64   `json:"rebuildDurationMs,omitempty"`
+	RecoveryDurationMS    int64   `json:"recoveryDurationMs,omitempty"`
 
 	// 以下字段只用于秒杀实验，避免把预期的 429、售罄和系统异常混成一个 Error Rate。
 	AllowedRequests     int64   `json:"allowedRequests,omitempty"`
@@ -306,6 +365,8 @@ type Task struct {
 	Experiment           string         `json:"experiment"`
 	ArchiveID            int            `json:"archiveId"`
 	Mode                 string         `json:"mode"`
+	Protection           string         `json:"protection,omitempty"`
+	ProbeArchiveID       int            `json:"probeArchiveId,omitempty"`
 	Tier                 TierConfig     `json:"tier"`
 	ConnectionMode       ConnectionMode `json:"connectionMode,omitempty"`
 	RequestedConnections int            `json:"requestedConnections,omitempty"`

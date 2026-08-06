@@ -16,6 +16,8 @@
         id: null,
         profile: null,
         entry: "single",
+        scenario: "steady",
+        protection: "none",
         pendingRun: null,
         crowdRun: null,
         loadtestTaskId: null,
@@ -60,6 +62,7 @@
             hitHighWater: 0,
             fallbackHighWater: 0,
             coalescedHighWater: 0,
+            negativeHighWater: 0,
             refillHitFloor: 0,
             refillPending: false,
             refillEvidence: false,
@@ -278,6 +281,16 @@
         return mode === "cached" ? "cached" : (mode === "direct" ? "direct" : "");
     }
 
+    function incomingCacheScenario() {
+        var scenario = new URLSearchParams(window.location.search).get("scenario");
+        return scenario === "breakdown" || scenario === "penetration" ? scenario : "steady";
+    }
+
+    function incomingProtection() {
+        return new URLSearchParams(window.location.search).get("protection") === "negative-cache" ?
+            "negative-cache" : "none";
+    }
+
     function incomingLaunchWhenObserved() {
         return new URLSearchParams(window.location.search).get("launch") === "when-observed";
     }
@@ -369,6 +382,40 @@
         return experimentState.get();
     }
 
+    function selectedLoadtestExperiment() {
+        if (state.scenario === "breakdown") {
+            return "cache-breakdown";
+        }
+        if (state.scenario === "penetration") {
+            return "cache-penetration";
+        }
+        return "cache-aside-read";
+    }
+
+    function taskScenario(task) {
+        if (task && task.experiment === "cache-breakdown") {
+            return "breakdown";
+        }
+        if (task && task.experiment === "cache-penetration") {
+            return "penetration";
+        }
+        return "steady";
+    }
+
+    function selectedConnectionMode() {
+        return state.scenario === "steady" ? connectionMode : "auto";
+    }
+
+    function selectedProtection() {
+        return state.scenario === "penetration" ? state.protection : "";
+    }
+
+    function taskMatchesSelection(task) {
+        return Boolean(task && taskScenario(task) === state.scenario &&
+            task.mode === currentExperiment().mode &&
+            (state.scenario !== "penetration" || task.protection === state.protection));
+    }
+
     function isCrowdEntry() {
         return state.entry === "crowd" || state.entry === "crowd-setup";
     }
@@ -384,16 +431,19 @@
             return;
         }
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
-        var taskMatchesMode = Boolean(state.loadtestTask &&
-            state.loadtestTask.mode === currentExperiment().mode);
+        var taskMatchesMode = taskMatchesSelection(state.loadtestTask);
         var pendingPlanMatchesMode = Boolean(!state.loadtestTask &&
-            state.pendingRun && state.pendingRun.mode === currentExperiment().mode);
+            state.pendingRun && state.pendingRun.mode === currentExperiment().mode &&
+            (state.pendingRun.experiment || "cache-aside-read") === selectedLoadtestExperiment() &&
+            (state.scenario !== "penetration" || state.pendingRun.protection === state.protection));
         var recoveringTask = Boolean(!state.loadtestTask && state.loadtestTaskId);
         var pendingMatchesMode = pendingPlanMatchesMode || recoveringTask;
         var pending = state.pendingRun || {};
         var pendingTask = pendingMatchesMode ? {
             taskId: state.loadtestTaskId,
             status: state.loadtestTaskId && state.pendingRun ? "starting" : "waiting",
+            experiment: pending.experiment || "cache-aside-read",
+            protection: pending.protection || "",
             mode: pending.mode || currentExperiment().mode,
             connectionMode: pending.connectionMode || connectionMode,
             connectionReason: pending.connectionReason || "",
@@ -418,7 +468,8 @@
         var plan = matchingLabConnectionPlan();
         var handoffConnections = Number(pendingMatchesMode &&
             pending.plannedConnections || 0);
-        var plannedConnections = connectionMode === "manual" ? manualConnections :
+        var effectiveConnectionMode = selectedConnectionMode();
+        var plannedConnections = effectiveConnectionMode === "manual" ? manualConnections :
             Number(plan && plan.connections || handoffConnections || 0);
         var resolvedConnections = Number(taskTier && taskTier.connections || 0);
         var connectionCopy = taskTier && !taskMode ?
@@ -426,13 +477,18 @@
             (resolvedConnections > 0 ?
                 (taskMode === "manual" ? "手动" : "自动") + " · -c " +
                     resolvedConnections.toLocaleString("zh-CN") + " · 已锁定" :
-                (connectionMode === "manual" ?
+                (effectiveConnectionMode === "manual" ?
                     "手动 · -c " + manualConnections.toLocaleString("zh-CN") + " · 计划" :
                     (plannedConnections > 0 ?
                         "自动 · -c " + plannedConnections.toLocaleString("zh-CN") + " · 计划" :
                         "自动 · 计划计算中")));
         var cached = currentExperiment().mode === "cached";
         var pathLabel = cached ? "Redis Cache-Aside" : "MySQL Direct";
+        if (state.scenario === "breakdown") {
+            pathLabel = "热点失效 · Cache-Aside";
+        } else if (state.scenario === "penetration") {
+            pathLabel = "不存在 ID · " + (state.protection === "negative-cache" ? "负缓存" : "无保护");
+        }
         byId("lab-crowd-summary").textContent =
             "目标 " + displayRate.toLocaleString("zh-CN") + " req/s · " + connectionCopy;
         byId("query-endpoint").textContent = cached ? "via /cached" : "via /direct";
@@ -519,6 +575,113 @@
         }
         renderActiveMetrics();
         renderCrowdSetup();
+        renderScenarioControls(state.loadtestTask);
+    }
+
+    function scenarioPhaseLabel(phase) {
+        return ({
+            stable: "稳定命中",
+            evicted: "热点 Key 已消失",
+            recovering: "缓存已重建 · 观察恢复",
+            recovered: "命中率恢复稳定",
+            unprotected: "无保护穿透",
+            protected: "负缓存保护"
+        })[phase] || "等待真实状态";
+    }
+
+    function formatScenarioDuration(value) {
+        return Number(value || 0) > 0 ? Number(value).toLocaleString("zh-CN") + " ms" : "—";
+    }
+
+    function renderScenarioObservation(task) {
+        var relevantTask = taskMatchesSelection(task) && taskScenario(task) !== "steady" ? task : null;
+        var scenario = relevantTask ? taskScenario(relevantTask) : state.scenario;
+        var panel = byId("cache-scenario-observation");
+        panel.hidden = scenario === "steady";
+        if (panel.hidden) {
+            return;
+        }
+        var metrics = relevantTask && relevantTask.metrics || {};
+        var sampled = Number(metrics.actualRequests || 0) > 0;
+        var phase = metrics.scenarioPhase || "";
+        panel.dataset.phase = phase || "waiting";
+        byId("scenario-phase").textContent = scenarioPhaseLabel(phase);
+        byId("cache-scenario-title").textContent = scenario === "breakdown" ?
+            "ARC-004 热点失效与恢复" :
+            "不存在材料 900004 · " +
+                ((relevantTask && relevantTask.protection || state.protection) === "negative-cache" ? "负缓存" : "无保护");
+        byId("scenario-current-hit-rate").textContent = sampled ?
+            Number(metrics.currentHitRate || 0).toFixed(1) + "%" : "—";
+        byId("scenario-current-hit-miss").textContent = sampled ?
+            formatNumber(metrics.currentPositiveHits) + " / " + formatNumber(metrics.currentRedisMisses) : "—";
+        byId("scenario-current-fallbacks").textContent = sampled ?
+            formatNumber(metrics.currentMySQLFallbacks) + " /s" : "—";
+        byId("scenario-current-latency").textContent = sampled ?
+            formatScenarioDuration(metrics.currentP95Ms) + " / " +
+                formatScenarioDuration(metrics.currentMaxLatencyMs) : "—";
+        byId("scenario-round-hit-rate").textContent = sampled ?
+            Number(metrics.cacheHitRate || 0).toFixed(1) + "%" : "—";
+        byId("scenario-round-fallbacks").textContent = sampled ? formatNumber(metrics.mysqlFallbacks) : "—";
+        byId("scenario-round-max-latency").textContent = sampled ?
+            formatScenarioDuration(metrics.runMaxLatencyMs) : "—";
+        if (scenario === "breakdown") {
+            var keyState = metrics.keyPresent ? "存在" : (metrics.evictedAt ? "不存在" : "等待检查");
+            if (metrics.keyPresent && Number(metrics.keyPttlMillis || 0) > 0) {
+                keyState += " · TTL " + Math.ceil(Number(metrics.keyPttlMillis) / 1000) + "s";
+            }
+            byId("scenario-key-state").textContent = keyState;
+            byId("scenario-coalesced").textContent = sampled ? formatNumber(metrics.coalescedAfterMiss) : "—";
+            byId("scenario-rebuilds").textContent = sampled ? formatNumber(metrics.cacheRebuilds) : "—";
+            byId("scenario-rebuild-time").textContent = formatScenarioDuration(metrics.rebuildDurationMs);
+            byId("scenario-recovery-time").textContent = formatScenarioDuration(metrics.recoveryDurationMs);
+            byId("scenario-proof-copy").textContent =
+                "Key 状态、回源、重建与恢复窗口均由真实 Redis DEL 和请求指标推进。";
+        } else {
+            byId("scenario-key-state").textContent = "正常 DTO MISS · ID 900004";
+            byId("scenario-nonexistent").textContent = sampled ? formatNumber(metrics.nonexistentRequests) : "—";
+            byId("scenario-negative-hits").textContent = sampled ? formatNumber(metrics.negativeCacheHits) : "—";
+            byId("scenario-negative-writes").textContent = sampled ? formatNumber(metrics.negativeCacheWrites) : "—";
+            byId("scenario-invalid-queries").textContent = sampled ? formatNumber(metrics.invalidMySQLQueries) : "—";
+            byId("scenario-proof-copy").textContent =
+                "正常缓存 MISS 与负缓存命中分别计数；预期 404 不记作系统错误。";
+        }
+        byId("breakdown-evidence").hidden = scenario !== "breakdown";
+        byId("penetration-evidence").hidden = scenario !== "penetration";
+    }
+
+    function renderScenarioControls(task) {
+        document.body.dataset.cacheScenario = state.scenario;
+        ["steady", "breakdown", "penetration"].forEach(function (scenario) {
+            var button = byId("scenario-" + scenario);
+            var active = scenario === state.scenario;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        var penetration = state.scenario === "penetration";
+        byId("penetration-protection").hidden = !penetration;
+        byId("protection-none").classList.toggle("is-active", state.protection === "none");
+        byId("protection-negative").classList.toggle("is-active", state.protection === "negative-cache");
+        byId("protection-none").setAttribute("aria-pressed", state.protection === "none" ? "true" : "false");
+        byId("protection-negative").setAttribute("aria-pressed", state.protection === "negative-cache" ? "true" : "false");
+        if (state.scenario === "steady") {
+            byId("query-route-label").textContent = "GET /api/archives/:id/{direct|cached}";
+        } else if (state.scenario === "breakdown") {
+            byId("query-route-label").textContent = "ARC-004 · TASK-SCOPED REAL EVICTION";
+            byId("query-endpoint").textContent = "stable → DEL → rebuild → recovered";
+            byId("lab-shared-strategy").textContent = "热点 Key 真实失效";
+            byId("lab-strategy-explanation").textContent =
+                "Runner 先观察稳定命中，再真实删除 ARC-004 Key；现有按 Key 互斥负责合并并发回源。";
+        } else {
+            byId("query-route-label").textContent = "MISSING MATERIAL 900004 · TASK-SCOPED";
+            byId("query-endpoint").textContent = state.protection === "negative-cache" ?
+                "positive MISS → negative HIT" : "positive MISS → MySQL 404";
+            byId("lab-shared-strategy").textContent = state.protection === "negative-cache" ?
+                "穿透保护 · 负缓存" : "穿透基线 · 无保护";
+            byId("lab-strategy-explanation").textContent = state.protection === "negative-cache" ?
+                "首次真实查询确认材料不存在并写入短 TTL 负缓存；后续请求单独记录负缓存命中。" :
+                "固定不存在 ID 持续 MISS，并在每次请求中真实回源 MySQL；预期 404 不冒充系统错误。";
+        }
+        renderScenarioObservation(task);
     }
 
     function updateControlState() {
@@ -530,6 +693,12 @@
             state.loadtestCreateInFlight;
         byId("query-archive").disabled = locked;
         ["mode-direct", "mode-cached"].forEach(function (id) {
+            byId(id).disabled = locked || readinessLocked || state.scenario !== "steady";
+        });
+        ["steady", "breakdown", "penetration"].forEach(function (scenario) {
+            byId("scenario-" + scenario).disabled = locked || readinessLocked;
+        });
+        ["protection-none", "protection-negative"].forEach(function (id) {
             byId(id).disabled = locked || readinessLocked;
         });
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
@@ -554,6 +723,11 @@
             queryButtonCopy = "返回门口配置新查询潮汐";
         } else {
             queryButtonCopy = state.loadtestTask ? "再次启动查询潮汐" : "启动查询潮汐";
+            if (state.scenario === "breakdown") {
+                queryButtonCopy = state.loadtestTask ? "再次验证热点击穿" : "启动热点击穿实验";
+            } else if (state.scenario === "penetration") {
+                queryButtonCopy = state.loadtestTask ? "再次验证缓存穿透" : "启动缓存穿透实验";
+            }
         }
         byId("query-archive").querySelector("span").textContent = queryButtonCopy;
         byId("reset-lab").disabled = loadtestLocked;
@@ -695,19 +869,22 @@
     function matchingLabConnectionPlan() {
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
         var mode = currentExperiment().mode;
+        var effectiveConnectionMode = selectedConnectionMode();
         var plan = state.connectionPlan;
         if (!plan || plan.rate !== tier.rate || plan.requestMode !== mode ||
-            plan.connectionMode !== connectionMode) {
+            plan.requestExperiment !== selectedLoadtestExperiment() ||
+            plan.requestProtection !== selectedProtection() ||
+            plan.connectionMode !== effectiveConnectionMode) {
             return null;
         }
-        if (connectionMode === "manual" && plan.connections !== manualConnections) {
+        if (effectiveConnectionMode === "manual" && plan.connections !== manualConnections) {
             return null;
         }
         return plan;
     }
 
     function renderLabConnectionPlan(task) {
-        var taskMatchesMode = Boolean(task && task.mode === currentExperiment().mode);
+        var taskMatchesMode = taskMatchesSelection(task);
         var previousConnections = Number(taskMatchesMode && task.tier && task.tier.connections || 0);
         var resolvedConnections = taskMatchesMode ? previousConnections : 0;
         if (resolvedConnections > 0) {
@@ -720,10 +897,11 @@
             return;
         }
         var plan = matchingLabConnectionPlan();
-        var plannedConnections = connectionMode === "manual" ? manualConnections :
+        var effectiveConnectionMode = selectedConnectionMode();
+        var plannedConnections = effectiveConnectionMode === "manual" ? manualConnections :
             Number(plan && plan.connections || 0);
         byId("lab-connection-plan-value").textContent = plannedConnections > 0 ?
-            (connectionMode === "manual" ? "计划 · wrk2 -c " : "自动计划 · wrk2 -c ") +
+            (effectiveConnectionMode === "manual" ? "计划 · wrk2 -c " : "自动计划 · wrk2 -c ") +
                 plannedConnections.toLocaleString("zh-CN") :
             "自动计划计算中";
         byId("lab-connection-plan-copy").textContent = state.connectionPlanError ?
@@ -737,6 +915,8 @@
         }
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
         var mode = currentExperiment().mode;
+        var experiment = selectedLoadtestExperiment();
+        var effectiveConnectionMode = selectedConnectionMode();
         var requestID = ++state.connectionPlanRequest;
         state.connectionPlan = null;
         state.connectionPlanError = "";
@@ -746,18 +926,23 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    experiment: "cache-aside-read",
+                    experiment: experiment,
                     archiveId: state.id,
                     mode: mode,
                     rate: tier.rate,
-                    connectionMode: connectionMode,
-                    connections: connectionMode === "manual" ? manualConnections : 0
+                    connectionMode: effectiveConnectionMode,
+                    connections: effectiveConnectionMode === "manual" ? manualConnections : 0,
+                    protection: selectedProtection()
                 })
             });
             if (requestID !== state.connectionPlanRequest) {
                 return;
             }
-            state.connectionPlan = Object.assign({}, result.body, { requestMode: mode });
+            state.connectionPlan = Object.assign({}, result.body, {
+                requestMode: mode,
+                requestExperiment: experiment,
+                requestProtection: selectedProtection()
+            });
             renderCrowdSetup();
         } catch (error) {
             if (requestID !== state.connectionPlanRequest) {
@@ -1270,7 +1455,8 @@
     }
 
     function freezeLoadtestResult(task) {
-        if (state.loadtestResultSaved || task.status !== "completed") {
+        if (state.loadtestResultSaved || task.status !== "completed" ||
+            taskScenario(task) !== "steady") {
             return;
         }
         var existing = experimentResults.latest(task.mode);
@@ -1363,6 +1549,18 @@
     // 查询潮汐没有逐请求 trace。这里固定复用一对卷轴，只用聚合指标授权有限的“代表性配对”；
     // Sxx 是视觉编号，不写回任务、日志或结果，也不声称对应服务端某一条真实请求。
     function tideTraceRawPath(task) {
+        if (task && taskScenario(task) !== "steady") {
+            var taskMetrics = task.metrics || {};
+            return {
+                totalRequests: Number(taskMetrics.actualRequests || 0),
+                cacheHits: Number(taskMetrics.redisHits || 0),
+                cacheMisses: Number(taskMetrics.redisMisses || 0),
+                coalesced: Number(taskMetrics.coalescedAfterMiss || 0),
+                negativeCacheHits: Number(taskMetrics.negativeCacheHits || 0),
+                p99: Number(taskMetrics.runMaxLatencyMs || taskMetrics.currentMaxLatencyMs || 0),
+                errors: Number(taskMetrics.errorRate || 0) > 0 ? 1 : 0
+            };
+        }
         var chapter = state.metricsLatest && state.metricsLatest.archiveRead;
         if (!chapter) {
             return null;
@@ -1415,6 +1613,7 @@
         sampler.hitHighWater = 0;
         sampler.fallbackHighWater = 0;
         sampler.coalescedHighWater = Number(rawPath.coalesced || 0);
+        sampler.negativeHighWater = Number(rawPath.negativeCacheHits || 0);
         sampler.refillHitFloor = 0;
         sampler.refillPending = false;
         sampler.refillEvidence = false;
@@ -1762,10 +1961,13 @@
         var rawPath = tideTraceRawPath(task) || {};
         var coalesced = Math.max(sampler.coalescedHighWater,
             Number(rawPath.coalesced || 0));
+        var negativeHits = Math.max(sampler.negativeHighWater,
+            Number(rawPath.negativeCacheHits || metrics.negativeCacheHits || 0));
         var requestDelta = requests - sampler.requestHighWater;
         var hitDelta = hits - sampler.hitHighWater;
         var fallbackDelta = fallbacks - sampler.fallbackHighWater;
         var coalescedDelta = coalesced - sampler.coalescedHighWater;
+        var negativeDelta = negativeHits - sampler.negativeHighWater;
         if (task.mode === "cached" && fallbackDelta > 0) {
             sampler.refillPending = true;
             sampler.refillHitFloor = sampler.hitHighWater;
@@ -1774,6 +1976,7 @@
         sampler.hitHighWater = hits;
         sampler.fallbackHighWater = fallbacks;
         sampler.coalescedHighWater = coalesced;
+        sampler.negativeHighWater = negativeHits;
         if (task.mode === "cached" && sampler.refillPending &&
             (coalescedDelta > 0 || hits > sampler.refillHitFloor)) {
             sampler.refillPending = false;
@@ -1793,6 +1996,9 @@
             }
             if (hitDelta > 0) {
                 routes.push("cache-hit");
+            }
+            if (negativeDelta > 0) {
+                routes.push("negative-hit");
             }
             if (routes.length === 1 && sampleLimit > 1 &&
                 hitDelta + fallbackDelta > 1) {
@@ -1888,7 +2094,7 @@
             taskTargetRate(task).toLocaleString("zh-CN") + " req/s";
         var resolvedConnections = Number(task && task.tier && task.tier.connections || 0);
         var plan = matchingLabConnectionPlan();
-        var plannedConnections = connectionMode === "manual" ? manualConnections :
+        var plannedConnections = selectedConnectionMode() === "manual" ? manualConnections :
             Number(task && task.plannedConnections ||
                 plan && plan.connections ||
                 state.pendingRun && state.pendingRun.plannedConnections || 0);
@@ -1918,8 +2124,10 @@
         stage.dataset.backendMode = cached ? "cached" : "direct";
         stage.dataset.cacheFallbackObserved =
             cached && Number(metrics.mysqlFallbacks || 0) > 0 ? "true" : "false";
-        byId("tide-kitchen-title").textContent =
-            cached ? "Redis 命中返回 · MISS 下探 MySQL" : "MySQL 直读";
+        byId("tide-kitchen-title").textContent = taskScenario(task) === "penetration" ?
+            (task && task.protection === "negative-cache" ?
+                "正常 Key MISS · 负缓存拦截" : "正常 Key MISS · MySQL 确认不存在") :
+            (cached ? "Redis 命中返回 · MISS 下探 MySQL" : "MySQL 直读");
         var requestP95 = Number(metrics.requestP95Ms || 0);
         byId("tide-occupancy-copy").textContent = requestP95 > 0 ?
             "请求 P95 · " + formatLoadtestLatency(requestP95) :
@@ -1966,9 +2174,17 @@
         }
         if (status === "completed") {
             byId("query-tide-badge").textContent = "结算完成";
-            byId("query-tide-explanation").textContent = cached ?
-                "缓存命中缩短了通路占用时间，相同数量的魔法通路能够完成更多查询。" :
-                "本轮请求已经完成，目标速率与实际完成速率可直接对照。";
+            if (taskScenario(task) === "breakdown") {
+                byId("query-tide-explanation").textContent =
+                    "热点 Key 的删除、回源、重建与稳定恢复已经由任务指标闭合。";
+            } else if (taskScenario(task) === "penetration") {
+                byId("query-tide-explanation").textContent =
+                    "不存在请求、负缓存命中与无效 MySQL 查询已经分别结算。";
+            } else {
+                byId("query-tide-explanation").textContent = cached ?
+                    "缓存命中缩短了通路占用时间，相同数量的魔法通路能够完成更多查询。" :
+                    "本轮请求已经完成，目标速率与实际完成速率可直接对照。";
+            }
         } else if (isRunning && !hasObservedRequests) {
             byId("query-tide-badge").textContent = "通路已启用";
             byId("query-tide-explanation").textContent =
@@ -2004,6 +2220,10 @@
         var previousStatus = state.loadtestTask && state.loadtestTask.status;
         task = mergeLoadtestTask(state.loadtestTask, task);
         state.loadtestTask = task;
+        state.scenario = taskScenario(task);
+        if (state.scenario === "penetration") {
+            state.protection = task.protection === "negative-cache" ? "negative-cache" : "none";
+        }
         if (task.tier && task.tier.rate) {
             crowdTierID = crowdTierForRate(task.tier.rate) || crowdTierID;
         }
@@ -2015,6 +2235,7 @@
             connectionMode = "auto";
         }
         renderCrowdSetup();
+        renderScenarioControls(task);
         if (loadtestIsActive(task)) {
             state.loadtestLastActiveStatus = task.status;
             try {
@@ -2060,8 +2281,11 @@
         var hasObservedSample = hasObservedRequests || task.status === "completed" ||
             (Number(task.elapsedSeconds || 0) > 0 &&
                 ["running", "collecting", "failed", "stopped"].indexOf(task.status) >= 0);
-        byId("lab-load-path").textContent =
-            task.mode === "cached" ? "Redis Cache-Aside" : "MySQL Direct";
+        byId("lab-load-path").textContent = taskScenario(task) === "breakdown" ?
+            "热点失效 · Cache-Aside" :
+            (taskScenario(task) === "penetration" ?
+                "不存在 ID · " + (task.protection === "negative-cache" ? "负缓存" : "无保护") :
+                (task.mode === "cached" ? "Redis Cache-Aside" : "MySQL Direct"));
         byId("lab-load-target").textContent = taskTargetRate(task).toLocaleString("zh-CN") + " req/s";
         byId("lab-load-requests").textContent = hasObservedSample ?
             formatNumber(metrics.actualRequests) : "—";
@@ -2106,6 +2330,7 @@
         renderLoadtestStages(task);
         renderLoadtestLogs(task.logs);
         renderQueryTideStage(task);
+        renderScenarioObservation(task);
 
         var selected = currentExperiment();
         if (selected.mode !== task.mode || selected.cacheTemperature !== "cold") {
@@ -2116,9 +2341,15 @@
         if (task.status === "completed") {
             // SSE 的 completed 事件只带增量字段；必须等 GET 返回完整 Task 后再冻结结果。
             if (task.endedAt && task.tier) {
-                freezeLoadtestResult(task);
-                renderCrowdConversion(task);
-                loadCrowdMaterialRecord(task);
+                if (taskScenario(task) === "steady") {
+                    freezeLoadtestResult(task);
+                    renderCrowdConversion(task);
+                    loadCrowdMaterialRecord(task);
+                } else {
+                    experimentResults.clearPending();
+                    state.pendingRun = null;
+                    byId("freeze-status").textContent = "场景任务已完成 · 未写入稳态路径对比";
+                }
                 stopLoadtestConnections();
             }
             if (previousStatus !== task.status) {
@@ -2181,8 +2412,10 @@
         return {
             taskId: taskID,
             status: "starting",
+            experiment: pending.experiment || selectedLoadtestExperiment(),
+            protection: pending.protection || selectedProtection(),
             mode: pending.mode || currentExperiment().mode,
-            connectionMode: pending.connectionMode || connectionMode,
+            connectionMode: pending.connectionMode || selectedConnectionMode(),
             connectionReason: pending.connectionReason || "",
             requestedConnections: Number(pending.requestedConnections || 0),
             elapsedSeconds: 0,
@@ -2217,7 +2450,9 @@
             return;
         }
         state.loadtestStream = new EventSource("/api/loadtests/" + encodeURIComponent(taskID) + "/events");
-        ["task_started", "reset_completed", "loadtest_started", "progress", "metric", "log", "completed", "failed", "stopped"].forEach(function (eventName) {
+        ["task_started", "reset_completed", "loadtest_started", "progress", "metric", "log",
+            "cache_evicted", "cache_rebuilt", "cache_recovered",
+            "completed", "failed", "stopped"].forEach(function (eventName) {
             state.loadtestStream.addEventListener(eventName, function (event) {
                 try {
                     var update = JSON.parse(event.data);
@@ -2228,7 +2463,8 @@
                         remainingSeconds: update.remainingSeconds,
                         metrics: update.metrics || current.metrics
                     }));
-                    if (["log", "reset_completed", "loadtest_started", "completed", "failed", "stopped"].indexOf(eventName) >= 0) {
+                    if (["log", "reset_completed", "loadtest_started", "cache_evicted", "cache_rebuilt",
+                        "cache_recovered", "completed", "failed", "stopped"].indexOf(eventName) >= 0) {
                         fetchLoadtestTask();
                     }
                 } catch (_) {
@@ -2312,6 +2548,8 @@
         }
         var experiment = currentExperiment();
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
+        var loadtestExperiment = selectedLoadtestExperiment();
+        var effectiveConnectionMode = selectedConnectionMode();
         var button = byId("query-archive");
         state.loadtestCreateInFlight = true;
         renderLoadtestReadiness();
@@ -2325,16 +2563,17 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    experiment: "cache-aside-read",
+                    experiment: loadtestExperiment,
                     archiveId: state.id,
                     mode: experiment.mode,
                     rate: tier.rate,
-                    connectionMode: connectionMode,
-                    connections: connectionMode === "manual" ? manualConnections : 0
+                    connectionMode: effectiveConnectionMode,
+                    connections: effectiveConnectionMode === "manual" ? manualConnections : 0,
+                    protection: selectedProtection()
                 })
             });
             var created = result.body;
-            var finalConnectionMode = created.connectionMode || connectionMode;
+            var finalConnectionMode = created.connectionMode || effectiveConnectionMode;
             var finalConnections = Number(created.connections || 0);
             var finalConnectionReason = created.connectionReason || "";
             var pending = {
@@ -2342,6 +2581,8 @@
                 entry: "crowd",
                 launchWhenObserved: false,
                 materialName: state.profile.name,
+                experiment: loadtestExperiment,
+                protection: selectedProtection(),
                 mode: experiment.mode,
                 cacheTemperature: "cold",
                 tier: crowdTierID,
@@ -2352,7 +2593,7 @@
                 plannedConnections: Number(state.pendingRun &&
                     state.pendingRun.plannedConnections || finalConnections),
                 connections: finalConnections,
-                requestedConnections: connectionMode === "manual" ? manualConnections : 0,
+                requestedConnections: effectiveConnectionMode === "manual" ? manualConnections : 0,
                 armedAt: new Date().toISOString()
             };
             experimentResults.arm(pending);
@@ -2367,8 +2608,14 @@
             nextURL.searchParams.set("entry", "crowd");
             nextURL.searchParams.set("task", created.taskId);
             nextURL.searchParams.set("rate", String(tier.rate));
-            nextURL.searchParams.set("connectionMode", connectionMode);
-            if (connectionMode === "manual") {
+            nextURL.searchParams.set("connectionMode", effectiveConnectionMode);
+            if (state.scenario !== "steady") {
+                nextURL.searchParams.set("scenario", state.scenario);
+            }
+            if (state.scenario === "penetration") {
+                nextURL.searchParams.set("protection", state.protection);
+            }
+            if (effectiveConnectionMode === "manual") {
                 nextURL.searchParams.set("connections", String(manualConnections));
             } else {
                 nextURL.searchParams.delete("connections");
@@ -2378,10 +2625,12 @@
             renderLoadtestTask({
                 taskId: created.taskId,
                 status: created.status || "starting",
+                experiment: loadtestExperiment,
+                protection: selectedProtection(),
                 mode: experiment.mode,
                 connectionMode: finalConnectionMode,
                 connectionReason: finalConnectionReason,
-                requestedConnections: connectionMode === "manual" ? manualConnections : 0,
+                requestedConnections: effectiveConnectionMode === "manual" ? manualConnections : 0,
                 elapsedSeconds: 0,
                 metrics: {},
                 logs: [{ level: "info", message: "准备实验" }],
@@ -3048,7 +3297,68 @@
         dialog.removeAttribute("open");
     }
 
+    function updateScenarioURL() {
+        var url = new URL(window.location.href);
+        if (state.scenario === "steady") {
+            url.searchParams.delete("scenario");
+            url.searchParams.delete("protection");
+        } else {
+            url.searchParams.set("entry", "crowd-setup");
+            url.searchParams.set("mode", "cached");
+            url.searchParams.set("scenario", state.scenario);
+            if (state.scenario === "penetration") {
+                url.searchParams.set("protection", state.protection);
+            } else {
+                url.searchParams.delete("protection");
+            }
+            url.searchParams.delete("task");
+            url.searchParams.delete("launch");
+        }
+        window.history.replaceState(null, "", url.toString());
+    }
+
+    function selectCacheScenario(scenario) {
+        if (["steady", "breakdown", "penetration"].indexOf(scenario) < 0 ||
+            loadtestIsActive(state.loadtestTask)) {
+            return;
+        }
+        state.scenario = scenario;
+        state.loadtestStartRequested = false;
+        if (scenario !== "steady") {
+            state.entry = "crowd-setup";
+            document.body.dataset.entryMode = "crowd-setup";
+            connectionMode = "auto";
+            if (currentExperiment().mode !== "cached" || currentExperiment().cacheTemperature !== "cold") {
+                experimentState.set({ mode: "cached", cacheTemperature: "cold" });
+            }
+            experimentResults.clearPending();
+            state.pendingRun = null;
+        }
+        updateScenarioURL();
+        renderScenarioControls(state.loadtestTask);
+        renderCrowdSetup();
+        updateControlState();
+        refreshLabConnectionPlan();
+    }
+
+    function selectPenetrationProtection(protection) {
+        if (state.scenario !== "penetration" || loadtestIsActive(state.loadtestTask) ||
+            (protection !== "none" && protection !== "negative-cache")) {
+            return;
+        }
+        state.protection = protection;
+        updateScenarioURL();
+        renderScenarioControls(state.loadtestTask);
+        renderCrowdSetup();
+        refreshLabConnectionPlan();
+    }
+
     function bindEvents() {
+        byId("scenario-steady").addEventListener("click", function () { selectCacheScenario("steady"); });
+        byId("scenario-breakdown").addEventListener("click", function () { selectCacheScenario("breakdown"); });
+        byId("scenario-penetration").addEventListener("click", function () { selectCacheScenario("penetration"); });
+        byId("protection-none").addEventListener("click", function () { selectPenetrationProtection("none"); });
+        byId("protection-negative").addEventListener("click", function () { selectPenetrationProtection("negative-cache"); });
         byId("mode-direct").addEventListener("click", function () {
             experimentState.set({ mode: "direct" });
             refreshLabConnectionPlan();
@@ -3097,12 +3407,19 @@
         bindEvents();
         var entry = incomingEntry();
         state.entry = entry;
+        state.scenario = incomingCacheScenario();
+        state.protection = incomingProtection();
+        if (state.scenario !== "steady" && state.entry === "single") {
+            state.entry = "crowd-setup";
+        }
         var incomingConfig = incomingCrowdConfig();
         crowdTierID = incomingConfig.tierID;
-        connectionMode = incomingConfig.connectionMode;
+        connectionMode = state.scenario === "steady" ? incomingConfig.connectionMode : "auto";
         manualConnections = incomingConfig.connections;
         var incomingMode = incomingCrowdMode();
-        if (isCrowdEntry() && incomingMode &&
+        if (state.scenario !== "steady" && currentExperiment().mode !== "cached") {
+            experimentState.set({ mode: "cached" });
+        } else if (isCrowdEntry() && incomingMode &&
             currentExperiment().mode !== incomingMode) {
             experimentState.set({ mode: incomingMode });
         }
@@ -3136,7 +3453,9 @@
                 connectionMode: state.pendingRun.connectionMode || connectionMode,
                 connections: Number(state.pendingRun.plannedConnections || 0),
                 reason: state.pendingRun.connectionReason || "",
-                requestMode: state.pendingRun.mode
+                requestMode: state.pendingRun.mode,
+                requestExperiment: state.pendingRun.experiment || "cache-aside-read",
+                requestProtection: state.pendingRun.protection || ""
             };
         }
         state.loadtestTaskId = entry === "crowd" ? (incomingLoadtestTaskID() ||
@@ -3145,7 +3464,7 @@
             !state.loadtestTaskId &&
             state.pendingRun &&
             (state.pendingRun.launchWhenObserved || incomingLaunchWhenObserved()));
-        document.body.dataset.entryMode = entry;
+        document.body.dataset.entryMode = state.entry;
         renderExperimentState(currentExperiment());
         experimentState.subscribe(renderExperimentState);
         experimentResults.subscribe(renderFrozenResults);
@@ -3153,7 +3472,7 @@
         resetRouteVisual();
         updateControlState();
         updateMetricsPlaybackControls();
-        if (entry === "crowd") {
+        if (state.entry === "crowd") {
             byId("request-status").textContent = "正在连接查询潮汐实验";
             byId("replay-status").textContent = state.loadtestTaskId ?
                 "正在恢复任务观测" : "正在建立店内指标观测";
@@ -3165,7 +3484,7 @@
                     refreshLabConnectionPlan();
                 }
             }
-        } else if (entry === "crowd-setup") {
+        } else if (state.entry === "crowd-setup") {
             byId("request-status").textContent = "查询潮汐与通路模式已锁定，选择读取路径";
             byId("replay-status").textContent = "等待启动实验";
             refreshLabConnectionPlan();

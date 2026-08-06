@@ -11,7 +11,11 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const materialDetailCachePrefix = "archive:material-detail:v2:"
+const (
+	materialDetailCachePrefix         = "archive:material-detail:v2:"
+	materialDetailNegativeCachePrefix = "archive:material-detail-negative:v1:"
+	materialDetailNegativeCacheValue  = "not-found"
+)
 
 const (
 	materialTradeFactsPerMaterial  = 2500
@@ -425,17 +429,50 @@ func materialDetailCacheKey(id int) string {
 	return fmt.Sprintf("%s%d", materialDetailCachePrefix, id)
 }
 
+func materialDetailNegativeCacheKey(id int) string {
+	return fmt.Sprintf("%s%d", materialDetailNegativeCachePrefix, id)
+}
+
 // DeleteMaterialDetailCache 删除材料详情的最终 DTO 缓存。
 // 购买写路径只删除副本，不直接修改缓存内容，避免并发写把较旧的 DTO 覆盖到新库存上。
 // DEL 天然幂等，因此 RocketMQ 重复投递时可以安全重复执行。
 func DeleteMaterialDetailCache(id int) error {
+	_, err := DeleteMaterialDetailCacheWithResult(id)
+	return err
+}
+
+// DeleteMaterialDetailCacheWithResult 删除 DTO Key，并返回本次是否真的删除了一个 Key。
+// 热点击穿实验用这个结果证明故障注入发生在真实 Redis 状态上，而不是只推进页面阶段。
+func DeleteMaterialDetailCacheWithResult(id int) (bool, error) {
 	if GiftRedis == nil {
-		return errors.New("redis client is nil")
+		return false, errors.New("redis client is nil")
 	}
-	if err := GiftRedis.Del(materialDetailCacheKey(id)).Err(); err != nil {
-		return fmt.Errorf("delete material detail cache %d: %w", id, err)
+	deleted, err := GiftRedis.Del(materialDetailCacheKey(id)).Result()
+	if err != nil {
+		return false, fmt.Errorf("delete material detail cache %d: %w", id, err)
 	}
-	return nil
+	return deleted > 0, nil
+}
+
+// MaterialDetailCacheState 返回 DTO Key 的真实存在状态和剩余 TTL。
+// Redis 用 -1 表示无过期时间、-2 表示 Key 不存在；调用方只在任务控制面读取。
+func MaterialDetailCacheState(id int) (bool, time.Duration, error) {
+	if GiftRedis == nil {
+		return false, 0, errors.New("redis client is nil")
+	}
+	key := materialDetailCacheKey(id)
+	exists, err := GiftRedis.Exists(key).Result()
+	if err != nil {
+		return false, 0, fmt.Errorf("inspect material detail cache %d: %w", id, err)
+	}
+	if exists == 0 {
+		return false, 0, nil
+	}
+	ttl, err := GiftRedis.PTTL(key).Result()
+	if err != nil {
+		return false, 0, fmt.Errorf("inspect material detail cache ttl %d: %w", id, err)
+	}
+	return true, ttl, nil
 }
 
 // GetMaterialDetailCache 读取已经组装好的最终 DTO；hit=false 时由 service 回源四条 MySQL 查询。
@@ -470,6 +507,48 @@ func SetMaterialDetailCache(detail *MaterialDetailDTO, ttl time.Duration) error 
 	}
 	if err := GiftRedis.Set(materialDetailCacheKey(detail.ID), raw, ttl).Err(); err != nil {
 		return fmt.Errorf("write material detail cache %d: %w", detail.ID, err)
+	}
+	return nil
+}
+
+// GetMaterialDetailNegativeCache 读取“数据库已确认不存在”的短期标记。
+// 它与正常 DTO 使用不同命名空间，避免空值被误反序列化为材料详情。
+func GetMaterialDetailNegativeCache(id int) (bool, error) {
+	if GiftRedis == nil {
+		return false, errors.New("redis client is nil")
+	}
+	value, err := GiftRedis.Get(materialDetailNegativeCacheKey(id)).Result()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read material negative cache %d: %w", id, err)
+	}
+	if value != materialDetailNegativeCacheValue {
+		_ = GiftRedis.Del(materialDetailNegativeCacheKey(id)).Err()
+		return false, fmt.Errorf("invalid material negative cache marker %d", id)
+	}
+	return true, nil
+}
+
+// SetMaterialDetailNegativeCache 只在 MySQL 明确返回 not found 后写入短期标记。
+func SetMaterialDetailNegativeCache(id int, ttl time.Duration) error {
+	if GiftRedis == nil {
+		return errors.New("redis client is nil")
+	}
+	if err := GiftRedis.Set(materialDetailNegativeCacheKey(id), materialDetailNegativeCacheValue, ttl).Err(); err != nil {
+		return fmt.Errorf("write material negative cache %d: %w", id, err)
+	}
+	return nil
+}
+
+// DeleteMaterialDetailNegativeCache 清理任务级负缓存；DEL 幂等，终态清理可安全重试。
+func DeleteMaterialDetailNegativeCache(id int) error {
+	if GiftRedis == nil {
+		return errors.New("redis client is nil")
+	}
+	if err := GiftRedis.Del(materialDetailNegativeCacheKey(id)).Err(); err != nil {
+		return fmt.Errorf("delete material negative cache %d: %w", id, err)
 	}
 	return nil
 }

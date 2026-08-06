@@ -130,3 +130,42 @@ func TestValidateSeckillExperimentsKeepVariablesIsolated(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateControlledCacheScenarios(t *testing.T) {
+	valid := []CreateRequest{
+		{
+			Experiment: ExperimentCacheBreakdown, ArchiveID: StarMarrowArchiveID,
+			Mode: "cached", Rate: 300, ConnectionMode: ConnectionModeAuto,
+		},
+		{
+			Experiment: ExperimentCachePenetration, ArchiveID: StarMarrowArchiveID,
+			Mode: "cached", Rate: 300, ConnectionMode: ConnectionModeAuto, Protection: ProtectionNone,
+		},
+		{
+			Experiment: ExperimentCachePenetration, ArchiveID: StarMarrowArchiveID,
+			Mode: "cached", Rate: 300, ConnectionMode: ConnectionModeAuto, Protection: ProtectionNegativeCache,
+		},
+	}
+	for _, input := range valid {
+		if _, message := ValidateCreateRequest(input); message != "" {
+			t.Fatalf("valid cache scenario rejected: %+v: %s", input, message)
+		}
+	}
+
+	invalid := []CreateRequest{
+		{Experiment: ExperimentCacheBreakdown, ArchiveID: StarMarrowArchiveID, Mode: "direct", Rate: 300},
+		{
+			Experiment: ExperimentCacheBreakdown, ArchiveID: StarMarrowArchiveID,
+			Mode: "cached", Rate: 300, ConnectionMode: ConnectionModeManual, Connections: 140,
+		},
+		{
+			Experiment: ExperimentCachePenetration, ArchiveID: StarMarrowArchiveID,
+			Mode: "cached", Rate: 300, Protection: "bloom-filter",
+		},
+	}
+	for _, input := range invalid {
+		if _, message := ValidateCreateRequest(input); message == "" {
+			t.Fatalf("uncontrolled cache scenario accepted: %+v", input)
+		}
+	}
+}

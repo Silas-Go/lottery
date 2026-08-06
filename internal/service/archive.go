@@ -13,17 +13,31 @@ import (
 type ArchiveSource string
 
 const (
-	ArchiveSourceMySQL      ArchiveSource = "mysql"
-	ArchiveSourceCacheHit   ArchiveSource = "redis-hit"
-	ArchiveSourceCacheMiss  ArchiveSource = "redis-miss"
-	ArchiveSourceCacheError ArchiveSource = "redis-fallback"
+	ArchiveSourceMySQL            ArchiveSource = "mysql"
+	ArchiveSourceCacheHit         ArchiveSource = "redis-hit"
+	ArchiveSourceCacheMiss        ArchiveSource = "redis-miss"
+	ArchiveSourceNegativeCacheHit ArchiveSource = "redis-negative-hit"
+	ArchiveSourceCacheError       ArchiveSource = "redis-fallback"
 )
 
 // ArchiveService 编排材料聚合详情的两条公平读路径。
 // Direct 每次用四条 SQL 组装 DTO；Cached 执行标准 Cache-Aside，二者返回完全相同的最终 DTO。
 type ArchiveService struct {
-	store  *database.Store
-	fillMu sync.Map
+	store        *database.Store
+	fillMu       sync.Map
+	experimentMu sync.RWMutex
+	experiment   *archiveExperimentScope
+}
+
+type archiveCacheTrace struct {
+	InitialHit         bool
+	InitialMiss        bool
+	Coalesced          bool
+	MySQLFallback      bool
+	SQLQueries         int
+	CacheRebuilt       bool
+	CacheRebuildFailed bool
+	CacheError         bool
 }
 
 func NewArchiveService(store *database.Store) *ArchiveService {
@@ -58,22 +72,33 @@ func (s *ArchiveService) ReadCached(id int) (*database.MaterialDetailDTO, Archiv
 	if appErr := validateArchiveMaterialID(id); appErr != nil {
 		return nil, ArchiveSourceCacheMiss, 0, appErr
 	}
+	archive, source, queries, appErr, _ := s.readCached(id)
+	return archive, source, queries, appErr
+}
+
+func (s *ArchiveService) readCached(id int) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError, archiveCacheTrace) {
+	trace := archiveCacheTrace{}
 	start := time.Now()
 	metrics.RecordArchiveRequest(metrics.ArchivePathCached)
 
 	archive, hit, cacheErr := database.GetMaterialDetailCache(id)
 	if cacheErr == nil && hit {
+		trace.InitialHit = true
 		metrics.RecordArchiveCacheHit()
 		metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), false)
-		return archive, ArchiveSourceCacheHit, 0, nil
+		return archive, ArchiveSourceCacheHit, 0, nil, trace
 	}
 	if cacheErr != nil {
+		trace.CacheError = true
 		// 缓存是性能层，不是正确性依赖。Redis 故障时回源 MySQL，页面用指标展示这次降级。
 		metrics.RecordArchiveCacheError()
 		archive, queries, appErr := s.readMySQL(id, metrics.ArchivePathCached)
+		trace.MySQLFallback = true
+		trace.SQLQueries = queries
 		metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), appErr != nil)
-		return archive, ArchiveSourceCacheError, queries, appErr
+		return archive, ArchiveSourceCacheError, queries, appErr, trace
 	}
+	trace.InitialMiss = true
 
 	// 每个材料使用独立冷缓存锁：同一材料的首波请求合并回源，不同材料之间不会互相阻塞。
 	lockValue, _ := s.fillMu.LoadOrStore(strconv.Itoa(id), &sync.Mutex{})
@@ -84,27 +109,34 @@ func (s *ArchiveService) ReadCached(id int) (*database.MaterialDetailDTO, Archiv
 	// 双检让等待首个回源请求的并发请求直接读取刚写好的水晶，而不是排队翻真本。
 	archive, hit, cacheErr = database.GetMaterialDetailCache(id)
 	if cacheErr == nil && hit {
+		trace.Coalesced = true
 		metrics.RecordArchiveCacheHit()
 		metrics.RecordArchiveCacheCoalesced()
 		metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), false)
-		return archive, ArchiveSourceCacheHit, 0, nil
+		return archive, ArchiveSourceCacheHit, 0, nil, trace
 	}
 	if cacheErr != nil {
+		trace.CacheError = true
 		metrics.RecordArchiveCacheError()
 	}
 
 	metrics.RecordArchiveCacheMiss()
 	archive, queries, appErr := s.readMySQL(id, metrics.ArchivePathCached)
+	trace.MySQLFallback = true
+	trace.SQLQueries = queries
 	if appErr != nil {
 		metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), true)
-		return nil, ArchiveSourceCacheMiss, queries, appErr
+		return nil, ArchiveSourceCacheMiss, queries, appErr, trace
 	}
 	if err := database.SetMaterialDetailCache(archive, metrics.ArchiveCacheTTL); err != nil {
 		// 回填失败不影响本次正确响应；下一次请求会再次回源，cacheErrors 会暴露退化。
+		trace.CacheRebuildFailed = true
 		metrics.RecordArchiveCacheError()
+	} else {
+		trace.CacheRebuilt = true
 	}
 	metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), false)
-	return archive, ArchiveSourceCacheMiss, queries, nil
+	return archive, ArchiveSourceCacheMiss, queries, nil, trace
 }
 
 func validateArchiveMaterialID(id int) *AppError {

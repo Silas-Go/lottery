@@ -65,6 +65,8 @@ func statusForCode(code string) int {
 		return http.StatusTooManyRequests
 	case service.CodePurchaseLabInvalidStrategy:
 		return http.StatusBadRequest
+	case service.CodeArchiveExperimentInvalid:
+		return http.StatusBadRequest
 	case service.CodeLoadtestInvalidRequest:
 		return http.StatusBadRequest
 	case service.CodeDuplicateParticipation,
@@ -74,6 +76,7 @@ func statusForCode(code string) int {
 		service.CodeOrderStateConflict,
 		service.CodePurchaseLabSoldOut,
 		service.CodePurchaseLabRequestConflict,
+		service.CodeArchiveExperimentConflict,
 		service.CodeLoadtestAlreadyRunning:
 		return http.StatusConflict
 	case service.CodeLoadtestNotFound:
@@ -90,6 +93,7 @@ func statusForCode(code string) int {
 		service.CodeCacheAsideOverload,
 		service.CodeArchiveDBReadFailed,
 		service.CodeArchiveCacheResetFailed,
+		service.CodeArchiveExperimentUnavailable,
 		service.CodePurchaseLabUnavailable,
 		service.CodeLoadtestRunnerFailure,
 		service.CodeLoadtestRunnerUnavailable:

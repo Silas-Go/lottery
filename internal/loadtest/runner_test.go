@@ -275,6 +275,15 @@ func TestWrkArgumentsCollectBothLatencySemantics(t *testing.T) {
 	}
 }
 
+func TestWrkArgumentsPutExperimentHeaderBeforeURL(t *testing.T) {
+	task := Task{Tier: TierConfig{Rate: 300, Connections: 140, DurationSeconds: 30}}
+	got := wrkArguments(task, "/opt/read.lua", "http://app/internal/read", "X-Experiment-Token: task-token")
+	wantTail := []string{"-H", "X-Experiment-Token: task-token", "http://app/internal/read"}
+	if len(got) < len(wantTail) || !reflect.DeepEqual(got[len(got)-len(wantTail):], wantTail) {
+		t.Fatalf("experiment header must precede the target URL: %#v", got)
+	}
+}
+
 func TestRunnerLoadsLegacyPersistedTask(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "tasks.json")
 	legacy := persistedState{Records: []persistedRecord{{

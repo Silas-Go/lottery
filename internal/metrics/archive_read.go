@@ -22,6 +22,7 @@ type ArchiveReadSnapshot struct {
 	CacheTTLSeconds int64                   `json:"cacheTTLSeconds"`
 	Direct          ArchiveReadPathSnapshot `json:"direct"`
 	Cached          ArchiveReadPathSnapshot `json:"cached"`
+	Scenario        ArchiveScenarioSnapshot `json:"scenario"`
 }
 
 // ArchiveReadPathSnapshot 同时提供故事名背后的技术证据：请求、DB 翻阅、缓存命中和尾延迟。
@@ -173,6 +174,7 @@ func SnapshotArchiveRead(cacheTTL time.Duration) ArchiveReadSnapshot {
 		CacheTTLSeconds: int64(cacheTTL.Seconds()),
 		Direct:          snapshotArchivePath(now, archiveMeter(ArchivePathDirect)),
 		Cached:          snapshotArchivePath(now, archiveMeter(ArchivePathCached)),
+		Scenario:        SnapshotArchiveScenario(),
 	}
 }
 

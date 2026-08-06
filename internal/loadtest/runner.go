@@ -46,6 +46,23 @@ func concurrencyFor(experiment string) int {
 	return 0
 }
 
+func isArchiveScenarioExperiment(experiment string) bool {
+	return experiment == ExperimentCacheBreakdown || experiment == ExperimentCachePenetration
+}
+
+func controlledArchiveScenarioConnections(rate int) int {
+	switch rate {
+	case 100:
+		return 70
+	case 300:
+		return 140
+	case 800:
+		return 300
+	default:
+		return 500
+	}
+}
+
 type RunnerOptions struct {
 	AppBaseURL string
 	StatePath  string
@@ -54,13 +71,14 @@ type RunnerOptions struct {
 }
 
 type taskRecord struct {
-	Task        Task
-	Events      []Event
-	NextEventID int64
-	Cancel      context.CancelFunc
-	Command     *exec.Cmd
-	Done        chan struct{}
-	Subscribers map[chan Event]struct{}
+	Task         Task
+	Events       []Event
+	NextEventID  int64
+	Cancel       context.CancelFunc
+	Command      *exec.Cmd
+	Done         chan struct{}
+	Subscribers  map[chan Event]struct{}
+	ControlToken string
 }
 
 type persistedRecord struct {
@@ -132,6 +150,9 @@ func (r *Runner) PlanConnections(request CreateRequest) (ConnectionPlanResponse,
 		if connectionMode == ConnectionModeManual {
 			tier.Connections = request.Connections
 			reason = "用户手动指定"
+		} else if isArchiveScenarioExperiment(request.Experiment) {
+			tier.Connections = controlledArchiveScenarioConnections(tier.Rate)
+			reason = "受控缓存场景固定通路，保证前后对比一致"
 		} else {
 			r.mu.Lock()
 			tier.Connections, reason = r.resolveAutoConnectionsLocked(request, tier.Rate)
@@ -180,6 +201,10 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 			tier.Connections = request.Connections
 			connectionReason = "用户手动指定"
 			connectionLog = fmt.Sprintf("配置 wrk2 -c %d（手动指定）", tier.Connections)
+		} else if isArchiveScenarioExperiment(request.Experiment) {
+			tier.Connections = controlledArchiveScenarioConnections(tier.Rate)
+			connectionReason = "受控缓存场景固定通路，保证前后对比一致"
+			connectionLog = fmt.Sprintf("配置 wrk2 -c %d（场景固定）", tier.Connections)
 		} else {
 			tier.Connections, connectionReason = r.resolveAutoConnectionsLocked(request, tier.Rate)
 			connectionLog = fmt.Sprintf("配置 wrk2 -c %d（自动）：%s", tier.Connections, connectionReason)
@@ -191,12 +216,22 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 	// 任务不绑定创建它的 HTTP 请求，但仍有 Runner 级硬超时。
 	// 固定挡位最多运行 30 秒，额外 10 秒只留给重置和结果收集，避免异常 wrk2 永久占用单任务锁。
 	runContext, cancel := context.WithTimeout(context.Background(), time.Duration(tier.DurationSeconds+10)*time.Second)
+	controlToken := ""
+	if isArchiveScenarioExperiment(request.Experiment) {
+		controlToken = newTaskToken()
+	}
+	probeArchiveID := 0
+	if request.Experiment == ExperimentCachePenetration {
+		probeArchiveID = CachePenetrationMissingID
+	}
 	record := &taskRecord{
 		Task: Task{
 			ID:                   id,
 			Experiment:           request.Experiment,
 			ArchiveID:            request.ArchiveID,
 			Mode:                 request.Mode,
+			Protection:           request.Protection,
+			ProbeArchiveID:       probeArchiveID,
 			Tier:                 tier,
 			ConnectionMode:       connectionMode,
 			RequestedConnections: requestedConnections,
@@ -207,9 +242,10 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 			CreatedAt:            now,
 			RemainingSeconds:     tier.DurationSeconds,
 		},
-		Cancel:      cancel,
-		Done:        make(chan struct{}),
-		Subscribers: make(map[chan Event]struct{}),
+		Cancel:       cancel,
+		Done:         make(chan struct{}),
+		Subscribers:  make(map[chan Event]struct{}),
+		ControlToken: controlToken,
 	}
 	r.records[id] = record
 	r.order = append(r.order, id)
@@ -435,14 +471,17 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 	if taskErr != nil {
 		return
 	}
+	controlToken := r.taskControlToken(id)
 	resetMessage := "正在重置缓存与章节指标"
-	if task.Experiment != ExperimentCacheAsideRead {
+	if isArchiveScenarioExperiment(task.Experiment) {
+		resetMessage = "正在建立任务级缓存场景"
+	} else if task.Experiment != ExperimentCacheAsideRead {
 		resetMessage = "正在重置秒杀库存、订单、令牌桶与指标"
 	}
 	if !r.transition(id, StatusResetting, resetMessage) {
 		return
 	}
-	if err := r.resetExperiment(taskContext, task); err != nil {
+	if err := r.resetExperiment(taskContext, task, controlToken); err != nil {
 		if taskContext.Err() != nil {
 			r.finishContextEnd(id, taskContext, "重置阶段")
 			return
@@ -461,13 +500,18 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 		return
 	}
 	targetURL := fmt.Sprintf("%s/api/archives/%d/%s", r.appBaseURL, task.ArchiveID, task.Mode)
+	requestHeaders := make([]string, 0, 1)
+	if isArchiveScenarioExperiment(task.Experiment) {
+		targetURL = r.appBaseURL + "/internal/cache-experiments/read"
+		requestHeaders = append(requestHeaders, "X-Experiment-Token: "+controlToken)
+	}
 	if task.Experiment == ExperimentSeckillRateLimit {
 		targetURL = r.appBaseURL + "/api/seckill/rate-limit-probe"
 	}
 	// 单线程让两条读取路径保持一致的调度条件；真实并发仍由 -c 持久连接承担。
 	// wrk2 镜像另有单调时钟、修正延迟回退和 HDR Histogram 入参校验三层保护，
 	// 因此这里不再把 -t1 当作避免上游断言崩溃的唯一可靠性边界。
-	args := wrkArguments(task, r.scriptPath, targetURL)
+	args := wrkArguments(task, r.scriptPath, targetURL, requestHeaders...)
 	command := exec.Command(r.wrk2Path, args...)
 	configureProcess(command)
 	var output bytes.Buffer
@@ -500,6 +544,10 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	targetRateLogged := false
+	stableHitSamples := 0
+	evictionTriggered := false
+	rebuildReported := false
+	recoveryReported := false
 
 	for {
 		select {
@@ -531,14 +579,44 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 					targetRateLogged = true
 					r.emitStep(id, EventLog, "已达到目标速率", "success")
 				}
+				if task.Experiment == ExperimentCacheBreakdown {
+					if !evictionTriggered {
+						if metrics.CurrentRequests > 0 && metrics.CurrentPositiveHits > 0 &&
+							metrics.CurrentRedisMisses == 0 && metrics.CurrentHitRate >= 99 {
+							stableHitSamples++
+						} else {
+							stableHitSamples = 0
+						}
+						if stableHitSamples >= 2 {
+							state, injectErr := r.evictArchiveExperiment(taskContext, controlToken)
+							if injectErr != nil {
+								terminateProcess(command)
+								<-waitChannel
+								r.finish(id, StatusFailed, CodeRunnerFailure, "热点 Key 失效注入失败："+injectErr.Error(), EventFailed)
+								return
+							}
+							evictionTriggered = true
+							r.emitStep(id, EventCacheEvicted, "热点 Key 已真实删除："+state.At, "warning")
+						}
+					} else {
+						if !rebuildReported && metrics.CacheRebuilds > 0 && metrics.RebuiltAt != "" {
+							rebuildReported = true
+							r.emitStep(id, EventCacheRebuilt, "热点缓存已由真实 MySQL 回源重建", "success")
+						}
+						if !recoveryReported && metrics.RecoveryDurationMS > 0 && metrics.StableAt != "" {
+							recoveryReported = true
+							r.emitStep(id, EventCacheRecovered, "命中率已经恢复稳定", "success")
+						}
+					}
+				}
 			}
 		}
 	}
 }
 
-func wrkArguments(task Task, scriptPath, targetURL string) []string {
+func wrkArguments(task Task, scriptPath, targetURL string, headers ...string) []string {
 	const threads = 1
-	return []string{
+	args := []string{
 		"-t" + strconv.Itoa(threads),
 		"-c" + strconv.Itoa(task.Tier.Connections),
 		"-d" + strconv.Itoa(task.Tier.DurationSeconds) + "s",
@@ -549,6 +627,16 @@ func wrkArguments(task Task, scriptPath, targetURL string) []string {
 		"-s", scriptPath,
 		targetURL,
 	}
+	if len(headers) == 0 {
+		return args
+	}
+	// wrk2 要求 Header 参数位于目标 URL 前；保持 URL 为最后一个参数。
+	url := args[len(args)-1]
+	args = args[:len(args)-1]
+	for _, header := range headers {
+		args = append(args, "-H", header)
+	}
+	return append(args, url)
 }
 
 func (r *Runner) collectAndComplete(taskContext context.Context, id, output string) {
@@ -616,19 +704,56 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 		}
 		metrics.HTTPUnexpected = unexpected
 		metrics.ErrorRate = float64(unexpected) * 100 / float64(parsed.Requests)
+	} else if task.Experiment == ExperimentCachePenetration {
+		expectedNotFound := metrics.ExpectedNotFound
+		unexpected := parsed.Non2xxResponses - expectedNotFound
+		if unexpected < 0 {
+			unexpected = 0
+		}
+		metrics.HTTPUnexpected = unexpected
+		metrics.ErrorRate = float64(unexpected) * 100 / float64(parsed.Requests)
 	} else {
 		metrics.ErrorRate = float64(parsed.Non2xxResponses) * 100 / float64(parsed.Requests)
+	}
+
+	if task.Experiment == ExperimentCacheBreakdown {
+		if metrics.EvictedAt == "" || metrics.CacheRebuilds != 1 || metrics.RebuiltAt == "" ||
+			metrics.StableAt == "" || metrics.RecoveryDurationMS <= 0 {
+			r.finish(id, StatusFailed, CodeRunnerFailure, "热点失效、重建与稳定恢复证据不完整", EventFailed)
+			return
+		}
+	}
+	if task.Experiment == ExperimentCachePenetration {
+		if metrics.NonexistentRequests <= 0 || metrics.ExpectedNotFound <= 0 || metrics.InvalidMySQLQueries <= 0 {
+			r.finish(id, StatusFailed, CodeRunnerFailure, "缓存穿透任务没有形成完整的不存在查询证据", EventFailed)
+			return
+		}
+		if task.Protection == ProtectionNone && (metrics.NegativeCacheHits != 0 || metrics.NegativeCacheWrites != 0) {
+			r.finish(id, StatusFailed, CodeRunnerFailure, "未保护任务意外使用了负缓存", EventFailed)
+			return
+		}
+		if task.Protection == ProtectionNegativeCache && (metrics.NegativeCacheHits <= 0 || metrics.NegativeCacheWrites != 1) {
+			r.finish(id, StatusFailed, CodeRunnerFailure, "负缓存保护任务没有形成一次写入与后续命中", EventFailed)
+			return
+		}
 	}
 
 	r.mu.Lock()
 	if record := r.records[id]; record != nil && record.Task.Status == StatusCollecting {
 		record.Task.Metrics = metrics
 		r.appendLogLocked(record, "info", "wrk2 结束")
-		if parsed.SocketErrors > 0 || parsed.Non2xxResponses > 0 {
+		unexpectedNon2xx := parsed.Non2xxResponses
+		if task.Experiment == ExperimentCachePenetration {
+			unexpectedNon2xx -= metrics.ExpectedNotFound
+			if unexpectedNon2xx < 0 {
+				unexpectedNon2xx = 0
+			}
+		}
+		if parsed.SocketErrors > 0 || unexpectedNon2xx > 0 {
 			r.appendLogLocked(record, "warning", fmt.Sprintf(
-				"检测到 Socket Errors %d 个、HTTP 非成功响应 %d 个",
+				"检测到 Socket Errors %d 个、HTTP 非预期响应 %d 个",
 				parsed.SocketErrors,
-				parsed.Non2xxResponses,
+				unexpectedNon2xx,
 			))
 		}
 		if parsed.LatencyScheduleFallbacks > 0 || parsed.LatencySamplesDropped > 0 {
@@ -653,7 +778,10 @@ func (r *Runner) finishContextEnd(id string, ctx context.Context, stage string) 
 	r.finish(id, StatusStopped, "", "压测已在"+stage+"停止", EventStopped)
 }
 
-func (r *Runner) resetExperiment(ctx context.Context, task Task) error {
+func (r *Runner) resetExperiment(ctx context.Context, task Task, controlToken string) error {
+	if isArchiveScenarioExperiment(task.Experiment) {
+		return r.prepareArchiveExperiment(ctx, task, controlToken)
+	}
 	resetPath := "/api/chapters/cache-aside/reset"
 	if task.Experiment != ExperimentCacheAsideRead {
 		resetPath = "/api/lab/reset"
@@ -686,6 +814,41 @@ type archiveMetricPath struct {
 	P99           int64 `json:"p99"`
 	PoolPeak      int64 `json:"poolPeak"`
 	PoolCapacity  int64 `json:"poolCapacity"`
+}
+
+type archiveScenarioMetricCounters struct {
+	Requests            int64   `json:"requests"`
+	PositiveCacheHits   int64   `json:"positiveCacheHits"`
+	RedisMisses         int64   `json:"redisMisses"`
+	CoalescedAfterMiss  int64   `json:"coalescedAfterMiss"`
+	MySQLFallbacks      int64   `json:"mysqlFallbacks"`
+	SQLQueries          int64   `json:"sqlQueries"`
+	CacheRebuilds       int64   `json:"cacheRebuilds"`
+	NegativeCacheHits   int64   `json:"negativeCacheHits"`
+	NegativeCacheWrites int64   `json:"negativeCacheWrites"`
+	NonexistentRequests int64   `json:"nonexistentRequests"`
+	InvalidMySQLQueries int64   `json:"invalidMySQLQueries"`
+	ExpectedNotFound    int64   `json:"expectedNotFound"`
+	Errors              int64   `json:"errors"`
+	HitRate             float64 `json:"hitRate"`
+	P95Latency          int64   `json:"p95Latency"`
+	MaxLatency          int64   `json:"maxLatency"`
+}
+
+type archiveScenarioMetricSnapshot struct {
+	Active             bool                          `json:"active"`
+	Scenario           string                        `json:"scenario"`
+	Protection         string                        `json:"protection"`
+	Phase              string                        `json:"phase"`
+	KeyPresent         bool                          `json:"keyPresent"`
+	KeyPTTLMillis      int64                         `json:"keyPttlMillis"`
+	Current            archiveScenarioMetricCounters `json:"current"`
+	Round              archiveScenarioMetricCounters `json:"round"`
+	EvictedAt          string                        `json:"evictedAt"`
+	RebuiltAt          string                        `json:"rebuiltAt"`
+	StableAt           string                        `json:"stableAt"`
+	RebuildDurationMS  int64                         `json:"rebuildDurationMs"`
+	RecoveryDurationMS int64                         `json:"recoveryDurationMs"`
 }
 
 func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, error) {
@@ -728,8 +891,9 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 			P99           int64 `json:"p99"`
 		} `json:"rateLimitProbe"`
 		ArchiveRead struct {
-			Direct archiveMetricPath `json:"direct"`
-			Cached archiveMetricPath `json:"cached"`
+			Direct   archiveMetricPath             `json:"direct"`
+			Cached   archiveMetricPath             `json:"cached"`
+			Scenario archiveScenarioMetricSnapshot `json:"scenario"`
 		} `json:"archiveRead"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&snapshot); err != nil {
@@ -774,6 +938,47 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 			Oversold:            snapshot.Oversold,
 			P95MS:               float64(snapshot.P95),
 			P99MS:               float64(snapshot.P99),
+		}, nil
+	}
+	if isArchiveScenarioExperiment(task.Experiment) {
+		scenario := snapshot.ArchiveRead.Scenario
+		errorRate := float64(0)
+		if scenario.Round.Requests > 0 {
+			errorRate = float64(scenario.Round.Errors) * 100 / float64(scenario.Round.Requests)
+		}
+		return TaskMetrics{
+			ActualRequests:        scenario.Round.Requests,
+			ActualQPS:             float64(scenario.Current.Requests),
+			ErrorRate:             errorRate,
+			RedisHits:             scenario.Round.PositiveCacheHits,
+			RedisMisses:           scenario.Round.RedisMisses,
+			MySQLFallbacks:        scenario.Round.MySQLFallbacks,
+			SQLQueries:            scenario.Round.SQLQueries,
+			CacheHitRate:          scenario.Round.HitRate,
+			CoalescedAfterMiss:    scenario.Round.CoalescedAfterMiss,
+			CacheRebuilds:         scenario.Round.CacheRebuilds,
+			NegativeCacheHits:     scenario.Round.NegativeCacheHits,
+			NegativeCacheWrites:   scenario.Round.NegativeCacheWrites,
+			NonexistentRequests:   scenario.Round.NonexistentRequests,
+			InvalidMySQLQueries:   scenario.Round.InvalidMySQLQueries,
+			ExpectedNotFound:      scenario.Round.ExpectedNotFound,
+			CurrentRequests:       scenario.Current.Requests,
+			CurrentPositiveHits:   scenario.Current.PositiveCacheHits,
+			CurrentRedisMisses:    scenario.Current.RedisMisses,
+			CurrentNegativeHits:   scenario.Current.NegativeCacheHits,
+			CurrentMySQLFallbacks: scenario.Current.MySQLFallbacks,
+			CurrentHitRate:        scenario.Current.HitRate,
+			CurrentP95MS:          scenario.Current.P95Latency,
+			CurrentMaxLatencyMS:   scenario.Current.MaxLatency,
+			RunMaxLatencyMS:       scenario.Round.MaxLatency,
+			ScenarioPhase:         scenario.Phase,
+			KeyPresent:            scenario.KeyPresent,
+			KeyPTTLMillis:         scenario.KeyPTTLMillis,
+			EvictedAt:             scenario.EvictedAt,
+			RebuiltAt:             scenario.RebuiltAt,
+			StableAt:              scenario.StableAt,
+			RebuildDurationMS:     scenario.RebuildDurationMS,
+			RecoveryDurationMS:    scenario.RecoveryDurationMS,
 		}, nil
 	}
 	path := snapshot.ArchiveRead.Direct
@@ -867,6 +1072,16 @@ func (r *Runner) emitStep(id string, eventType EventType, message, level string)
 }
 
 func (r *Runner) finish(id string, status TaskStatus, code, message string, eventType EventType) {
+	if cleanupErr := r.finishArchiveExperiment(id); cleanupErr != nil {
+		if status == StatusCompleted {
+			status = StatusFailed
+			code = CodeRunnerFailure
+			eventType = EventFailed
+			message = "缓存场景终态清理失败：" + cleanupErr.Error()
+		} else {
+			message += "；缓存场景清理失败：" + cleanupErr.Error()
+		}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	record := r.records[id]
@@ -887,6 +1102,7 @@ func (r *Runner) finish(id string, status TaskStatus, code, message string, even
 	r.publishLocked(record, eventType, message, &record.Task.Metrics)
 	record.Command = nil
 	record.Cancel = nil
+	record.ControlToken = ""
 	if r.activeID == id {
 		r.activeID = ""
 	}
@@ -1070,6 +1286,14 @@ func newTaskID(now time.Time) string {
 		return fmt.Sprintf("lt-%d", now.UnixNano())
 	}
 	return fmt.Sprintf("lt-%d-%s", now.UnixMilli(), hex.EncodeToString(random))
+}
+
+func newTaskToken() string {
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return fmt.Sprintf("cache-task-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(random)
 }
 
 func outputTail(output string, limit int) string {

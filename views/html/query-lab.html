@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260805-navigation-v2" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260806-cache-scenarios-v1" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
@@ -71,8 +71,20 @@
                             <span>01 / TASK CONFIGURATION</span>
                             <h1 id="query-title">确定本轮读取路径</h1>
                         </div>
-                        <span class="endpoint-label">GET /api/archives/:id/{direct|cached}</span>
+                        <span id="query-route-label" class="endpoint-label">GET /api/archives/:id/{direct|cached}</span>
                     </div>
+
+                    <nav class="query-scenario-nav" aria-label="选择缓存查询实验阶段">
+                        <button id="scenario-steady" class="is-active" type="button" aria-pressed="true">
+                            <small>阶段 1</small><strong>稳态性能</strong><span>Direct vs Cache-Aside</span>
+                        </button>
+                        <button id="scenario-breakdown" type="button" aria-pressed="false">
+                            <small>阶段 2</small><strong>热点击穿</strong><span>ARC-004 真实失效与恢复</span>
+                        </button>
+                        <button id="scenario-penetration" type="button" aria-pressed="false">
+                            <small>阶段 3</small><strong>缓存穿透</strong><span>不存在 ID 与负缓存</span>
+                        </button>
+                    </nav>
 
                     <div class="archive-reader-control">
                         <header class="archive-reader-heading">
@@ -120,6 +132,15 @@
                             </button>
                         </div>
                         <p id="lab-strategy-explanation" class="lab-strategy-explanation">Redis 不参与；每次请求都会产生 MySQL DB Read。</p>
+                        <fieldset id="penetration-protection" class="penetration-protection" hidden>
+                            <legend>穿透保护</legend>
+                            <button id="protection-none" class="is-active" type="button" aria-pressed="true">
+                                <strong>无保护</strong><span>每次 MISS 都查 MySQL</span>
+                            </button>
+                            <button id="protection-negative" type="button" aria-pressed="false">
+                                <strong>负缓存</strong><span>首次确认不存在，后续单独命中</span>
+                            </button>
+                        </fieldset>
                     </div>
 
                     <section id="lab-loadtest" class="lab-loadtest query-task-board" aria-labelledby="lab-loadtest-title" hidden>
@@ -176,6 +197,36 @@
                                 <li>等待任务创建</li>
                             </ol>
                         </details>
+                    </section>
+
+                    <section id="cache-scenario-observation" class="cache-scenario-observation" aria-labelledby="cache-scenario-title" hidden>
+                        <header>
+                            <div><small>REAL CACHE STATE</small><strong id="cache-scenario-title">任务级缓存场景</strong></div>
+                            <span id="scenario-phase">等待任务</span>
+                        </header>
+                        <div class="scenario-live-grid" aria-label="当前一秒与整轮真实指标">
+                            <span><small>当前命中率</small><strong id="scenario-current-hit-rate">—</strong></span>
+                            <span><small>当前 HIT / MISS</small><strong id="scenario-current-hit-miss">—</strong></span>
+                            <span><small>当前 MySQL 回源</small><strong id="scenario-current-fallbacks">—</strong></span>
+                            <span><small>当前 P95 / 峰值</small><strong id="scenario-current-latency">—</strong></span>
+                            <span><small>整轮命中率</small><strong id="scenario-round-hit-rate">—</strong></span>
+                            <span><small>整轮 MySQL 回源</small><strong id="scenario-round-fallbacks">—</strong></span>
+                            <span><small>整轮延迟峰值</small><strong id="scenario-round-max-latency">—</strong></span>
+                            <span><small>Redis Key</small><strong id="scenario-key-state">—</strong></span>
+                        </div>
+                        <div id="breakdown-evidence" class="scenario-evidence">
+                            <span><small>等待后合并</small><strong id="scenario-coalesced">—</strong></span>
+                            <span><small>缓存重建</small><strong id="scenario-rebuilds">—</strong></span>
+                            <span><small>失效 → 重建</small><strong id="scenario-rebuild-time">—</strong></span>
+                            <span><small>失效 → 稳定</small><strong id="scenario-recovery-time">—</strong></span>
+                        </div>
+                        <div id="penetration-evidence" class="scenario-evidence" hidden>
+                            <span><small>不存在 ID 请求</small><strong id="scenario-nonexistent">—</strong></span>
+                            <span><small>负缓存命中</small><strong id="scenario-negative-hits">—</strong></span>
+                            <span><small>负缓存写入</small><strong id="scenario-negative-writes">—</strong></span>
+                            <span><small>无效 MySQL 查询</small><strong id="scenario-invalid-queries">—</strong></span>
+                        </div>
+                        <p id="scenario-proof-copy">所有状态来自任务 SSE 与 Redis / MySQL 的真实请求指标。</p>
                     </section>
 
                     <section id="query-tide-stage" class="query-tide-stage" data-flow-state="waiting" data-backend-mode="direct" aria-labelledby="query-tide-heading" hidden>
@@ -561,7 +612,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/query-lab.js?v=20260804-css-ownership-v1"></script>
+    <script src="/js/query-lab.js?v=20260805-cache-scenarios-v1"></script>
 </body>
 
 </html>
