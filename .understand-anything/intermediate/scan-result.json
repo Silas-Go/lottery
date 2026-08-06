@@ -1,7 +1,8 @@
 {
   "name": "lottery",
-  "description": "Go/Gin 高并发抽奖秒杀演示项目，包含预扣库存与 Cache-Aside 两种库存链路、MySQL/Redis/RocketMQ 集成、熔断限流指标以及静态前端页面。",
+  "description": "Go/Gin 高并发秒杀与缓存实验演示项目，围绕星髓材料提供预扣库存与 Cache-Aside 两条抢购链路、材料档案只读对照、同步失效与 Outbox + MQ 购买实验，并内置独立 wrk2 压测 Runner 与 SSE 实时指标。",
   "languages": [
+    "c",
     "conf",
     "css",
     "dockerfile",
@@ -12,10 +13,12 @@
     "lua",
     "markdown",
     "mod",
+    "patch",
     "powershell",
     "shell",
     "sql",
     "sum",
+    "svg",
     "unknown",
     "yaml"
   ],
@@ -26,209 +29,306 @@
     "Redis",
     "RocketMQ",
     "MySQL",
-    "Docker Compose"
+    "Docker Compose",
+    "wrk2"
   ],
   "files": [
     {
       "path": ".claude/config.json",
       "language": "json",
-      "sizeLines": 4,
+      "sizeLines": 5,
       "fileCategory": "config"
     },
     {
       "path": ".dockerignore",
       "language": "unknown",
-      "sizeLines": 8,
+      "sizeLines": 11,
       "fileCategory": "infra"
+    },
+    {
+      "path": ".gitattributes",
+      "language": "unknown",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": ".gitignore",
+      "language": "unknown",
+      "sizeLines": 23,
+      "fileCategory": "code"
     },
     {
       "path": ".understand-anything/.understandignore",
       "language": "unknown",
-      "sizeLines": 46,
+      "sizeLines": 47,
       "fileCategory": "code"
     },
     {
       "path": ".understand-anything/config.json",
       "language": "json",
-      "sizeLines": 3,
+      "sizeLines": 4,
       "fileCategory": "config"
     },
     {
       "path": "AGENTS.md",
       "language": "markdown",
-      "sizeLines": 154,
+      "sizeLines": 158,
       "fileCategory": "docs"
     },
     {
       "path": "CLAUDE.md",
       "language": "markdown",
-      "sizeLines": 12,
+      "sizeLines": 15,
       "fileCategory": "docs"
+    },
+    {
+      "path": "Dockerfile",
+      "language": "dockerfile",
+      "sizeLines": 29,
+      "fileCategory": "infra"
+    },
+    {
+      "path": "cmd/loadtest-runner/main.go",
+      "language": "go",
+      "sizeLines": 72,
+      "fileCategory": "code"
     },
     {
       "path": "conf/mysql.yaml",
       "language": "yaml",
-      "sizeLines": 5,
+      "sizeLines": 6,
       "fileCategory": "config"
     },
     {
       "path": "conf/redis.yaml",
       "language": "yaml",
-      "sizeLines": 1,
+      "sizeLines": 2,
       "fileCategory": "config"
     },
     {
       "path": "docker-compose.yml",
       "language": "yaml",
-      "sizeLines": 111,
+      "sizeLines": 182,
       "fileCategory": "infra"
     },
     {
       "path": "docker/rocketmq/broker.conf",
       "language": "conf",
-      "sizeLines": 1,
+      "sizeLines": 2,
       "fileCategory": "code"
     },
     {
       "path": "docker/wrk2/Dockerfile",
       "language": "dockerfile",
-      "sizeLines": 35,
+      "sizeLines": 101,
       "fileCategory": "infra"
     },
     {
       "path": "docker/wrk2/run-wrk2.sh",
       "language": "shell",
-      "sizeLines": 28,
+      "sizeLines": 29,
       "fileCategory": "script"
     },
     {
       "path": "docker/wrk2/scripts/lucky.lua",
       "language": "lua",
-      "sizeLines": 25,
+      "sizeLines": 29,
+      "fileCategory": "script"
+    },
+    {
+      "path": "docker/wrk2/scripts/read.lua",
+      "language": "lua",
+      "sizeLines": 6,
+      "fileCategory": "script"
+    },
+    {
+      "path": "docker/wrk2/verify-latency-safety.c",
+      "language": "c",
+      "sizeLines": 32,
       "fileCategory": "code"
     },
     {
-      "path": "Dockerfile",
-      "language": "dockerfile",
-      "sizeLines": 28,
-      "fileCategory": "infra"
+      "path": "docker/wrk2/wrk2-latency-safety.patch",
+      "language": "patch",
+      "sizeLines": 156,
+      "fileCategory": "code"
     },
     {
       "path": "docs/local-dev.md",
       "language": "markdown",
-      "sizeLines": 57,
+      "sizeLines": 53,
       "fileCategory": "docs"
     },
     {
       "path": "docs/reliability.md",
       "language": "markdown",
-      "sizeLines": 345,
+      "sizeLines": 415,
       "fileCategory": "docs"
     },
     {
       "path": "docs/video-script-ep1.md",
       "language": "markdown",
-      "sizeLines": 153,
+      "sizeLines": 171,
       "fileCategory": "docs"
     },
     {
       "path": "go.mod",
       "language": "mod",
-      "sizeLines": 89,
+      "sizeLines": 90,
       "fileCategory": "config"
     },
     {
       "path": "go.sum",
       "language": "sum",
-      "sizeLines": 571,
+      "sizeLines": 572,
       "fileCategory": "config"
     },
     {
       "path": "init.sql",
       "language": "sql",
-      "sizeLines": 35,
-      "fileCategory": "data"
+      "sizeLines": 98,
+      "fileCategory": "schema"
     },
     {
       "path": "internal/app/app.go",
       "language": "go",
-      "sizeLines": 191,
+      "sizeLines": 279,
       "fileCategory": "code"
     },
     {
       "path": "internal/database/admission.go",
       "language": "go",
-      "sizeLines": 316,
+      "sizeLines": 311,
       "fileCategory": "code"
     },
     {
       "path": "internal/database/gift.go",
       "language": "go",
-      "sizeLines": 78,
+      "sizeLines": 155,
       "fileCategory": "code"
     },
     {
-      "path": "internal/database/inventory_cacheaside_test.go",
+      "path": "internal/database/gift_catalog_test.go",
       "language": "go",
-      "sizeLines": 79,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/database/inventory_cacheaside.go",
-      "language": "go",
-      "sizeLines": 260,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/database/inventory_test.go",
-      "language": "go",
-      "sizeLines": 45,
+      "sizeLines": 27,
       "fileCategory": "code"
     },
     {
       "path": "internal/database/inventory.go",
       "language": "go",
-      "sizeLines": 134,
+      "sizeLines": 200,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/inventory_cacheaside.go",
+      "language": "go",
+      "sizeLines": 334,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/inventory_cacheaside_test.go",
+      "language": "go",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/inventory_test.go",
+      "language": "go",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/material_catalog_test.go",
+      "language": "go",
+      "sizeLines": 25,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/material_read.go",
+      "language": "go",
+      "sizeLines": 484,
       "fileCategory": "code"
     },
     {
       "path": "internal/database/mysql_connection.go",
       "language": "go",
-      "sizeLines": 103,
+      "sizeLines": 120,
       "fileCategory": "code"
     },
     {
       "path": "internal/database/order.go",
       "language": "go",
-      "sizeLines": 193,
+      "sizeLines": 428,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/order_state_test.go",
+      "language": "go",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/purchase_experiment.go",
+      "language": "go",
+      "sizeLines": 473,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/purchase_experiment_test.go",
+      "language": "go",
+      "sizeLines": 346,
       "fileCategory": "code"
     },
     {
       "path": "internal/database/redis_connection.go",
       "language": "go",
-      "sizeLines": 41,
+      "sizeLines": 42,
       "fileCategory": "code"
     },
     {
-      "path": "internal/database/temp_order_test.go",
+      "path": "internal/database/reset.go",
       "language": "go",
-      "sizeLines": 42,
+      "sizeLines": 91,
       "fileCategory": "code"
     },
     {
       "path": "internal/database/temp_order.go",
       "language": "go",
-      "sizeLines": 58,
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/database/temp_order_test.go",
+      "language": "go",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/handler/archive.go",
+      "language": "go",
+      "sizeLines": 75,
       "fileCategory": "code"
     },
     {
       "path": "internal/handler/errors.go",
       "language": "go",
-      "sizeLines": 78,
+      "sizeLines": 103,
       "fileCategory": "code"
     },
     {
       "path": "internal/handler/gift.go",
+      "language": "go",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/handler/lab.go",
+      "language": "go",
+      "sizeLines": 74,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/handler/loadtest.go",
       "language": "go",
       "sizeLines": 128,
       "fileCategory": "code"
@@ -236,520 +336,488 @@
     {
       "path": "internal/handler/metrics.go",
       "language": "go",
-      "sizeLines": 56,
+      "sizeLines": 57,
       "fileCategory": "code"
     },
     {
       "path": "internal/handler/order.go",
       "language": "go",
-      "sizeLines": 78,
+      "sizeLines": 98,
       "fileCategory": "code"
     },
     {
-      "path": "internal/handler/test/gift_test.go",
+      "path": "internal/handler/purchase_lab.go",
       "language": "go",
-      "sizeLines": 84,
+      "sizeLines": 123,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/client.go",
+      "language": "go",
+      "sizeLines": 137,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/parser.go",
+      "language": "go",
+      "sizeLines": 196,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/parser_test.go",
+      "language": "go",
+      "sizeLines": 73,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/process_linux.go",
+      "language": "go",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/process_other.go",
+      "language": "go",
+      "sizeLines": 14,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/runner.go",
+      "language": "go",
+      "sizeLines": 1082,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/runner_http.go",
+      "language": "go",
+      "sizeLines": 210,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/runner_seckill.go",
+      "language": "go",
+      "sizeLines": 224,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/runner_seckill_test.go",
+      "language": "go",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/runner_test.go",
+      "language": "go",
+      "sizeLines": 325,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/types.go",
+      "language": "go",
+      "sizeLines": 385,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/loadtest/types_test.go",
+      "language": "go",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/metrics/archive_read.go",
+      "language": "go",
+      "sizeLines": 211,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/metrics/archive_read_test.go",
+      "language": "go",
+      "sizeLines": 41,
       "fileCategory": "code"
     },
     {
       "path": "internal/metrics/cacheaside.go",
       "language": "go",
-      "sizeLines": 243,
+      "sizeLines": 324,
       "fileCategory": "code"
     },
     {
       "path": "internal/metrics/metrics.go",
       "language": "go",
-      "sizeLines": 378,
+      "sizeLines": 462,
       "fileCategory": "code"
     },
     {
-      "path": "internal/mq/consumer.go",
+      "path": "internal/metrics/mysql_pressure.go",
       "language": "go",
-      "sizeLines": 187,
+      "sizeLines": 125,
       "fileCategory": "code"
     },
     {
-      "path": "internal/mq/producer.go",
+      "path": "internal/metrics/seckill_probe.go",
       "language": "go",
-      "sizeLines": 136,
+      "sizeLines": 87,
       "fileCategory": "code"
     },
     {
-      "path": "internal/mq/rocket_client.go",
-      "language": "go",
-      "sizeLines": 90,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/router/router.go",
-      "language": "go",
-      "sizeLines": 58,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/service/circuit_breaker_test.go",
-      "language": "go",
-      "sizeLines": 95,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/service/circuit_breaker.go",
-      "language": "go",
-      "sizeLines": 144,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/service/errors.go",
-      "language": "go",
-      "sizeLines": 60,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/service/limiter_test.go",
-      "language": "go",
-      "sizeLines": 35,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/service/limiter.go",
-      "language": "go",
-      "sizeLines": 81,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/service/lottery_cacheaside.go",
-      "language": "go",
-      "sizeLines": 171,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/service/lottery.go",
-      "language": "go",
-      "sizeLines": 219,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/service/order.go",
-      "language": "go",
-      "sizeLines": 104,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/util/config.go",
-      "language": "go",
-      "sizeLines": 39,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/util/env.go",
-      "language": "go",
-      "sizeLines": 44,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/util/logger.go",
-      "language": "go",
-      "sizeLines": 56,
-      "fileCategory": "code"
-    },
-    {
-      "path": "internal/util/lottery.go",
+      "path": "internal/metrics/seckill_probe_test.go",
       "language": "go",
       "sizeLines": 27,
       "fileCategory": "code"
     },
     {
+      "path": "internal/mq/consumer.go",
+      "language": "go",
+      "sizeLines": 211,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/mq/consumer_test.go",
+      "language": "go",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/mq/order_consumer.go",
+      "language": "go",
+      "sizeLines": 143,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/mq/producer.go",
+      "language": "go",
+      "sizeLines": 189,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/mq/purchase_cache_consumer.go",
+      "language": "go",
+      "sizeLines": 127,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/mq/rocket_client.go",
+      "language": "go",
+      "sizeLines": 91,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/router/router.go",
+      "language": "go",
+      "sizeLines": 108,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/archive.go",
+      "language": "go",
+      "sizeLines": 139,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/archive_test.go",
+      "language": "go",
+      "sizeLines": 19,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/circuit_breaker.go",
+      "language": "go",
+      "sizeLines": 193,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/circuit_breaker_test.go",
+      "language": "go",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/errors.go",
+      "language": "go",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/limiter.go",
+      "language": "go",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/limiter_test.go",
+      "language": "go",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/loadtest.go",
+      "language": "go",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/lottery.go",
+      "language": "go",
+      "sizeLines": 297,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/lottery_cacheaside.go",
+      "language": "go",
+      "sizeLines": 182,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/order.go",
+      "language": "go",
+      "sizeLines": 328,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/service/purchase_experiment.go",
+      "language": "go",
+      "sizeLines": 925,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/util/config.go",
+      "language": "go",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/util/env.go",
+      "language": "go",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/util/logger.go",
+      "language": "go",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "internal/util/lottery.go",
+      "language": "go",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
       "path": "main.go",
       "language": "go",
-      "sizeLines": 11,
+      "sizeLines": 12,
       "fileCategory": "code"
     },
     {
       "path": "readme.md",
       "language": "markdown",
-      "sizeLines": 309,
+      "sizeLines": 298,
       "fileCategory": "docs"
     },
     {
       "path": "scripts/restart-app.ps1",
       "language": "powershell",
-      "sizeLines": 5,
+      "sizeLines": 6,
       "fileCategory": "script"
     },
     {
       "path": "scripts/run-local-app.ps1",
       "language": "powershell",
-      "sizeLines": 38,
+      "sizeLines": 42,
       "fileCategory": "script"
     },
     {
       "path": "scripts/run-local-loadtest.ps1",
       "language": "powershell",
-      "sizeLines": 37,
+      "sizeLines": 38,
       "fileCategory": "script"
     },
     {
       "path": "scripts/start-infra.ps1",
       "language": "powershell",
-      "sizeLines": 72,
+      "sizeLines": 73,
       "fileCategory": "script"
     },
     {
       "path": "scripts/stop-infra.ps1",
       "language": "powershell",
-      "sizeLines": 7,
+      "sizeLines": 8,
       "fileCategory": "script"
     },
     {
-      "path": "views/css/lottery.css",
+      "path": "views/css/base.css",
       "language": "css",
-      "sizeLines": 706,
-      "fileCategory": "markup"
+      "sizeLines": 88,
+      "fileCategory": "code"
     },
     {
-      "path": "views/html/lottery.html",
+      "path": "views/css/experiment-header-nav.css",
+      "language": "css",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/experiment-planner.css",
+      "language": "css",
+      "sizeLines": 444,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/lab-foundation.css",
+      "language": "css",
+      "sizeLines": 161,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/market-street.css",
+      "language": "css",
+      "sizeLines": 517,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/material-shop.css",
+      "language": "css",
+      "sizeLines": 2114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/pay.css",
+      "language": "css",
+      "sizeLines": 52,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/purchase-lab-layout.css",
+      "language": "css",
+      "sizeLines": 1689,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/purchase-lab.css",
+      "language": "css",
+      "sizeLines": 1236,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/query-lab-layout.css",
+      "language": "css",
+      "sizeLines": 983,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/query-lab.css",
+      "language": "css",
+      "sizeLines": 1968,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/seckill.css",
+      "language": "css",
+      "sizeLines": 271,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/css/world-style.css",
+      "language": "css",
+      "sizeLines": 393,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/html/market-street.html",
       "language": "html",
-      "sizeLines": 235,
-      "fileCategory": "markup"
+      "sizeLines": 159,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/html/market.html",
+      "language": "html",
+      "sizeLines": 369,
+      "fileCategory": "code"
     },
     {
       "path": "views/html/pay.html",
       "language": "html",
-      "sizeLines": 117,
-      "fileCategory": "markup"
+      "sizeLines": 181,
+      "fileCategory": "code"
     },
     {
-      "path": "views/js/lucky-canvas.js",
+      "path": "views/html/purchase-lab.html",
+      "language": "html",
+      "sizeLines": 580,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/html/query-lab.html",
+      "language": "html",
+      "sizeLines": 568,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/html/seckill.html",
+      "language": "html",
+      "sizeLines": 196,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/img/market-street-bg.svg",
+      "language": "svg",
+      "sizeLines": 164,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/js/experiment-state.js",
       "language": "javascript",
-      "sizeLines": 20,
+      "sizeLines": 189,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/js/market-planner-bootstrap.js",
+      "language": "javascript",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/js/market-scene-config.js",
+      "language": "javascript",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/js/market-street.js",
+      "language": "javascript",
+      "sizeLines": 150,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/js/market.js",
+      "language": "javascript",
+      "sizeLines": 1228,
       "fileCategory": "code"
     },
     {
       "path": "views/js/my.js",
       "language": "javascript",
-      "sizeLines": 11,
+      "sizeLines": 12,
       "fileCategory": "code"
     },
     {
-      "path": "views/js/seckill-lab.js",
+      "path": "views/js/purchase-lab.js",
       "language": "javascript",
-      "sizeLines": 583,
+      "sizeLines": 3083,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/js/query-lab.js",
+      "language": "javascript",
+      "sizeLines": 3192,
+      "fileCategory": "code"
+    },
+    {
+      "path": "views/js/seckill.js",
+      "language": "javascript",
+      "sizeLines": 616,
       "fileCategory": "code"
     }
-  ],
-  "totalFiles": 68,
-  "filteredByIgnore": 0,
-  "estimatedComplexity": "moderate",
-  "stats": {
-    "filesScanned": 68,
-    "byCategory": {
-      "config": 6,
-      "infra": 4,
-      "code": 42,
-      "docs": 6,
-      "script": 6,
-      "data": 1,
-      "markup": 3
-    },
-    "byLanguage": {
-      "json": 2,
-      "unknown": 2,
-      "markdown": 6,
-      "yaml": 3,
-      "conf": 1,
-      "dockerfile": 2,
-      "shell": 1,
-      "lua": 1,
-      "mod": 1,
-      "sum": 1,
-      "sql": 1,
-      "go": 36,
-      "powershell": 5,
-      "css": 1,
-      "html": 2,
-      "javascript": 3
-    }
-  },
-  "importMap": {
-    ".claude/config.json": [],
-    ".dockerignore": [],
-    ".understand-anything/.understandignore": [],
-    ".understand-anything/config.json": [],
-    "AGENTS.md": [],
-    "CLAUDE.md": [],
-    "conf/mysql.yaml": [],
-    "conf/redis.yaml": [],
-    "docker-compose.yml": [],
-    "docker/rocketmq/broker.conf": [],
-    "docker/wrk2/Dockerfile": [],
-    "docker/wrk2/run-wrk2.sh": [],
-    "docker/wrk2/scripts/lucky.lua": [],
-    "Dockerfile": [],
-    "docs/local-dev.md": [],
-    "docs/reliability.md": [],
-    "docs/video-script-ep1.md": [],
-    "go.mod": [],
-    "go.sum": [],
-    "init.sql": [],
-    "internal/app/app.go": [
-      "internal/database/admission.go",
-      "internal/database/gift.go",
-      "internal/database/inventory_cacheaside_test.go",
-      "internal/database/inventory_cacheaside.go",
-      "internal/database/inventory_test.go",
-      "internal/database/inventory.go",
-      "internal/database/mysql_connection.go",
-      "internal/database/order.go",
-      "internal/database/redis_connection.go",
-      "internal/database/temp_order_test.go",
-      "internal/database/temp_order.go",
-      "internal/handler/errors.go",
-      "internal/handler/gift.go",
-      "internal/handler/metrics.go",
-      "internal/handler/order.go",
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go",
-      "internal/mq/consumer.go",
-      "internal/mq/producer.go",
-      "internal/mq/rocket_client.go",
-      "internal/router/router.go",
-      "internal/service/circuit_breaker_test.go",
-      "internal/service/circuit_breaker.go",
-      "internal/service/errors.go",
-      "internal/service/limiter_test.go",
-      "internal/service/limiter.go",
-      "internal/service/lottery_cacheaside.go",
-      "internal/service/lottery.go",
-      "internal/service/order.go",
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/database/admission.go": [],
-    "internal/database/gift.go": [],
-    "internal/database/inventory_cacheaside_test.go": [],
-    "internal/database/inventory_cacheaside.go": [],
-    "internal/database/inventory_test.go": [
-      "internal/database/admission.go",
-      "internal/database/gift.go",
-      "internal/database/inventory_cacheaside_test.go",
-      "internal/database/inventory_cacheaside.go",
-      "internal/database/inventory_test.go",
-      "internal/database/inventory.go",
-      "internal/database/mysql_connection.go",
-      "internal/database/order.go",
-      "internal/database/redis_connection.go",
-      "internal/database/temp_order_test.go",
-      "internal/database/temp_order.go",
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/database/inventory.go": [],
-    "internal/database/mysql_connection.go": [
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/database/order.go": [],
-    "internal/database/redis_connection.go": [
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/database/temp_order_test.go": [
-      "internal/database/admission.go",
-      "internal/database/gift.go",
-      "internal/database/inventory_cacheaside_test.go",
-      "internal/database/inventory_cacheaside.go",
-      "internal/database/inventory_test.go",
-      "internal/database/inventory.go",
-      "internal/database/mysql_connection.go",
-      "internal/database/order.go",
-      "internal/database/redis_connection.go",
-      "internal/database/temp_order_test.go",
-      "internal/database/temp_order.go"
-    ],
-    "internal/database/temp_order.go": [],
-    "internal/handler/errors.go": [
-      "internal/service/circuit_breaker_test.go",
-      "internal/service/circuit_breaker.go",
-      "internal/service/errors.go",
-      "internal/service/limiter_test.go",
-      "internal/service/limiter.go",
-      "internal/service/lottery_cacheaside.go",
-      "internal/service/lottery.go",
-      "internal/service/order.go"
-    ],
-    "internal/handler/gift.go": [
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go",
-      "internal/service/circuit_breaker_test.go",
-      "internal/service/circuit_breaker.go",
-      "internal/service/errors.go",
-      "internal/service/limiter_test.go",
-      "internal/service/limiter.go",
-      "internal/service/lottery_cacheaside.go",
-      "internal/service/lottery.go",
-      "internal/service/order.go",
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/handler/metrics.go": [
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go"
-    ],
-    "internal/handler/order.go": [
-      "internal/service/circuit_breaker_test.go",
-      "internal/service/circuit_breaker.go",
-      "internal/service/errors.go",
-      "internal/service/limiter_test.go",
-      "internal/service/limiter.go",
-      "internal/service/lottery_cacheaside.go",
-      "internal/service/lottery.go",
-      "internal/service/order.go"
-    ],
-    "internal/handler/test/gift_test.go": [],
-    "internal/metrics/cacheaside.go": [],
-    "internal/metrics/metrics.go": [],
-    "internal/mq/consumer.go": [
-      "internal/database/admission.go",
-      "internal/database/gift.go",
-      "internal/database/inventory_cacheaside_test.go",
-      "internal/database/inventory_cacheaside.go",
-      "internal/database/inventory_test.go",
-      "internal/database/inventory.go",
-      "internal/database/mysql_connection.go",
-      "internal/database/order.go",
-      "internal/database/redis_connection.go",
-      "internal/database/temp_order_test.go",
-      "internal/database/temp_order.go",
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go",
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/mq/producer.go": [
-      "internal/database/admission.go",
-      "internal/database/gift.go",
-      "internal/database/inventory_cacheaside_test.go",
-      "internal/database/inventory_cacheaside.go",
-      "internal/database/inventory_test.go",
-      "internal/database/inventory.go",
-      "internal/database/mysql_connection.go",
-      "internal/database/order.go",
-      "internal/database/redis_connection.go",
-      "internal/database/temp_order_test.go",
-      "internal/database/temp_order.go",
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go"
-    ],
-    "internal/mq/rocket_client.go": [],
-    "internal/router/router.go": [
-      "internal/handler/errors.go",
-      "internal/handler/gift.go",
-      "internal/handler/metrics.go",
-      "internal/handler/order.go"
-    ],
-    "internal/service/circuit_breaker_test.go": [
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go"
-    ],
-    "internal/service/circuit_breaker.go": [
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go",
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/service/errors.go": [],
-    "internal/service/limiter_test.go": [],
-    "internal/service/limiter.go": [],
-    "internal/service/lottery_cacheaside.go": [
-      "internal/database/admission.go",
-      "internal/database/gift.go",
-      "internal/database/inventory_cacheaside_test.go",
-      "internal/database/inventory_cacheaside.go",
-      "internal/database/inventory_test.go",
-      "internal/database/inventory.go",
-      "internal/database/mysql_connection.go",
-      "internal/database/order.go",
-      "internal/database/redis_connection.go",
-      "internal/database/temp_order_test.go",
-      "internal/database/temp_order.go",
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go",
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/service/lottery.go": [
-      "internal/database/admission.go",
-      "internal/database/gift.go",
-      "internal/database/inventory_cacheaside_test.go",
-      "internal/database/inventory_cacheaside.go",
-      "internal/database/inventory_test.go",
-      "internal/database/inventory.go",
-      "internal/database/mysql_connection.go",
-      "internal/database/order.go",
-      "internal/database/redis_connection.go",
-      "internal/database/temp_order_test.go",
-      "internal/database/temp_order.go",
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go",
-      "internal/mq/consumer.go",
-      "internal/mq/producer.go",
-      "internal/mq/rocket_client.go",
-      "internal/util/config.go",
-      "internal/util/env.go",
-      "internal/util/logger.go",
-      "internal/util/lottery.go"
-    ],
-    "internal/service/order.go": [
-      "internal/database/admission.go",
-      "internal/database/gift.go",
-      "internal/database/inventory_cacheaside_test.go",
-      "internal/database/inventory_cacheaside.go",
-      "internal/database/inventory_test.go",
-      "internal/database/inventory.go",
-      "internal/database/mysql_connection.go",
-      "internal/database/order.go",
-      "internal/database/redis_connection.go",
-      "internal/database/temp_order_test.go",
-      "internal/database/temp_order.go",
-      "internal/metrics/cacheaside.go",
-      "internal/metrics/metrics.go"
-    ],
-    "internal/util/config.go": [],
-    "internal/util/env.go": [],
-    "internal/util/logger.go": [],
-    "internal/util/lottery.go": [],
-    "main.go": [
-      "internal/app/app.go"
-    ],
-    "readme.md": [],
-    "scripts/restart-app.ps1": [],
-    "scripts/run-local-app.ps1": [],
-    "scripts/run-local-loadtest.ps1": [],
-    "scripts/start-infra.ps1": [],
-    "scripts/stop-infra.ps1": [],
-    "views/css/lottery.css": [],
-    "views/html/lottery.html": [],
-    "views/html/pay.html": [],
-    "views/js/lucky-canvas.js": [],
-    "views/js/my.js": [],
-    "views/js/seckill-lab.js": []
-  },
-  "readmeHead": "项目默认采用依赖跑 Docker、Go app 本机跑；后端按 internal/app、router、handler、service、database、mq、metrics、util 分层。"
+  ]
 }

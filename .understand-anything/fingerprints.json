@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "not-a-git-repository",
-  "generatedAt": "2026-07-02T15:39:24.598Z",
+  "gitCommitHash": "ce6ace841a21264dd9c752a34edc85d0ed937292",
+  "generatedAt": "2026-08-06T11:50:00Z",
   "files": {
     ".claude/config.json": {
       "filePath": ".claude/config.json",
@@ -11,21 +11,41 @@
       "imports": [],
       "exports": [],
       "totalLines": 5,
-      "hasStructuralAnalysis": true
+      "hasStructuralAnalysis": false
     },
     ".dockerignore": {
       "filePath": ".dockerignore",
-      "contentHash": "1b0bece0a10978b7ae0fe6f3857bb392d15e9dce653b629775826efc48a940cb",
+      "contentHash": "23c1e16a0e83a8216267465767b874fdd6bfdd4cc9caf399326a35dec8068b40",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 9,
+      "totalLines": 11,
+      "hasStructuralAnalysis": false
+    },
+    ".gitattributes": {
+      "filePath": ".gitattributes",
+      "contentHash": "642b0c053f83a28944b4b64d270ba33b7313e0b47eceafe50c3bee468153a7d3",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 6,
+      "hasStructuralAnalysis": false
+    },
+    ".gitignore": {
+      "filePath": ".gitignore",
+      "contentHash": "234abcb4924244961273143ed8cc88b9cb7c5e8aa2316b364e71e79d71f1445f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 23,
       "hasStructuralAnalysis": false
     },
     ".understand-anything/.understandignore": {
       "filePath": ".understand-anything/.understandignore",
-      "contentHash": "caea367c9a2d4558e3ddec346cd4c722547affcc2a43931cd34029a6827fe578",
+      "contentHash": "88a2be6d8e807785716b88a8ac8d74f5ac6bfddb39ebaa6959a57f492582cacd",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -35,67 +55,107 @@
     },
     ".understand-anything/config.json": {
       "filePath": ".understand-anything/config.json",
-      "contentHash": "5d2ff006cff22c68edd4776249d562ea8c73915a61c6214eb85933865a9402e7",
+      "contentHash": "74623a45ed6109175751419215b9377a532bd74552a2a56825911706b5efb387",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
       "totalLines": 4,
-      "hasStructuralAnalysis": true
+      "hasStructuralAnalysis": false
     },
     "AGENTS.md": {
       "filePath": "AGENTS.md",
-      "contentHash": "2f91cb79a4fee4d6e761c0dc6101d506709afb56fa5f014c606e16992128bf71",
+      "contentHash": "453207c70ef72003043413ce032c5798c451dc025dbd0e82f1168d21a02ebee9",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 155,
-      "hasStructuralAnalysis": true
+      "totalLines": 158,
+      "hasStructuralAnalysis": false
     },
     "CLAUDE.md": {
       "filePath": "CLAUDE.md",
-      "contentHash": "39528f783ce120eb6e7ad3855a03e414707ab5e9b1ba5278c9b1eca4f969f134",
+      "contentHash": "f686f84764e2a7ce8e2d9dda444ae4b077c427f943b3ad0c80ba4dff23cb6732",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 13,
+      "totalLines": 15,
+      "hasStructuralAnalysis": false
+    },
+    "Dockerfile": {
+      "filePath": "Dockerfile",
+      "contentHash": "0c64bd2fda07a264a6ba5df18f2fb122df8cd00ce02038edfd3711fa626176bd",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 29,
+      "hasStructuralAnalysis": false
+    },
+    "cmd/loadtest-runner/main.go": {
+      "filePath": "cmd/loadtest-runner/main.go",
+      "contentHash": "6ecc947da286aa21af539d289a5011eedf0f0e5370b17ade0b24357651e9e58d",
+      "functions": [
+        {
+          "name": "main",
+          "startLine": 14,
+          "endLine": 64
+        },
+        {
+          "name": "envOr",
+          "startLine": 66,
+          "endLine": 71
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "context",
+        "log/slog",
+        "net/http",
+        "os",
+        "os/signal",
+        "silas/internal/loadtest",
+        "syscall",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 72,
       "hasStructuralAnalysis": true
     },
     "conf/mysql.yaml": {
       "filePath": "conf/mysql.yaml",
-      "contentHash": "941b0866543cfd82cd94ebea7ac1a159a079af09b907b10597c9b1339e5fed90",
+      "contentHash": "6263af463ee7522bbda0c31ed0c3496e41ac343eb7320786b00d7c415a70e632",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
       "totalLines": 6,
-      "hasStructuralAnalysis": true
+      "hasStructuralAnalysis": false
     },
     "conf/redis.yaml": {
       "filePath": "conf/redis.yaml",
-      "contentHash": "17b2b4c9101260973d6ece3653a5eaa2696c0f66f6842651f2682eb8d0839f3d",
+      "contentHash": "549fd42b8860bcc0b575e7cb0a130b2f9cd85fa088aadd92903cd9bbc53458b2",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
       "totalLines": 2,
-      "hasStructuralAnalysis": true
+      "hasStructuralAnalysis": false
     },
     "docker-compose.yml": {
       "filePath": "docker-compose.yml",
-      "contentHash": "89126daef519dafe58eeaa7a64cab3b65c8cc87bd3ff1579d35fc6b63d777f48",
+      "contentHash": "ee8ef2dd63742230728e4785a4baa7e649e5f7cbcff756ac0a1bc72b10e33f2e",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 112,
-      "hasStructuralAnalysis": true
+      "totalLines": 182,
+      "hasStructuralAnalysis": false
     },
     "docker/rocketmq/broker.conf": {
       "filePath": "docker/rocketmq/broker.conf",
-      "contentHash": "5ed0442d2742b48a814dc9c3b7a6a65aeb2bb4be527d3fb48f4a5c523b4b8423",
+      "contentHash": "3d3c409f58994cc9854986e5f83f1d38b9aa0a2de364068ff4d1398a118ea878",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -105,13 +165,13 @@
     },
     "docker/wrk2/Dockerfile": {
       "filePath": "docker/wrk2/Dockerfile",
-      "contentHash": "94ae594c15013f8117c2b78603fed0ba2071d20b5d53ef8077af63cb74c81978",
+      "contentHash": "f264e726fc4831a75f60902a3917a040237d81d2083575311a63d145d7c6551f",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 36,
-      "hasStructuralAnalysis": true
+      "totalLines": 101,
+      "hasStructuralAnalysis": false
     },
     "docker/wrk2/run-wrk2.sh": {
       "filePath": "docker/wrk2/run-wrk2.sh",
@@ -121,61 +181,81 @@
       "imports": [],
       "exports": [],
       "totalLines": 29,
-      "hasStructuralAnalysis": true
+      "hasStructuralAnalysis": false
     },
     "docker/wrk2/scripts/lucky.lua": {
       "filePath": "docker/wrk2/scripts/lucky.lua",
-      "contentHash": "4550d0e0c73f25eb2ad338d53cbc0372c518775785ccd6185fe839086c316b61",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 26,
-      "hasStructuralAnalysis": false
-    },
-    "Dockerfile": {
-      "filePath": "Dockerfile",
-      "contentHash": "02fec53178aa8521153eaf2385e036260d80d083907fddbc4f095f7d93c66ca6",
+      "contentHash": "22816b0d19a992094c3844df49365bfd4c735e94860fb3658c83f8f0dd219351",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
       "totalLines": 29,
-      "hasStructuralAnalysis": true
+      "hasStructuralAnalysis": false
+    },
+    "docker/wrk2/scripts/read.lua": {
+      "filePath": "docker/wrk2/scripts/read.lua",
+      "contentHash": "03b7e956c9a2c744c98f0a8c49b75fbc1b18ab29d6c823da190d952e11073788",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 6,
+      "hasStructuralAnalysis": false
+    },
+    "docker/wrk2/verify-latency-safety.c": {
+      "filePath": "docker/wrk2/verify-latency-safety.c",
+      "contentHash": "0838c0a6a4c02d3b503c3cad619f3953c82f220b4ae516a2baa93035ceaf50b5",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 32,
+      "hasStructuralAnalysis": false
+    },
+    "docker/wrk2/wrk2-latency-safety.patch": {
+      "filePath": "docker/wrk2/wrk2-latency-safety.patch",
+      "contentHash": "f6a9891515b24636d543a0f05a7c682104ba3eff1bb5c06c796cbb7644b251b7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 156,
+      "hasStructuralAnalysis": false
     },
     "docs/local-dev.md": {
       "filePath": "docs/local-dev.md",
-      "contentHash": "db6fb6889ed2386b5c335be1841cbe83c5e5341b8e048745779ea959e4d65241",
+      "contentHash": "6ef928c65aca69e86c065def1f7d14d3471c9934f2e983a3c4dd18cb67765544",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 58,
-      "hasStructuralAnalysis": true
+      "totalLines": 53,
+      "hasStructuralAnalysis": false
     },
     "docs/reliability.md": {
       "filePath": "docs/reliability.md",
-      "contentHash": "9b6033b29eaae5c06bf181177d75792efe1b846c927777999dff0156ebaae188",
+      "contentHash": "8c413656fb2683914f3d47e028727013db98bef14c021c0ad286fb537320e370",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 346,
-      "hasStructuralAnalysis": true
+      "totalLines": 415,
+      "hasStructuralAnalysis": false
     },
     "docs/video-script-ep1.md": {
       "filePath": "docs/video-script-ep1.md",
-      "contentHash": "f582761ed0ba7edd20420f833578af6c60f740819cee4bb94e06f0d08df13fb4",
+      "contentHash": "4304ddaabee7369aeaf921ff4b01adb8432ef0c4329bb621dae8f87f4b9ae904",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 154,
-      "hasStructuralAnalysis": true
+      "totalLines": 171,
+      "hasStructuralAnalysis": false
     },
     "go.mod": {
       "filePath": "go.mod",
-      "contentHash": "b19a3f1b6b8d8bb2f78bdddcaef47288c52befcb4d43a5d4ea2142b23e490b64",
+      "contentHash": "e90161919e6a4d8abda7476d968bafe3217708a8c9523dee02a1f3064eafd8a2",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -195,1069 +275,1129 @@
     },
     "init.sql": {
       "filePath": "init.sql",
-      "contentHash": "fda836da5baf1be2fff95ac1c6917dbe67be60c85496df470caf527b25afd975",
+      "contentHash": "015432c2f7b69f0b372ad16310384148f52779ac4a9785ada2160448772da496",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 36,
-      "hasStructuralAnalysis": true
+      "totalLines": 98,
+      "hasStructuralAnalysis": false
     },
     "internal/app/app.go": {
       "filePath": "internal/app/app.go",
-      "contentHash": "8bf7120851610a9c2feb0ca03d345ebd3aec6f796d7db72d93e1cd9a79b2668f",
+      "contentHash": "56f2f887304a5d60d9a6dd4eebfe3d47436e6a3f19065c5df66ac68b6bea4d1f",
       "functions": [
         {
           "name": "New",
-          "params": [],
-          "returnType": "*Application",
-          "exported": true,
-          "lineCount": 14
+          "startLine": 37,
+          "endLine": 51
+        },
+        {
+          "name": "startMQBackground",
+          "startLine": 55,
+          "endLine": 94
         },
         {
           "name": "Run",
-          "params": [],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 35
+          "receiver": "Application",
+          "startLine": 99,
+          "endLine": 136
         },
         {
           "name": "Shutdown",
-          "params": [
-            "ctx"
-          ],
-          "exported": true,
-          "lineCount": 14
+          "receiver": "Application",
+          "startLine": 140,
+          "endLine": 164
         },
         {
           "name": "initInfrastructure",
-          "params": [],
-          "returnType": "*database.Store",
-          "exported": false,
-          "lineCount": 33
+          "startLine": 166,
+          "endLine": 211
         },
         {
           "name": "initHTTP",
-          "params": [
-            "store"
-          ],
-          "returnType": "*gin.Engine",
-          "exported": false,
-          "lineCount": 16
+          "startLine": 215,
+          "endLine": 242
         },
         {
           "name": "initInventoryMetrics",
-          "params": [
-            "store"
-          ],
-          "exported": false,
-          "lineCount": 32
+          "startLine": 247,
+          "endLine": 278
         }
       ],
       "classes": [
         {
           "name": "Application",
+          "kind": "struct",
+          "startLine": 28,
+          "endLine": 33,
           "methods": [
             "Run",
             "Shutdown"
-          ],
-          "properties": [
-            "store",
-            "server"
-          ],
-          "exported": true,
-          "lineCount": 4
+          ]
         }
       ],
       "imports": [
-        {
-          "source": "context",
-          "specifiers": [
-            "context"
-          ]
-        },
-        {
-          "source": "io",
-          "specifiers": [
-            "io"
-          ]
-        },
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "net/http",
-          "specifiers": [
-            "http"
-          ]
-        },
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
-          "source": "os/signal",
-          "specifiers": [
-            "signal"
-          ]
-        },
-        {
-          "source": "silas/internal/database",
-          "specifiers": [
-            "database"
-          ]
-        },
-        {
-          "source": "silas/internal/handler",
-          "specifiers": [
-            "handler"
-          ]
-        },
-        {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
-        },
-        {
-          "source": "silas/internal/mq",
-          "specifiers": [
-            "mq"
-          ]
-        },
-        {
-          "source": "silas/internal/router",
-          "specifiers": [
-            "router"
-          ]
-        },
-        {
-          "source": "silas/internal/service",
-          "specifiers": [
-            "service"
-          ]
-        },
-        {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
-        },
-        {
-          "source": "syscall",
-          "specifiers": [
-            "syscall"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "github.com/gin-gonic/gin",
-          "specifiers": [
-            "gin"
-          ]
-        }
+        "context",
+        "io",
+        "log/slog",
+        "net/http",
+        "os",
+        "os/signal",
+        "silas/internal/database",
+        "silas/internal/handler",
+        "silas/internal/loadtest",
+        "silas/internal/metrics",
+        "silas/internal/mq",
+        "silas/internal/router",
+        "silas/internal/service",
+        "silas/internal/util",
+        "sync",
+        "syscall",
+        "time",
+        "github.com/gin-gonic/gin"
       ],
-      "exports": [
-        "Application",
-        "New",
-        "Run",
-        "Shutdown"
-      ],
-      "totalLines": 192,
+      "exports": [],
+      "totalLines": 279,
       "hasStructuralAnalysis": true
     },
     "internal/database/admission.go": {
       "filePath": "internal/database/admission.go",
-      "contentHash": "5f2604e3a8e005df11af7dff35ca29bf018fa4b432029bf6790f49ae39a20cbc",
+      "contentHash": "b1194fe170b6a8483b74de713f3b8f8783095aee54d0afc490a3c2d6e5893fc5",
       "functions": [
         {
           "name": "TryAcquireLotteryAdmission",
-          "params": [
-            "uid",
-            "giftID",
-            "ttl"
-          ],
-          "returnType": "(AdmissionStatus, error)",
-          "exported": true,
-          "lineCount": 39
+          "startLine": 139,
+          "endLine": 164
         },
         {
-          "name": "ReleaseLotteryAdmission",
-          "params": [
-            "uid",
-            "giftID"
-          ],
-          "returnType": "(bool, error)",
-          "exported": true,
-          "lineCount": 24
+          "name": "GetLotteryAdmission",
+          "startLine": 167,
+          "endLine": 183
+        },
+        {
+          "name": "UnpersistedAdmissionCounts",
+          "receiver": "Store",
+          "startLine": 187,
+          "endLine": 229
+        },
+        {
+          "name": "MarkLotteryAdmissionPendingPayment",
+          "startLine": 233,
+          "endLine": 243
         },
         {
           "name": "ClaimLotteryAdmission",
-          "params": [
-            "uid",
-            "giftID"
-          ],
-          "returnType": "(bool, error)",
-          "exported": true,
-          "lineCount": 23
+          "startLine": 247,
+          "endLine": 257
+        },
+        {
+          "name": "ReleaseLotteryAdmission",
+          "startLine": 261,
+          "endLine": 271
+        },
+        {
+          "name": "parseAdmission",
+          "startLine": 273,
+          "endLine": 289
         },
         {
           "name": "inventoryKey",
-          "params": [
-            "giftID"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 3
+          "startLine": 291,
+          "endLine": 293
         },
         {
           "name": "tempOrderKey",
-          "params": [
-            "uid"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 3
+          "startLine": 295,
+          "endLine": 297
         },
         {
-          "name": "redisBool",
-          "params": [
-            "result"
-          ],
-          "returnType": "(bool, error)",
-          "exported": false,
-          "lineCount": 12
+          "name": "redisInt",
+          "startLine": 299,
+          "endLine": 310
         }
       ],
-      "classes": [],
+      "classes": [
+        {
+          "name": "AdmissionStatus",
+          "kind": "alias",
+          "startLine": 15,
+          "endLine": 15,
+          "methods": []
+        },
+        {
+          "name": "LotteryAdmission",
+          "kind": "struct",
+          "startLine": 30,
+          "endLine": 33,
+          "methods": []
+        }
+      ],
       "imports": [
-        {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
-        },
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "strconv",
-          "specifiers": [
-            "strconv"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "github.com/go-redis/redis",
-          "specifiers": [
-            "redis"
-          ]
-        }
+        "errors",
+        "fmt",
+        "log/slog",
+        "strconv",
+        "strings",
+        "time",
+        "github.com/go-redis/redis"
       ],
-      "exports": [
-        "TryAcquireLotteryAdmission",
-        "ReleaseLotteryAdmission",
-        "ClaimLotteryAdmission"
-      ],
-      "totalLines": 317,
+      "exports": [],
+      "totalLines": 311,
       "hasStructuralAnalysis": true
     },
     "internal/database/gift.go": {
       "filePath": "internal/database/gift.go",
-      "contentHash": "58a99b5004c0d08fb747ad021cbb5f2a113e23e7c0af404701df1f5ce5ea8c5f",
+      "contentHash": "f7425c4b9c20b8283bc3019c890c9b7db31ee624fd5a3e7acb5247cd0122febf",
       "functions": [
         {
-          "name": "TableName",
-          "params": [],
-          "returnType": "string",
-          "exported": true,
-          "lineCount": 3
+          "name": "EnsureSeckillMaterialCatalog",
+          "receiver": "Store",
+          "startLine": 45,
+          "endLine": 90
+        },
+        {
+          "name": "seckillMaterialCatalogMatches",
+          "startLine": 92,
+          "endLine": 105
         },
         {
           "name": "GetAllGifts",
-          "params": [],
-          "returnType": "[]*Gift",
-          "exported": true,
-          "lineCount": 4
+          "receiver": "Store",
+          "startLine": 115,
+          "endLine": 118
         },
         {
           "name": "GetAllGiftsWithError",
-          "params": [],
-          "returnType": "([]*Gift, error)",
-          "exported": true,
-          "lineCount": 9
+          "receiver": "Store",
+          "startLine": 122,
+          "endLine": 130
         },
         {
           "name": "GetGift",
-          "params": [
-            "id"
-          ],
-          "returnType": "*Gift",
-          "exported": true,
-          "lineCount": 4
+          "receiver": "Store",
+          "startLine": 134,
+          "endLine": 137
         },
         {
           "name": "GetGiftWithError",
-          "params": [
-            "id"
-          ],
-          "returnType": "(*Gift, error)",
-          "exported": true,
-          "lineCount": 14
+          "receiver": "Store",
+          "startLine": 141,
+          "endLine": 154
         }
       ],
       "classes": [
         {
           "name": "Gift",
-          "methods": [
-            "TableName"
-          ],
-          "properties": [
-            "Id",
-            "Name",
-            "Price",
-            "Picture",
-            "Count"
-          ],
-          "exported": true,
-          "lineCount": 16
+          "kind": "struct",
+          "startLine": 12,
+          "endLine": 30,
+          "methods": []
         }
       ],
       "imports": [
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        }
+        "fmt",
+        "log/slog",
+        "gorm.io/gorm"
       ],
-      "exports": [
-        "Gift",
-        "TableName",
-        "GetAllGifts",
-        "GetAllGiftsWithError",
-        "GetGift",
-        "GetGiftWithError"
-      ],
-      "totalLines": 79,
+      "exports": [],
+      "totalLines": 155,
       "hasStructuralAnalysis": true
     },
-    "internal/database/inventory_cacheaside_test.go": {
-      "filePath": "internal/database/inventory_cacheaside_test.go",
-      "contentHash": "81fb0e1a3f6dd0feac7105a51bfe8783146ad096856a3dc676c96dcbb199442a",
+    "internal/database/gift_catalog_test.go": {
+      "filePath": "internal/database/gift_catalog_test.go",
+      "contentHash": "5d655d8bf828abab89148f037caeb82bee9a5a1e310f65a0cf02928a32abf239",
       "functions": [
         {
-          "name": "TestCacheAsideNoOversell",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 48
-        },
-        {
-          "name": "readCacheStock",
-          "params": [
-            "t",
-            "giftID"
-          ],
-          "returnType": "int",
-          "exported": false,
-          "lineCount": 14
+          "name": "TestDefaultSeckillMaterialCatalog",
+          "startLine": 5,
+          "endLine": 26
         }
       ],
       "classes": [],
       "imports": [
+        "testing"
+      ],
+      "exports": [],
+      "totalLines": 27,
+      "hasStructuralAnalysis": true
+    },
+    "internal/database/inventory.go": {
+      "filePath": "internal/database/inventory.go",
+      "contentHash": "33c9ba6ef8b12f9ce2c3b2c04fd6e003fb69e8167d2d7022c771808de4fee02e",
+      "functions": [
         {
-          "source": "sync",
-          "specifiers": [
-            "sync"
-          ]
+          "name": "InitGiftInventory",
+          "receiver": "Store",
+          "startLine": 29,
+          "endLine": 84
         },
         {
-          "source": "sync/atomic",
-          "specifiers": [
-            "atomic"
-          ]
+          "name": "GetAllGiftInventory",
+          "startLine": 88,
+          "endLine": 91
         },
         {
-          "source": "testing",
-          "specifiers": [
-            "testing"
-          ]
+          "name": "GetAllGiftInventoryWithError",
+          "startLine": 99,
+          "endLine": 154
+        },
+        {
+          "name": "GetGiftInventory",
+          "startLine": 158,
+          "endLine": 166
+        },
+        {
+          "name": "ReduceInventory",
+          "startLine": 171,
+          "endLine": 188
+        },
+        {
+          "name": "IncreaseInventory",
+          "startLine": 192,
+          "endLine": 199
         }
       ],
-      "exports": [
-        "TestCacheAsideNoOversell"
+      "classes": [],
+      "imports": [
+        "errors",
+        "fmt",
+        "log/slog",
+        "strconv"
       ],
-      "totalLines": 80,
+      "exports": [],
+      "totalLines": 200,
       "hasStructuralAnalysis": true
     },
     "internal/database/inventory_cacheaside.go": {
       "filePath": "internal/database/inventory_cacheaside.go",
-      "contentHash": "8b3bfcbe3fdfcabe5b71c63ecffdc6693c57796a2c03413fccd230f9997c92ea",
+      "contentHash": "abb1dc1d02b1cbe208dde60a720c79537ac49e4773637c28ea6a8a03251f7e5e",
       "functions": [
         {
           "name": "newDBGate",
-          "params": [
-            "capacity"
-          ],
-          "returnType": "*dbGate",
-          "exported": false,
-          "lineCount": 6
+          "startLine": 74,
+          "endLine": 79
         },
         {
           "name": "acquire",
-          "params": [],
-          "returnType": "time.Duration",
-          "exported": false,
-          "lineCount": 5
+          "receiver": "dbGate",
+          "startLine": 83,
+          "endLine": 87
         },
         {
           "name": "release",
-          "params": [],
-          "exported": false,
-          "lineCount": 3
+          "receiver": "dbGate",
+          "startLine": 89,
+          "endLine": 91
         },
         {
           "name": "inUse",
-          "params": [],
-          "returnType": "int",
-          "exported": false,
-          "lineCount": 1
+          "receiver": "dbGate",
+          "startLine": 93,
+          "endLine": 93
         },
         {
           "name": "capacity",
-          "params": [],
-          "returnType": "int",
-          "exported": false,
-          "lineCount": 1
+          "receiver": "dbGate",
+          "startLine": 95,
+          "endLine": 95
         },
         {
           "name": "SetCacheAsideGateCapacity",
-          "params": [
-            "capacity"
-          ],
-          "exported": true,
-          "lineCount": 4
+          "startLine": 103,
+          "endLine": 106
         },
         {
           "name": "CacheAsideGateInUse",
-          "params": [],
-          "returnType": "int",
-          "exported": true,
-          "lineCount": 1
+          "startLine": 109,
+          "endLine": 109
         },
         {
           "name": "CacheAsideGateCapacity",
-          "params": [],
-          "returnType": "int",
-          "exported": true,
-          "lineCount": 1
+          "startLine": 112,
+          "endLine": 112
         },
         {
           "name": "EnsureCacheStockSchema",
-          "params": [],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 19
+          "receiver": "Store",
+          "startLine": 121,
+          "endLine": 139
         },
         {
           "name": "ResetCacheStock",
-          "params": [],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 10
+          "receiver": "Store",
+          "startLine": 143,
+          "endLine": 152
         },
         {
           "name": "GetAllGiftStockCacheAside",
-          "params": [],
-          "returnType": "([]*Gift, CacheAsideStat, error)",
-          "exported": true,
-          "lineCount": 51
+          "receiver": "Store",
+          "startLine": 168,
+          "endLine": 218
         },
         {
           "name": "DeductGiftStockCacheAside",
-          "params": [
-            "giftID"
-          ],
-          "returnType": "(bool, CacheAsideStat, error)",
-          "exported": true,
-          "lineCount": 27
+          "receiver": "Store",
+          "startLine": 229,
+          "endLine": 255
         },
         {
-          "name": "RestoreGiftStockCacheAside",
-          "params": [
-            "giftID"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 10
+          "name": "AcquireMySQLStockAndCreatePendingOrder",
+          "receiver": "Store",
+          "startLine": 262,
+          "endLine": 333
         }
       ],
       "classes": [
         {
           "name": "CacheAsideStat",
-          "methods": [],
-          "properties": [
-            "CacheHit",
-            "HitDB",
-            "WaitMs",
-            "DBMs",
-            "PoolInUse",
-            "PoolCapacity"
-          ],
-          "exported": true,
-          "lineCount": 22
+          "kind": "struct",
+          "startLine": 41,
+          "endLine": 65,
+          "methods": []
         },
         {
           "name": "dbGate",
+          "kind": "struct",
+          "startLine": 70,
+          "endLine": 72,
           "methods": [
             "acquire",
             "release",
             "inUse",
             "capacity"
-          ],
-          "properties": [
-            "tokens"
-          ],
-          "exported": false,
-          "lineCount": 3
+          ]
         },
         {
           "name": "cacheStockRow",
-          "methods": [],
-          "properties": [
-            "Id",
-            "Stock"
-          ],
-          "exported": false,
-          "lineCount": 4
+          "kind": "struct",
+          "startLine": 154,
+          "endLine": 157,
+          "methods": []
         }
       ],
       "imports": [
+        "encoding/json",
+        "errors",
+        "fmt",
+        "log/slog",
+        "time",
+        "github.com/go-redis/redis",
+        "gorm.io/gorm"
+      ],
+      "exports": [],
+      "totalLines": 334,
+      "hasStructuralAnalysis": true
+    },
+    "internal/database/inventory_cacheaside_test.go": {
+      "filePath": "internal/database/inventory_cacheaside_test.go",
+      "contentHash": "1029d12fa3cbb7de6414cadeef83db0d8a2c5727e7929f857ed740768ab174e5",
+      "functions": [
         {
-          "source": "encoding/json",
-          "specifiers": [
-            "json"
-          ]
+          "name": "TestCacheAsideNoOversell",
+          "startLine": 17,
+          "endLine": 64
         },
         {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
-        },
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "github.com/go-redis/redis",
-          "specifiers": [
-            "redis"
-          ]
+          "name": "readCacheStock",
+          "startLine": 66,
+          "endLine": 79
         }
       ],
-      "exports": [
-        "CacheAsideStat",
-        "SetCacheAsideGateCapacity",
-        "CacheAsideGateInUse",
-        "CacheAsideGateCapacity",
-        "EnsureCacheStockSchema",
-        "ResetCacheStock",
-        "GetAllGiftStockCacheAside",
-        "DeductGiftStockCacheAside",
-        "RestoreGiftStockCacheAside"
+      "classes": [],
+      "imports": [
+        "sync",
+        "sync/atomic",
+        "testing"
       ],
-      "totalLines": 261,
+      "exports": [],
+      "totalLines": 80,
       "hasStructuralAnalysis": true
     },
     "internal/database/inventory_test.go": {
       "filePath": "internal/database/inventory_test.go",
-      "contentHash": "9c955fc82d6ab7fc99a617e27e7adf24486f9204d080b9c38e9be5d03bfd2353",
+      "contentHash": "e8b94746686728282380f1fdc88858748c96b14c935f6423d5731d0448f85e62",
       "functions": [
         {
           "name": "init",
-          "params": [],
-          "exported": false,
-          "lineCount": 5
+          "startLine": 17,
+          "endLine": 32
+        },
+        {
+          "name": "requireIntegrationStore",
+          "startLine": 34,
+          "endLine": 42
         },
         {
           "name": "TestInitGiftInventory",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 44,
+          "endLine": 53
         },
         {
           "name": "TestUpdateInventory",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 16
+          "startLine": 55,
+          "endLine": 83
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "silas/internal/database",
-          "specifiers": [
-            "database"
-          ]
-        },
-        {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
-        },
-        {
-          "source": "testing",
-          "specifiers": [
-            "testing"
-          ]
-        },
-        {
-          "source": "github.com/gofiber/fiber/v3/log",
-          "specifiers": [
-            "log"
-          ]
-        }
+        "os",
+        "silas/internal/database",
+        "silas/internal/util",
+        "strconv",
+        "strings",
+        "testing"
       ],
-      "exports": [
-        "TestInitGiftInventory",
-        "TestUpdateInventory"
-      ],
-      "totalLines": 46,
+      "exports": [],
+      "totalLines": 87,
       "hasStructuralAnalysis": true
     },
-    "internal/database/inventory.go": {
-      "filePath": "internal/database/inventory.go",
-      "contentHash": "f5376876a273eb1a5cfee89959e6248abe158d70bb1bc0a6fab3dcf21aeb0b02",
+    "internal/database/material_catalog_test.go": {
+      "filePath": "internal/database/material_catalog_test.go",
+      "contentHash": "fc7bf751abac89541d73129cade1226dbdf2cb8026e0f822302d293ab2badbd1",
       "functions": [
         {
-          "name": "InitGiftInventory",
-          "params": [],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 28
-        },
-        {
-          "name": "GetAllGiftInventory",
-          "params": [],
-          "returnType": "[]*Gift",
-          "exported": true,
-          "lineCount": 4
-        },
-        {
-          "name": "GetAllGiftInventoryWithError",
-          "params": [],
-          "returnType": "([]*Gift, error)",
-          "exported": true,
-          "lineCount": 31
-        },
-        {
-          "name": "GetGiftInventory",
-          "params": [
-            "GiftId"
-          ],
-          "returnType": "int",
-          "exported": true,
-          "lineCount": 9
-        },
-        {
-          "name": "ReduceInventory",
-          "params": [
-            "GiftId"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 18
-        },
-        {
-          "name": "IncreaseInventory",
-          "params": [
-            "GiftId"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 8
+          "name": "TestDefaultMaterialCatalogOnlyExposesStarMarrow",
+          "startLine": 5,
+          "endLine": 24
         }
       ],
       "classes": [],
       "imports": [
+        "testing"
+      ],
+      "exports": [],
+      "totalLines": 25,
+      "hasStructuralAnalysis": true
+    },
+    "internal/database/material_read.go": {
+      "filePath": "internal/database/material_read.go",
+      "contentHash": "81cf8f9e5fb53c6dc32ece4acfef4224322eda82328f5469720ce8d56b4f4ec1",
+      "functions": [
         {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
+          "name": "EnsureMaterialReadModelSchema",
+          "receiver": "Store",
+          "startLine": 209,
+          "endLine": 256
         },
         {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
+          "name": "removeLegacyBusinessMaterials",
+          "receiver": "Store",
+          "startLine": 261,
+          "endLine": 291
         },
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
+          "name": "ensureMaterialFactFixtures",
+          "receiver": "Store",
+          "startLine": 293,
+          "endLine": 337
         },
         {
-          "source": "strconv",
-          "specifiers": [
-            "strconv"
-          ]
+          "name": "ListMaterialSummaries",
+          "receiver": "Store",
+          "startLine": 340,
+          "endLine": 353
+        },
+        {
+          "name": "GetMaterialDetail",
+          "receiver": "Store",
+          "startLine": 357,
+          "endLine": 422
+        },
+        {
+          "name": "materialDetailCacheKey",
+          "startLine": 424,
+          "endLine": 426
+        },
+        {
+          "name": "DeleteMaterialDetailCache",
+          "startLine": 431,
+          "endLine": 439
+        },
+        {
+          "name": "GetMaterialDetailCache",
+          "startLine": 442,
+          "endLine": 459
+        },
+        {
+          "name": "SetMaterialDetailCache",
+          "startLine": 463,
+          "endLine": 475
+        },
+        {
+          "name": "ClearMaterialDetailCache",
+          "startLine": 478,
+          "endLine": 483
         }
       ],
-      "exports": [
-        "InitGiftInventory",
-        "GetAllGiftInventory",
-        "GetAllGiftInventoryWithError",
-        "GetGiftInventory",
-        "ReduceInventory",
-        "IncreaseInventory"
+      "classes": [
+        {
+          "name": "MaterialRarity",
+          "kind": "struct",
+          "startLine": 33,
+          "endLine": 38,
+          "methods": []
+        },
+        {
+          "name": "MaterialSource",
+          "kind": "struct",
+          "startLine": 43,
+          "endLine": 48,
+          "methods": []
+        },
+        {
+          "name": "MaterialCatalog",
+          "kind": "struct",
+          "startLine": 54,
+          "endLine": 71,
+          "methods": []
+        },
+        {
+          "name": "MaterialComponent",
+          "kind": "struct",
+          "startLine": 76,
+          "endLine": 83,
+          "methods": []
+        },
+        {
+          "name": "MaterialTrade",
+          "kind": "struct",
+          "startLine": 88,
+          "endLine": 94,
+          "methods": []
+        },
+        {
+          "name": "MaterialReview",
+          "kind": "struct",
+          "startLine": 99,
+          "endLine": 104,
+          "methods": []
+        },
+        {
+          "name": "MaterialSummaryDTO",
+          "kind": "struct",
+          "startLine": 109,
+          "endLine": 118,
+          "methods": []
+        },
+        {
+          "name": "MaterialRarityDTO",
+          "kind": "struct",
+          "startLine": 120,
+          "endLine": 124,
+          "methods": []
+        },
+        {
+          "name": "MaterialSourceDTO",
+          "kind": "struct",
+          "startLine": 126,
+          "endLine": 130,
+          "methods": []
+        },
+        {
+          "name": "MaterialComponentDTO",
+          "kind": "struct",
+          "startLine": 132,
+          "endLine": 136,
+          "methods": []
+        },
+        {
+          "name": "MaterialTradeStatsDTO",
+          "kind": "struct",
+          "startLine": 138,
+          "endLine": 144,
+          "methods": []
+        },
+        {
+          "name": "MaterialRatingDTO",
+          "kind": "struct",
+          "startLine": 146,
+          "endLine": 149,
+          "methods": []
+        },
+        {
+          "name": "MaterialDetailDTO",
+          "kind": "struct",
+          "startLine": 153,
+          "endLine": 171,
+          "methods": []
+        }
       ],
-      "totalLines": 135,
+      "imports": [
+        "encoding/json",
+        "errors",
+        "fmt",
+        "time",
+        "github.com/go-redis/redis",
+        "gorm.io/gorm",
+        "gorm.io/gorm/clause"
+      ],
+      "exports": [],
+      "totalLines": 484,
       "hasStructuralAnalysis": true
     },
     "internal/database/mysql_connection.go": {
       "filePath": "internal/database/mysql_connection.go",
-      "contentHash": "08c925f618f103e30e34597b54146e40b57677b2e680db49572a17ac4ddee8b1",
+      "contentHash": "3c30b491d4e4b99665597a5fd7a5564fc202de3d6b7a072c25bf5879ef6c4254",
       "functions": [
         {
           "name": "NewStore",
-          "params": [
-            "db"
-          ],
-          "returnType": "*Store",
-          "exported": true,
-          "lineCount": 3
+          "startLine": 25,
+          "endLine": 27
+        },
+        {
+          "name": "DBPoolStats",
+          "receiver": "Store",
+          "startLine": 31,
+          "endLine": 41
         },
         {
           "name": "ConnectGiftDB",
-          "params": [
-            "confDir",
-            "confFile",
-            "fileType",
-            "logDir"
-          ],
-          "returnType": "*Store",
-          "exported": true,
-          "lineCount": 45
+          "startLine": 53,
+          "endLine": 99
         },
         {
           "name": "PingGiftDB",
-          "params": [],
-          "exported": true,
-          "lineCount": 7
+          "receiver": "Store",
+          "startLine": 103,
+          "endLine": 109
         },
         {
           "name": "CloseGiftDB",
-          "params": [],
-          "exported": true,
-          "lineCount": 7
+          "receiver": "Store",
+          "startLine": 113,
+          "endLine": 119
         }
       ],
       "classes": [
         {
           "name": "Store",
+          "kind": "struct",
+          "startLine": 19,
+          "endLine": 21,
           "methods": [
+            "DBPoolStats",
             "PingGiftDB",
             "CloseGiftDB"
-          ],
-          "properties": [
-            "db"
-          ],
-          "exported": true,
-          "lineCount": 3
+          ]
         }
       ],
       "imports": [
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "log",
-          "specifiers": [
-            "log"
-          ]
-        },
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
-          "source": "path",
-          "specifiers": [
-            "path"
-          ]
-        },
-        {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "gorm.io/driver/mysql",
-          "specifiers": [
-            "mysql"
-          ]
-        },
-        {
-          "source": "gorm.io/gorm",
-          "specifiers": [
-            "gorm"
-          ]
-        },
-        {
-          "source": "gorm.io/gorm/logger",
-          "specifiers": [
-            "logger"
-          ]
-        }
+        "fmt",
+        "log",
+        "log/slog",
+        "os",
+        "path",
+        "silas/internal/util",
+        "time",
+        "gorm.io/driver/mysql",
+        "gorm.io/gorm",
+        "gorm.io/gorm/logger"
       ],
-      "exports": [
-        "Store",
-        "NewStore",
-        "ConnectGiftDB",
-        "PingGiftDB",
-        "CloseGiftDB"
-      ],
-      "totalLines": 104,
+      "exports": [],
+      "totalLines": 120,
       "hasStructuralAnalysis": true
     },
     "internal/database/order.go": {
       "filePath": "internal/database/order.go",
-      "contentHash": "486f817b39a54d63d45381882c2f358f9c7d50e149536cde5cd4c3e284b09cfb",
+      "contentHash": "11e2730fdd14ac7de6d035edaccaa6125fc4d1515016717145e7b5795351ffc1",
       "functions": [
         {
+          "name": "CanTransitionOrderStatus",
+          "startLine": 20,
+          "endLine": 29
+        },
+        {
           "name": "EnsureOrderSchema",
-          "params": [],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 9
+          "receiver": "Store",
+          "startLine": 81,
+          "endLine": 105
+        },
+        {
+          "name": "CreatePendingOrder",
+          "receiver": "Store",
+          "startLine": 109,
+          "endLine": 131
         },
         {
           "name": "CreateOrder",
-          "params": [
-            "activityID",
-            "userid",
-            "giftid"
-          ],
-          "returnType": "(int, bool, error)",
-          "exported": true,
-          "lineCount": 12
+          "receiver": "Store",
+          "startLine": 135,
+          "endLine": 154
+        },
+        {
+          "name": "FindOrder",
+          "receiver": "Store",
+          "startLine": 157,
+          "endLine": 167
         },
         {
           "name": "HasOrder",
-          "params": [
-            "activityID",
-            "userid"
-          ],
-          "returnType": "(bool, error)",
-          "exported": true,
-          "lineCount": 11
+          "receiver": "Store",
+          "startLine": 171,
+          "endLine": 180
+        },
+        {
+          "name": "TransitionPendingOrderToPaid",
+          "receiver": "Store",
+          "startLine": 184,
+          "endLine": 201
+        },
+        {
+          "name": "RecordReleasedRedisCancellation",
+          "receiver": "Store",
+          "startLine": 205,
+          "endLine": 267
+        },
+        {
+          "name": "CancelMySQLOrderAndRestoreStock",
+          "receiver": "Store",
+          "startLine": 271,
+          "endLine": 318
         },
         {
           "name": "CompletedOrderCounts",
-          "params": [
-            "activityID"
-          ],
-          "returnType": "(map[int]int, error)",
-          "exported": true,
-          "lineCount": 18
+          "receiver": "Store",
+          "startLine": 322,
+          "endLine": 339
+        },
+        {
+          "name": "findOrderByID",
+          "receiver": "Store",
+          "startLine": 341,
+          "endLine": 350
         },
         {
           "name": "ClearOrders",
-          "params": [],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 3
+          "receiver": "Store",
+          "startLine": 353,
+          "endLine": 355
+        },
+        {
+          "name": "ResetOrders",
+          "receiver": "Store",
+          "startLine": 358,
+          "endLine": 366
         },
         {
           "name": "ensureColumn",
-          "params": [
-            "table",
-            "column",
-            "ddl"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 15
+          "receiver": "Store",
+          "startLine": 368,
+          "endLine": 380
         },
         {
           "name": "ensureIndex",
-          "params": [
-            "table",
-            "index",
-            "ddl"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 15
+          "receiver": "Store",
+          "startLine": 382,
+          "endLine": 394
         },
         {
           "name": "columnExists",
-          "params": [
-            "table",
-            "column"
-          ],
-          "returnType": "(bool, error)",
-          "exported": false,
-          "lineCount": 13
+          "receiver": "Store",
+          "startLine": 396,
+          "endLine": 408
         },
         {
           "name": "indexExists",
-          "params": [
-            "table",
-            "index"
-          ],
-          "returnType": "(bool, error)",
-          "exported": false,
-          "lineCount": 13
+          "receiver": "Store",
+          "startLine": 410,
+          "endLine": 422
         },
         {
           "name": "isDuplicateKey",
-          "params": [
-            "err"
-          ],
-          "returnType": "bool",
-          "exported": false,
-          "lineCount": 4
+          "startLine": 424,
+          "endLine": 427
         }
       ],
       "classes": [
         {
+          "name": "OrderStatus",
+          "kind": "alias",
+          "startLine": 34,
+          "endLine": 34,
+          "methods": []
+        },
+        {
+          "name": "InventoryMode",
+          "kind": "alias",
+          "startLine": 44,
+          "endLine": 44,
+          "methods": []
+        },
+        {
           "name": "Order",
-          "methods": [],
-          "properties": [
-            "Id",
-            "ActivityId",
-            "GiftId",
-            "UserId",
-            "Count"
-          ],
-          "exported": true,
-          "lineCount": 17
+          "kind": "struct",
+          "startLine": 55,
+          "endLine": 72,
+          "methods": []
         },
         {
           "name": "giftOrderCount",
-          "methods": [],
-          "properties": [
-            "GiftId",
-            "Total"
-          ],
-          "exported": false,
-          "lineCount": 4
+          "kind": "struct",
+          "startLine": 74,
+          "endLine": 77,
+          "methods": []
         }
       ],
       "imports": [
+        "errors",
+        "fmt",
+        "log/slog",
+        "time",
+        "github.com/go-sql-driver/mysql",
+        "gorm.io/gorm"
+      ],
+      "exports": [],
+      "totalLines": 428,
+      "hasStructuralAnalysis": true
+    },
+    "internal/database/order_state_test.go": {
+      "filePath": "internal/database/order_state_test.go",
+      "contentHash": "c8f87d691f5ad2be4abf814de94f7f5976db0b840a8a0b54165d7ab536ba4c87",
+      "functions": [
         {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
+          "name": "TestCanTransitionOrderStatus",
+          "startLine": 17,
+          "endLine": 40
         },
         {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
+          "name": "TestParseAdmission",
+          "startLine": 42,
+          "endLine": 72
         },
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
+          "name": "TestRedisPayCancelRace",
+          "startLine": 76,
+          "endLine": 161
         },
         {
-          "source": "github.com/go-sql-driver/mysql",
-          "specifiers": [
-            "mysqlDriver"
-          ]
+          "name": "TestMySQLPayCancelRace",
+          "startLine": 164,
+          "endLine": 269
         }
       ],
-      "exports": [
-        "Order",
-        "EnsureOrderSchema",
-        "CreateOrder",
-        "HasOrder",
-        "CompletedOrderCounts",
-        "ClearOrders"
+      "classes": [],
+      "imports": [
+        "errors",
+        "os",
+        "strconv",
+        "sync",
+        "testing",
+        "time",
+        "github.com/go-redis/redis",
+        "gorm.io/driver/mysql",
+        "gorm.io/gorm",
+        "gorm.io/gorm/logger"
       ],
-      "totalLines": 194,
+      "exports": [],
+      "totalLines": 270,
+      "hasStructuralAnalysis": true
+    },
+    "internal/database/purchase_experiment.go": {
+      "filePath": "internal/database/purchase_experiment.go",
+      "contentHash": "28014f76e881b01c1bf742d7c783eebf732e534716bc7b1788868c2fe51088ee",
+      "functions": [
+        {
+          "name": "EnsurePurchaseExperimentSchema",
+          "receiver": "Store",
+          "startLine": 94,
+          "endLine": 122
+        },
+        {
+          "name": "ResetPurchaseExperimentMaterial",
+          "receiver": "Store",
+          "startLine": 127,
+          "endLine": 163
+        },
+        {
+          "name": "InspectPurchaseExperimentState",
+          "receiver": "Store",
+          "startLine": 166,
+          "endLine": 188
+        },
+        {
+          "name": "MaterialStock",
+          "receiver": "Store",
+          "startLine": 191,
+          "endLine": 200
+        },
+        {
+          "name": "CommitMaterialPurchase",
+          "receiver": "Store",
+          "startLine": 204,
+          "endLine": 306
+        },
+        {
+          "name": "UpdatePurchaseOrderLatency",
+          "receiver": "Store",
+          "startLine": 309,
+          "endLine": 316
+        },
+        {
+          "name": "RecoverPurchaseOutbox",
+          "receiver": "Store",
+          "startLine": 321,
+          "endLine": 333
+        },
+        {
+          "name": "ClaimNextPurchaseOutbox",
+          "receiver": "Store",
+          "startLine": 336,
+          "endLine": 369
+        },
+        {
+          "name": "MarkPurchaseOutboxPublished",
+          "receiver": "Store",
+          "startLine": 371,
+          "endLine": 383
+        },
+        {
+          "name": "MarkPurchaseOutboxPublishFailed",
+          "receiver": "Store",
+          "startLine": 385,
+          "endLine": 401
+        },
+        {
+          "name": "MarkPurchaseOutboxInvalidated",
+          "receiver": "Store",
+          "startLine": 405,
+          "endLine": 418
+        },
+        {
+          "name": "RecordPurchaseOutboxConsumerFailure",
+          "receiver": "Store",
+          "startLine": 420,
+          "endLine": 435
+        },
+        {
+          "name": "PurchaseOutboxByEvent",
+          "receiver": "Store",
+          "startLine": 437,
+          "endLine": 446
+        },
+        {
+          "name": "PurchaseBatchRecords",
+          "receiver": "Store",
+          "startLine": 448,
+          "endLine": 458
+        },
+        {
+          "name": "initialMaterialStock",
+          "startLine": 460,
+          "endLine": 467
+        },
+        {
+          "name": "isMySQLDuplicate",
+          "startLine": 469,
+          "endLine": 472
+        }
+      ],
+      "classes": [
+        {
+          "name": "PurchaseLabOrder",
+          "kind": "struct",
+          "startLine": 37,
+          "endLine": 47,
+          "methods": []
+        },
+        {
+          "name": "PurchaseLabOutbox",
+          "kind": "struct",
+          "startLine": 53,
+          "endLine": 66,
+          "methods": []
+        },
+        {
+          "name": "PurchaseCacheInvalidation",
+          "kind": "struct",
+          "startLine": 72,
+          "endLine": 75,
+          "methods": []
+        },
+        {
+          "name": "PurchaseExperimentState",
+          "kind": "struct",
+          "startLine": 78,
+          "endLine": 83,
+          "methods": []
+        },
+        {
+          "name": "PurchaseCommitResult",
+          "kind": "struct",
+          "startLine": 86,
+          "endLine": 91,
+          "methods": []
+        }
+      ],
+      "imports": [
+        "errors",
+        "fmt",
+        "time",
+        "github.com/go-sql-driver/mysql",
+        "gorm.io/gorm",
+        "gorm.io/gorm/clause"
+      ],
+      "exports": [],
+      "totalLines": 473,
+      "hasStructuralAnalysis": true
+    },
+    "internal/database/purchase_experiment_test.go": {
+      "filePath": "internal/database/purchase_experiment_test.go",
+      "contentHash": "0dc575ca4af986c61f4dee0873f63723e2dce662a2197808a1c960f1f40bd52a",
+      "functions": [
+        {
+          "name": "purchaseIntegrationID",
+          "startLine": 15,
+          "endLine": 17
+        },
+        {
+          "name": "ensurePurchaseExperimentFixtures",
+          "startLine": 19,
+          "endLine": 27
+        },
+        {
+          "name": "TestPurchaseExperimentSyncInvalidateSharesArchiveData",
+          "startLine": 31,
+          "endLine": 86
+        },
+        {
+          "name": "TestPurchaseExperimentOutboxConsumerIsIdempotent",
+          "startLine": 90,
+          "endLine": 150
+        },
+        {
+          "name": "TestRecoverPurchaseOutboxRequeuesPublishedEvent",
+          "startLine": 154,
+          "endLine": 193
+        },
+        {
+          "name": "TestPurchaseExperimentOutboxConflictRollsBackStock",
+          "startLine": 197,
+          "endLine": 241
+        },
+        {
+          "name": "TestPurchaseExperimentRuns150UniquePurchases",
+          "startLine": 245,
+          "endLine": 283
+        },
+        {
+          "name": "TestPurchaseExperimentConcurrentStockNeverNegative",
+          "startLine": 287,
+          "endLine": 345
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "context",
+        "fmt",
+        "silas/internal/database",
+        "silas/internal/service",
+        "sync",
+        "testing",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 346,
       "hasStructuralAnalysis": true
     },
     "internal/database/redis_connection.go": {
@@ -1266,90 +1406,59 @@
       "functions": [
         {
           "name": "ConnectGiftRedis",
-          "params": [
-            "confDir",
-            "confFile",
-            "fileType"
-          ],
-          "exported": true,
-          "lineCount": 14
+          "startLine": 19,
+          "endLine": 32
         },
         {
           "name": "CloseGiftRedis",
-          "params": [],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 36,
+          "endLine": 41
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
-        },
-        {
-          "source": "github.com/go-redis/redis",
-          "specifiers": [
-            "redis"
-          ]
-        }
+        "log/slog",
+        "silas/internal/util",
+        "github.com/go-redis/redis"
       ],
-      "exports": [
-        "ConnectGiftRedis",
-        "CloseGiftRedis"
-      ],
+      "exports": [],
       "totalLines": 42,
       "hasStructuralAnalysis": true
     },
-    "internal/database/temp_order_test.go": {
-      "filePath": "internal/database/temp_order_test.go",
-      "contentHash": "533a3df73afc9cdcd5dae77b2c06879c987e53075779611c8f6cc8924ecdf770",
+    "internal/database/reset.go": {
+      "filePath": "internal/database/reset.go",
+      "contentHash": "860470982d224ccc0871e5659cffc354ae2bba607e9b7dfbade282e87ba4e081",
       "functions": [
         {
-          "name": "TestCreateTempOrder",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 13
+          "name": "ResetExperimentState",
+          "receiver": "Store",
+          "startLine": 11,
+          "endLine": 29
         },
         {
-          "name": "TestDeleteTempOrder",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 18
+          "name": "clearLotteryRedisState",
+          "startLine": 31,
+          "endLine": 48
+        },
+        {
+          "name": "deleteRedisKeysByPattern",
+          "startLine": 50,
+          "endLine": 52
+        },
+        {
+          "name": "deleteRedisKeysExcept",
+          "startLine": 56,
+          "endLine": 90
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "silas/internal/database",
-          "specifiers": [
-            "database"
-          ]
-        },
-        {
-          "source": "testing",
-          "specifiers": [
-            "testing"
-          ]
-        }
+        "errors",
+        "fmt",
+        "log/slog"
       ],
-      "exports": [
-        "TestCreateTempOrder",
-        "TestDeleteTempOrder"
-      ],
-      "totalLines": 43,
+      "exports": [],
+      "totalLines": 91,
       "hasStructuralAnalysis": true
     },
     "internal/database/temp_order.go": {
@@ -1358,288 +1467,339 @@
       "functions": [
         {
           "name": "CreateTempOrder",
-          "params": [
-            "uid",
-            "GiftId"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 9
+          "startLine": 21,
+          "endLine": 29
         },
         {
           "name": "GetTempOrder",
-          "params": [
-            "uid"
-          ],
-          "returnType": "int",
-          "exported": true,
-          "lineCount": 11
+          "startLine": 34,
+          "endLine": 44
         },
         {
           "name": "DeleteTempOrder",
-          "params": [
-            "uid",
-            "GiftId"
-          ],
-          "returnType": "int64",
-          "exported": true,
-          "lineCount": 10
+          "startLine": 49,
+          "endLine": 58
         }
       ],
       "classes": [],
       "imports": [
+        "errors",
+        "fmt",
+        "log/slog",
+        "strconv",
+        "github.com/go-redis/redis"
+      ],
+      "exports": [],
+      "totalLines": 59,
+      "hasStructuralAnalysis": true
+    },
+    "internal/database/temp_order_test.go": {
+      "filePath": "internal/database/temp_order_test.go",
+      "contentHash": "38d50b783adec3f2f0f58c7405f15b9e002a3afb60e9710c6935dcc09f8fed3f",
+      "functions": [
         {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
+          "name": "TestCreateTempOrder",
+          "startLine": 8,
+          "endLine": 21
         },
         {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
+          "name": "TestDeleteTempOrder",
+          "startLine": 23,
+          "endLine": 41
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "silas/internal/database",
+        "testing"
+      ],
+      "exports": [],
+      "totalLines": 45,
+      "hasStructuralAnalysis": true
+    },
+    "internal/handler/archive.go": {
+      "filePath": "internal/handler/archive.go",
+      "contentHash": "ebe06618d81c5ec24cbadaa86f7f44c1035a1b3321fc827835a5f0b1cc1de31d",
+      "functions": [
+        {
+          "name": "NewArchiveHandler",
+          "startLine": 17,
+          "endLine": 19
         },
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
+          "name": "List",
+          "receiver": "ArchiveHandler",
+          "startLine": 21,
+          "endLine": 28
         },
         {
-          "source": "strconv",
-          "specifiers": [
-            "strconv"
-          ]
+          "name": "ReadDirect",
+          "receiver": "ArchiveHandler",
+          "startLine": 30,
+          "endLine": 32
         },
         {
-          "source": "github.com/go-redis/redis",
-          "specifiers": [
-            "redis"
+          "name": "ReadCached",
+          "receiver": "ArchiveHandler",
+          "startLine": 34,
+          "endLine": 36
+        },
+        {
+          "name": "read",
+          "receiver": "ArchiveHandler",
+          "startLine": 38,
+          "endLine": 63
+        },
+        {
+          "name": "ResetChapter",
+          "receiver": "ArchiveHandler",
+          "startLine": 65,
+          "endLine": 74
+        }
+      ],
+      "classes": [
+        {
+          "name": "ArchiveHandler",
+          "kind": "struct",
+          "startLine": 13,
+          "endLine": 15,
+          "methods": [
+            "List",
+            "ReadDirect",
+            "ReadCached",
+            "read",
+            "ResetChapter"
           ]
         }
       ],
-      "exports": [
-        "CreateTempOrder",
-        "GetTempOrder",
-        "DeleteTempOrder"
+      "imports": [
+        "net/http",
+        "silas/internal/metrics",
+        "silas/internal/service",
+        "strconv",
+        "github.com/gin-gonic/gin"
       ],
-      "totalLines": 59,
+      "exports": [],
+      "totalLines": 75,
       "hasStructuralAnalysis": true
     },
     "internal/handler/errors.go": {
       "filePath": "internal/handler/errors.go",
-      "contentHash": "148bdb3e7b44ede1808ad501e2a95f1060910fbcaf16c5c6a3a425d7479a2f15",
+      "contentHash": "fb5e4bd74629b55325d6da970bfcc050f2f898ce5504de675951709bd6cba701",
       "functions": [
         {
           "name": "writeServiceError",
-          "params": [
-            "ctx",
-            "err"
-          ],
-          "exported": false,
-          "lineCount": 3
+          "startLine": 21,
+          "endLine": 23
         },
         {
           "name": "writeAPIError",
-          "params": [
-            "ctx",
-            "status",
-            "code",
-            "message",
-            "err"
-          ],
-          "exported": false,
-          "lineCount": 25
+          "startLine": 28,
+          "endLine": 52
         },
         {
           "name": "statusForCode",
-          "params": [
-            "code"
-          ],
-          "returnType": "int",
-          "exported": false,
-          "lineCount": 22
+          "startLine": 57,
+          "endLine": 102
         }
       ],
       "classes": [
         {
           "name": "apiErrorResponse",
-          "methods": [],
-          "properties": [
-            "Status",
-            "Code",
-            "Message",
-            "Detail"
-          ],
-          "exported": false,
-          "lineCount": 6
+          "kind": "struct",
+          "startLine": 11,
+          "endLine": 16,
+          "methods": []
         }
       ],
       "imports": [
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "net/http",
-          "specifiers": [
-            "http"
-          ]
-        },
-        {
-          "source": "silas/internal/service",
-          "specifiers": [
-            "service"
-          ]
-        },
-        {
-          "source": "github.com/gin-gonic/gin",
-          "specifiers": [
-            "gin"
-          ]
-        }
+        "log/slog",
+        "net/http",
+        "silas/internal/service",
+        "github.com/gin-gonic/gin"
       ],
       "exports": [],
-      "totalLines": 79,
+      "totalLines": 103,
       "hasStructuralAnalysis": true
     },
     "internal/handler/gift.go": {
       "filePath": "internal/handler/gift.go",
-      "contentHash": "25ed1c5d530b9c6ef1c62e578718a8f0efbf67bdeff466c07753d4bccc9a9c92",
+      "contentHash": "bc6f7bfae6a26c579fb7a4dcc0a8adda50bfe32a6b0a0883d80f268837603e1d",
       "functions": [
         {
           "name": "NewGiftHandler",
-          "params": [
-            "lottery",
-            "cacheLottery"
-          ],
-          "returnType": "*GiftHandler",
-          "exported": true,
-          "lineCount": 3
+          "startLine": 28,
+          "endLine": 30
         },
         {
           "name": "lotteryUID",
-          "params": [
-            "ctx"
-          ],
-          "returnType": "int",
-          "exported": false,
-          "lineCount": 13
+          "startLine": 32,
+          "endLine": 44
         },
         {
-          "name": "GetAllGifts",
-          "params": [
-            "ctx"
-          ],
-          "exported": true,
-          "lineCount": 19
+          "name": "GetAllMaterials",
+          "receiver": "GiftHandler",
+          "startLine": 48,
+          "endLine": 66
+        },
+        {
+          "name": "ProbeRateLimit",
+          "receiver": "GiftHandler",
+          "startLine": 70,
+          "endLine": 79
         },
         {
           "name": "Lottery",
-          "params": [
-            "ctx"
-          ],
-          "exported": true,
-          "lineCount": 30
+          "receiver": "GiftHandler",
+          "startLine": 84,
+          "endLine": 115
         },
         {
           "name": "LotteryCacheAside",
-          "params": [
-            "ctx"
-          ],
-          "exported": true,
-          "lineCount": 24
+          "receiver": "GiftHandler",
+          "startLine": 119,
+          "endLine": 148
         }
       ],
       "classes": [
         {
           "name": "GiftHandler",
+          "kind": "struct",
+          "startLine": 19,
+          "endLine": 22,
           "methods": [
-            "GetAllGifts",
+            "GetAllMaterials",
+            "ProbeRateLimit",
             "Lottery",
             "LotteryCacheAside"
-          ],
-          "properties": [
-            "lottery",
-            "cacheLottery"
-          ],
-          "exported": true,
-          "lineCount": 4
+          ]
         }
       ],
       "imports": [
+        "encoding/json",
+        "log/slog",
+        "net/http",
+        "silas/internal/metrics",
+        "silas/internal/service",
+        "silas/internal/util",
+        "strconv",
+        "sync/atomic",
+        "time",
+        "github.com/gin-gonic/gin"
+      ],
+      "exports": [],
+      "totalLines": 149,
+      "hasStructuralAnalysis": true
+    },
+    "internal/handler/lab.go": {
+      "filePath": "internal/handler/lab.go",
+      "contentHash": "412ae1076b6569c9c66969bb5a1978c375f14787aa549d1f7e1fc01ea20ccc28",
+      "functions": [
         {
-          "source": "encoding/json",
-          "specifiers": [
-            "json"
-          ]
+          "name": "NewLabHandler",
+          "startLine": 19,
+          "endLine": 21
         },
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
+          "name": "ResetLab",
+          "receiver": "LabHandler",
+          "startLine": 24,
+          "endLine": 44
         },
         {
-          "source": "net/http",
-          "specifiers": [
-            "http"
-          ]
-        },
+          "name": "inventoryTotals",
+          "startLine": 46,
+          "endLine": 73
+        }
+      ],
+      "classes": [
         {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
-        },
-        {
-          "source": "silas/internal/service",
-          "specifiers": [
-            "service"
-          ]
-        },
-        {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
-        },
-        {
-          "source": "strconv",
-          "specifiers": [
-            "strconv"
-          ]
-        },
-        {
-          "source": "sync/atomic",
-          "specifiers": [
-            "atomic"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "github.com/gin-gonic/gin",
-          "specifiers": [
-            "gin"
+          "name": "LabHandler",
+          "kind": "struct",
+          "startLine": 14,
+          "endLine": 17,
+          "methods": [
+            "ResetLab"
           ]
         }
       ],
-      "exports": [
-        "GiftHandler",
-        "NewGiftHandler",
-        "GetAllGifts",
-        "Lottery",
-        "LotteryCacheAside"
+      "imports": [
+        "fmt",
+        "net/http",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "github.com/gin-gonic/gin"
       ],
-      "totalLines": 129,
+      "exports": [],
+      "totalLines": 74,
+      "hasStructuralAnalysis": true
+    },
+    "internal/handler/loadtest.go": {
+      "filePath": "internal/handler/loadtest.go",
+      "contentHash": "14575513ecb110505af68296e4f94b979864d07cf140e9b09bf92ca179fc291c",
+      "functions": [
+        {
+          "name": "NewLoadtestHandler",
+          "startLine": 22,
+          "endLine": 24
+        },
+        {
+          "name": "Create",
+          "receiver": "LoadtestHandler",
+          "startLine": 27,
+          "endLine": 46
+        },
+        {
+          "name": "PlanConnections",
+          "receiver": "LoadtestHandler",
+          "startLine": 49,
+          "endLine": 68
+        },
+        {
+          "name": "Get",
+          "receiver": "LoadtestHandler",
+          "startLine": 71,
+          "endLine": 78
+        },
+        {
+          "name": "Stop",
+          "receiver": "LoadtestHandler",
+          "startLine": 81,
+          "endLine": 88
+        },
+        {
+          "name": "Events",
+          "receiver": "LoadtestHandler",
+          "startLine": 92,
+          "endLine": 127
+        }
+      ],
+      "classes": [
+        {
+          "name": "LoadtestHandler",
+          "kind": "struct",
+          "startLine": 17,
+          "endLine": 19,
+          "methods": [
+            "Create",
+            "PlanConnections",
+            "Get",
+            "Stop",
+            "Events"
+          ]
+        }
+      ],
+      "imports": [
+        "encoding/json",
+        "fmt",
+        "io",
+        "net/http",
+        "silas/internal/loadtest",
+        "silas/internal/service",
+        "github.com/gin-gonic/gin"
+      ],
+      "exports": [],
+      "totalLines": 128,
       "hasStructuralAnalysis": true
     },
     "internal/handler/metrics.go": {
@@ -1648,949 +1808,1935 @@
       "functions": [
         {
           "name": "GetMetricsSnapshot",
-          "params": [
-            "ctx"
-          ],
-          "exported": true,
-          "lineCount": 3
+          "startLine": 15,
+          "endLine": 17
         },
         {
           "name": "StreamMetrics",
-          "params": [
-            "ctx"
-          ],
-          "exported": true,
-          "lineCount": 25
+          "startLine": 22,
+          "endLine": 46
         },
         {
           "name": "writeMetricsEvent",
-          "params": [
-            "ctx",
-            "flusher"
-          ],
-          "exported": false,
-          "lineCount": 9
+          "startLine": 48,
+          "endLine": 56
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "encoding/json",
-          "specifiers": [
-            "json"
-          ]
-        },
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "net/http",
-          "specifiers": [
-            "http"
-          ]
-        },
-        {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "github.com/gin-gonic/gin",
-          "specifiers": [
-            "gin"
-          ]
-        }
+        "encoding/json",
+        "fmt",
+        "net/http",
+        "silas/internal/metrics",
+        "time",
+        "github.com/gin-gonic/gin"
       ],
-      "exports": [
-        "GetMetricsSnapshot",
-        "StreamMetrics"
-      ],
+      "exports": [],
       "totalLines": 57,
       "hasStructuralAnalysis": true
     },
     "internal/handler/order.go": {
       "filePath": "internal/handler/order.go",
-      "contentHash": "fc9222c9892aeae025ad1054c6f8492e0b5776f2f12f6fed42c609e2d9a258f1",
+      "contentHash": "168eceef7cf611d06cb6f65e1c9a9c2446a2bb77a2db46e672c173cbe936287a",
       "functions": [
         {
+          "name": "Status",
+          "receiver": "OrderHandler",
+          "startLine": 20,
+          "endLine": 37
+        },
+        {
           "name": "NewOrderHandler",
-          "params": [
-            "order"
-          ],
-          "returnType": "*OrderHandler",
-          "exported": true,
-          "lineCount": 3
+          "startLine": 41,
+          "endLine": 43
         },
         {
           "name": "Pay",
-          "params": [
-            "ctx"
-          ],
-          "exported": true,
-          "lineCount": 25
+          "receiver": "OrderHandler",
+          "startLine": 48,
+          "endLine": 72
         },
         {
           "name": "GiveUp",
-          "params": [
-            "ctx"
-          ],
-          "exported": true,
-          "lineCount": 23
+          "receiver": "OrderHandler",
+          "startLine": 76,
+          "endLine": 97
         }
       ],
       "classes": [
         {
           "name": "OrderHandler",
+          "kind": "struct",
+          "startLine": 15,
+          "endLine": 17,
           "methods": [
+            "Status",
             "Pay",
             "GiveUp"
-          ],
-          "properties": [
-            "order"
-          ],
-          "exported": true,
-          "lineCount": 3
+          ]
         }
       ],
       "imports": [
+        "log/slog",
+        "net/http",
+        "silas/internal/service",
+        "strconv",
+        "time",
+        "github.com/gin-gonic/gin"
+      ],
+      "exports": [],
+      "totalLines": 98,
+      "hasStructuralAnalysis": true
+    },
+    "internal/handler/purchase_lab.go": {
+      "filePath": "internal/handler/purchase_lab.go",
+      "contentHash": "937f8d5457d3298a1eb287397fbe1dc76c51bd929f79c6c60cad1320b73b1793",
+      "functions": [
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
+          "name": "NewPurchaseLabHandler",
+          "startLine": 18,
+          "endLine": 20
+        },
+        {
+          "name": "State",
+          "receiver": "PurchaseLabHandler",
+          "startLine": 22,
+          "endLine": 33
+        },
+        {
+          "name": "Reset",
+          "receiver": "PurchaseLabHandler",
+          "startLine": 35,
+          "endLine": 46
+        },
+        {
+          "name": "Run",
+          "receiver": "PurchaseLabHandler",
+          "startLine": 55,
+          "endLine": 81
+        },
+        {
+          "name": "GetRun",
+          "receiver": "PurchaseLabHandler",
+          "startLine": 83,
+          "endLine": 90
+        },
+        {
+          "name": "Query",
+          "receiver": "PurchaseLabHandler",
+          "startLine": 96,
+          "endLine": 113
+        },
+        {
+          "name": "purchaseLabMaterialID",
+          "startLine": 115,
+          "endLine": 122
+        }
+      ],
+      "classes": [
+        {
+          "name": "PurchaseLabHandler",
+          "kind": "struct",
+          "startLine": 14,
+          "endLine": 16,
+          "methods": [
+            "State",
+            "Reset",
+            "Run",
+            "GetRun",
+            "Query"
           ]
         },
         {
-          "source": "net/http",
-          "specifiers": [
-            "http"
-          ]
+          "name": "purchaseLabRunRequest",
+          "kind": "struct",
+          "startLine": 48,
+          "endLine": 53,
+          "methods": []
         },
         {
-          "source": "silas/internal/service",
-          "specifiers": [
-            "service"
-          ]
+          "name": "purchaseLabQueryRequest",
+          "kind": "struct",
+          "startLine": 92,
+          "endLine": 94,
+          "methods": []
+        }
+      ],
+      "imports": [
+        "log/slog",
+        "net/http",
+        "silas/internal/service",
+        "strconv",
+        "time",
+        "github.com/gin-gonic/gin"
+      ],
+      "exports": [],
+      "totalLines": 123,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/client.go": {
+      "filePath": "internal/loadtest/client.go",
+      "contentHash": "efe08674028a58965f3c36ba5d0835fe48926558f4271cfd91c4a2f189aec799",
+      "functions": [
+        {
+          "name": "NewClient",
+          "startLine": 24,
+          "endLine": 37
         },
         {
-          "source": "strconv",
-          "specifiers": [
-            "strconv"
-          ]
+          "name": "Start",
+          "receiver": "Client",
+          "startLine": 40,
+          "endLine": 44
         },
         {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
+          "name": "PlanConnections",
+          "receiver": "Client",
+          "startLine": 47,
+          "endLine": 51
         },
         {
-          "source": "github.com/gin-gonic/gin",
-          "specifiers": [
-            "gin"
+          "name": "Get",
+          "receiver": "Client",
+          "startLine": 54,
+          "endLine": 58
+        },
+        {
+          "name": "Stop",
+          "receiver": "Client",
+          "startLine": 61,
+          "endLine": 65
+        },
+        {
+          "name": "OpenEvents",
+          "receiver": "Client",
+          "startLine": 68,
+          "endLine": 85
+        },
+        {
+          "name": "doJSON",
+          "receiver": "Client",
+          "startLine": 87,
+          "endLine": 117
+        },
+        {
+          "name": "taskPath",
+          "startLine": 119,
+          "endLine": 121
+        },
+        {
+          "name": "decodeRemoteError",
+          "startLine": 123,
+          "endLine": 132
+        },
+        {
+          "name": "unavailableError",
+          "startLine": 134,
+          "endLine": 136
+        }
+      ],
+      "classes": [
+        {
+          "name": "Client",
+          "kind": "struct",
+          "startLine": 17,
+          "endLine": 21,
+          "methods": [
+            "Start",
+            "PlanConnections",
+            "Get",
+            "Stop",
+            "OpenEvents",
+            "doJSON"
           ]
         }
       ],
-      "exports": [
-        "OrderHandler",
-        "NewOrderHandler",
-        "Pay",
-        "GiveUp"
+      "imports": [
+        "bytes",
+        "context",
+        "encoding/json",
+        "fmt",
+        "io",
+        "net/http",
+        "net/url",
+        "strings",
+        "time"
       ],
-      "totalLines": 79,
+      "exports": [],
+      "totalLines": 137,
       "hasStructuralAnalysis": true
     },
-    "internal/handler/test/gift_test.go": {
-      "filePath": "internal/handler/test/gift_test.go",
-      "contentHash": "75a753722b1c33c6e927191b1455053f07f1aa0203902a8203161f8a743582b1",
+    "internal/loadtest/parser.go": {
+      "filePath": "internal/loadtest/parser.go",
+      "contentHash": "bce887d4ee0d2c5c118c3caaee1456dfeb04002ca3126e5972996eafa7f8d9cf",
       "functions": [
         {
-          "name": "TestLottery",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 67
+          "name": "parseWrkOutput",
+          "startLine": 56,
+          "endLine": 148
+        },
+        {
+          "name": "finalizeHistogram",
+          "startLine": 150,
+          "endLine": 161
+        },
+        {
+          "name": "percentileAt",
+          "startLine": 163,
+          "endLine": 173
+        },
+        {
+          "name": "durationToMilliseconds",
+          "startLine": 175,
+          "endLine": 184
+        },
+        {
+          "name": "durationToSeconds",
+          "startLine": 186,
+          "endLine": 195
+        }
+      ],
+      "classes": [
+        {
+          "name": "wrkResult",
+          "kind": "struct",
+          "startLine": 21,
+          "endLine": 38,
+          "methods": []
+        },
+        {
+          "name": "percentilePoint",
+          "kind": "struct",
+          "startLine": 40,
+          "endLine": 43,
+          "methods": []
+        },
+        {
+          "name": "latencyHistogram",
+          "kind": "struct",
+          "startLine": 45,
+          "endLine": 51,
+          "methods": []
+        }
+      ],
+      "imports": [
+        "bufio",
+        "regexp",
+        "strconv",
+        "strings"
+      ],
+      "exports": [],
+      "totalLines": 196,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/parser_test.go": {
+      "filePath": "internal/loadtest/parser_test.go",
+      "contentHash": "0407d45a32dbbe92d53d43940ba276e385ab755bb6118f9972157b6622b85659",
+      "functions": [
+        {
+          "name": "TestParseWrkOutput",
+          "startLine": 8,
+          "endLine": 59
+        },
+        {
+          "name": "TestDurationConversion",
+          "startLine": 61,
+          "endLine": 65
+        },
+        {
+          "name": "assertNear",
+          "startLine": 67,
+          "endLine": 72
         }
       ],
       "classes": [],
       "imports": [
+        "math",
+        "testing"
+      ],
+      "exports": [],
+      "totalLines": 73,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/process_linux.go": {
+      "filePath": "internal/loadtest/process_linux.go",
+      "contentHash": "eefa788714143122fe20654bf7bc64a7fd78b2fecacbef554930388161302bea",
+      "functions": [
         {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
+          "name": "configureProcess",
+          "startLine": 12,
+          "endLine": 14
+        },
+        {
+          "name": "terminateProcess",
+          "startLine": 16,
+          "endLine": 23
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "os/exec",
+        "syscall",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/process_other.go": {
+      "filePath": "internal/loadtest/process_other.go",
+      "contentHash": "9701772ba8779fe3bb30da7aeb723e484ac64b4fc2e11eace5b9ec35e0ee243d",
+      "functions": [
+        {
+          "name": "configureProcess",
+          "startLine": 7,
+          "endLine": 7
+        },
+        {
+          "name": "terminateProcess",
+          "startLine": 9,
+          "endLine": 13
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "os/exec"
+      ],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/runner.go": {
+      "filePath": "internal/loadtest/runner.go",
+      "contentHash": "9f6d81756b9075aae3fd69884841a3db0363d7955a8f68662a21421bc25b0b85",
+      "functions": [
+        {
+          "name": "plannedRequestsFor",
+          "startLine": 35,
+          "endLine": 40
+        },
+        {
+          "name": "concurrencyFor",
+          "startLine": 42,
+          "endLine": 47
+        },
+        {
+          "name": "NewRunner",
+          "startLine": 92,
+          "endLine": 105
+        },
+        {
+          "name": "PlanConnections",
+          "receiver": "Runner",
+          "startLine": 109,
+          "endLine": 147
+        },
+        {
+          "name": "Start",
+          "receiver": "Runner",
+          "startLine": 150,
+          "endLine": 238
+        },
+        {
+          "name": "resolveAutoConnectionsLocked",
+          "receiver": "Runner",
+          "startLine": 244,
+          "endLine": 281
+        },
+        {
+          "name": "historicalRequestP95Locked",
+          "receiver": "Runner",
+          "startLine": 286,
+          "endLine": 317
+        },
+        {
+          "name": "historicalTaskRequestP95",
+          "startLine": 319,
+          "endLine": 345
+        },
+        {
+          "name": "targetCompletionRate",
+          "startLine": 347,
+          "endLine": 356
+        },
+        {
+          "name": "Get",
+          "receiver": "Runner",
+          "startLine": 359,
+          "endLine": 368
+        },
+        {
+          "name": "Stop",
+          "receiver": "Runner",
+          "startLine": 371,
+          "endLine": 396
+        },
+        {
+          "name": "Subscribe",
+          "receiver": "Runner",
+          "startLine": 400,
+          "endLine": 425
+        },
+        {
+          "name": "runTask",
+          "receiver": "Runner",
+          "startLine": 427,
+          "endLine": 537
+        },
+        {
+          "name": "wrkArguments",
+          "startLine": 539,
+          "endLine": 552
+        },
+        {
+          "name": "collectAndComplete",
+          "receiver": "Runner",
+          "startLine": 554,
+          "endLine": 646
+        },
+        {
+          "name": "finishContextEnd",
+          "receiver": "Runner",
+          "startLine": 648,
+          "endLine": 654
+        },
+        {
+          "name": "resetExperiment",
+          "receiver": "Runner",
+          "startLine": 656,
+          "endLine": 675
+        },
+        {
+          "name": "fetchAppMetrics",
+          "receiver": "Runner",
+          "startLine": 691,
+          "endLine": 805
+        },
+        {
+          "name": "transition",
+          "receiver": "Runner",
+          "startLine": 807,
+          "endLine": 822
+        },
+        {
+          "name": "validTransition",
+          "startLine": 824,
+          "endLine": 840
+        },
+        {
+          "name": "updateProgress",
+          "receiver": "Runner",
+          "startLine": 842,
+          "endLine": 855
+        },
+        {
+          "name": "emitStep",
+          "receiver": "Runner",
+          "startLine": 857,
+          "endLine": 867
+        },
+        {
+          "name": "finish",
+          "receiver": "Runner",
+          "startLine": 869,
+          "endLine": 896
+        },
+        {
+          "name": "updateClockLocked",
+          "receiver": "Runner",
+          "startLine": 898,
+          "endLine": 917
+        },
+        {
+          "name": "appendLogLocked",
+          "receiver": "Runner",
+          "startLine": 919,
+          "endLine": 924
+        },
+        {
+          "name": "publishLocked",
+          "receiver": "Runner",
+          "startLine": 926,
+          "endLine": 949
+        },
+        {
+          "name": "loadState",
+          "receiver": "Runner",
+          "startLine": 951,
+          "endLine": 990
+        },
+        {
+          "name": "persistLocked",
+          "receiver": "Runner",
+          "startLine": 992,
+          "endLine": 1036
+        },
+        {
+          "name": "pruneLocked",
+          "receiver": "Runner",
+          "startLine": 1038,
+          "endLine": 1048
+        },
+        {
+          "name": "cloneTask",
+          "startLine": 1050,
+          "endLine": 1054
+        },
+        {
+          "name": "apiError",
+          "startLine": 1056,
+          "endLine": 1058
+        },
+        {
+          "name": "defaultString",
+          "startLine": 1060,
+          "endLine": 1065
+        },
+        {
+          "name": "newTaskID",
+          "startLine": 1067,
+          "endLine": 1073
+        },
+        {
+          "name": "outputTail",
+          "startLine": 1075,
+          "endLine": 1081
+        }
+      ],
+      "classes": [
+        {
+          "name": "RunnerOptions",
+          "kind": "struct",
+          "startLine": 49,
+          "endLine": 54,
+          "methods": []
+        },
+        {
+          "name": "taskRecord",
+          "kind": "struct",
+          "startLine": 56,
+          "endLine": 64,
+          "methods": []
+        },
+        {
+          "name": "persistedRecord",
+          "kind": "struct",
+          "startLine": 66,
+          "endLine": 70,
+          "methods": []
+        },
+        {
+          "name": "persistedState",
+          "kind": "struct",
+          "startLine": 72,
+          "endLine": 74,
+          "methods": []
+        },
+        {
+          "name": "Runner",
+          "kind": "struct",
+          "startLine": 78,
+          "endLine": 88,
+          "methods": [
+            "PlanConnections",
+            "Start",
+            "resolveAutoConnectionsLocked",
+            "historicalRequestP95Locked",
+            "Get",
+            "Stop",
+            "Subscribe",
+            "runTask",
+            "collectAndComplete",
+            "finishContextEnd",
+            "resetExperiment",
+            "fetchAppMetrics",
+            "transition",
+            "updateProgress",
+            "emitStep",
+            "finish",
+            "updateClockLocked",
+            "appendLogLocked",
+            "publishLocked",
+            "loadState",
+            "persistLocked",
+            "pruneLocked"
           ]
         },
         {
-          "source": "io",
-          "specifiers": [
-            "io"
+          "name": "archiveMetricPath",
+          "kind": "struct",
+          "startLine": 677,
+          "endLine": 689,
+          "methods": []
+        }
+      ],
+      "imports": [
+        "bytes",
+        "context",
+        "crypto/rand",
+        "encoding/hex",
+        "encoding/json",
+        "errors",
+        "fmt",
+        "io",
+        "log/slog",
+        "math",
+        "net/http",
+        "os",
+        "os/exec",
+        "path/filepath",
+        "runtime",
+        "strconv",
+        "strings",
+        "sync",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 1082,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/runner_http.go": {
+      "filePath": "internal/loadtest/runner_http.go",
+      "contentHash": "bdc283385212651059738de77b1c46732e19696cf0bf4b844a11d00e0eeeb220",
+      "functions": [
+        {
+          "name": "Handler",
+          "receiver": "Runner",
+          "startLine": 17,
+          "endLine": 24
+        },
+        {
+          "name": "handleHealth",
+          "receiver": "Runner",
+          "startLine": 26,
+          "endLine": 33
+        },
+        {
+          "name": "handleCollection",
+          "receiver": "Runner",
+          "startLine": 35,
+          "endLine": 71
+        },
+        {
+          "name": "handleConnectionPlan",
+          "receiver": "Runner",
+          "startLine": 75,
+          "endLine": 101
+        },
+        {
+          "name": "handleTask",
+          "receiver": "Runner",
+          "startLine": 103,
+          "endLine": 134
+        },
+        {
+          "name": "streamEvents",
+          "receiver": "Runner",
+          "startLine": 138,
+          "endLine": 189
+        },
+        {
+          "name": "writeSSEEvent",
+          "startLine": 191,
+          "endLine": 198
+        },
+        {
+          "name": "writeRunnerError",
+          "startLine": 200,
+          "endLine": 203
+        },
+        {
+          "name": "writeRunnerJSON",
+          "startLine": 205,
+          "endLine": 209
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "encoding/json",
+        "fmt",
+        "io",
+        "net/http",
+        "strconv",
+        "strings",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 210,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/runner_seckill.go": {
+      "filePath": "internal/loadtest/runner_seckill.go",
+      "contentHash": "3d957ddb9faefb2daa49aa660d8761dda6430bf818e7f123d61beec4a80da125",
+      "functions": [
+        {
+          "name": "runStockBurst",
+          "receiver": "Runner",
+          "startLine": 24,
+          "endLine": 178
+        },
+        {
+          "name": "markSeckillRunning",
+          "receiver": "Runner",
+          "startLine": 180,
+          "endLine": 195
+        },
+        {
+          "name": "waitForCreateOrderDrain",
+          "receiver": "Runner",
+          "startLine": 197,
+          "endLine": 213
+        },
+        {
+          "name": "durationPercentileMS",
+          "startLine": 215,
+          "endLine": 223
+        }
+      ],
+      "classes": [
+        {
+          "name": "stockBurstHTTPResult",
+          "kind": "struct",
+          "startLine": 14,
+          "endLine": 19,
+          "methods": []
+        }
+      ],
+      "imports": [
+        "context",
+        "fmt",
+        "io",
+        "net",
+        "net/http",
+        "sort",
+        "strings",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 224,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/runner_seckill_test.go": {
+      "filePath": "internal/loadtest/runner_seckill_test.go",
+      "contentHash": "760e7d58a70f43f35d893ac31fff4a5b672142db9a2a1a2c41de4f9b229586dd",
+      "functions": [
+        {
+          "name": "TestDurationPercentileMS",
+          "startLine": 8,
+          "endLine": 16
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "testing",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 17,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/runner_test.go": {
+      "filePath": "internal/loadtest/runner_test.go",
+      "contentHash": "35e832426f77f94d2be0611966ecc499c849d5465e02138e714f2d6a008a8953",
+      "functions": [
+        {
+          "name": "TestRunnerAllowsOnlyOneActiveTask",
+          "startLine": 16,
+          "endLine": 55
+        },
+        {
+          "name": "TestRunnerHTTPRejectsUnknownFields",
+          "startLine": 57,
+          "endLine": 69
+        },
+        {
+          "name": "TestAutoConnectionsUseConservativeBaseline",
+          "startLine": 71,
+          "endLine": 85
+        },
+        {
+          "name": "TestConnectionPlanUsesRunnerEstimatorWithoutCreatingTask",
+          "startLine": 87,
+          "endLine": 105
+        },
+        {
+          "name": "TestRunnerHTTPReturnsConnectionPlan",
+          "startLine": 107,
+          "endLine": 133
+        },
+        {
+          "name": "TestRunnerHTTPCreateReturnsLockedConnectionConfiguration",
+          "startLine": 135,
+          "endLine": 186
+        },
+        {
+          "name": "TestAutoConnectionsReuseSameConfigurationForBothPaths",
+          "startLine": 188,
+          "endLine": 215
+        },
+        {
+          "name": "TestAutoConnectionsUseSlowerActualRequestHistory",
+          "startLine": 217,
+          "endLine": 232
+        },
+        {
+          "name": "TestHistoricalLegacyOverloadDoesNotUseCorrectedLatency",
+          "startLine": 234,
+          "endLine": 244
+        },
+        {
+          "name": "TestHistoricalOverloadUsesConduitOccupancyFloor",
+          "startLine": 246,
+          "endLine": 257
+        },
+        {
+          "name": "TestWrkArgumentsCollectBothLatencySemantics",
+          "startLine": 259,
+          "endLine": 276
+        },
+        {
+          "name": "TestRunnerLoadsLegacyPersistedTask",
+          "startLine": 278,
+          "endLine": 311
+        },
+        {
+          "name": "completedHistoricalTask",
+          "startLine": 313,
+          "endLine": 324
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "bytes",
+        "context",
+        "encoding/json",
+        "net/http",
+        "net/http/httptest",
+        "os",
+        "path/filepath",
+        "reflect",
+        "testing",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 325,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/types.go": {
+      "filePath": "internal/loadtest/types.go",
+      "contentHash": "661b9e1b1d6589b4327e2746d738162efd40666221090a48415f065dca9d8d9d",
+      "functions": [
+        {
+          "name": "ResolveTier",
+          "startLine": 87,
+          "endLine": 90
+        },
+        {
+          "name": "ResolveRate",
+          "startLine": 93,
+          "endLine": 96
+        },
+        {
+          "name": "ResolveSeckillRate",
+          "startLine": 99,
+          "endLine": 102
+        },
+        {
+          "name": "ValidManualConnections",
+          "startLine": 105,
+          "endLine": 108
+        },
+        {
+          "name": "Active",
+          "receiver": "TaskStatus",
+          "startLine": 125,
+          "endLine": 132
+        },
+        {
+          "name": "Terminal",
+          "receiver": "TaskStatus",
+          "startLine": 135,
+          "endLine": 137
+        },
+        {
+          "name": "ValidateCreateRequest",
+          "startLine": 168,
+          "endLine": 245
+        },
+        {
+          "name": "Error",
+          "receiver": "APIError",
+          "startLine": 367,
+          "endLine": 375
+        }
+      ],
+      "classes": [
+        {
+          "name": "TierID",
+          "kind": "alias",
+          "startLine": 21,
+          "endLine": 21,
+          "methods": []
+        },
+        {
+          "name": "ConnectionMode",
+          "kind": "alias",
+          "startLine": 39,
+          "endLine": 39,
+          "methods": []
+        },
+        {
+          "name": "TierConfig",
+          "kind": "struct",
+          "startLine": 50,
+          "endLine": 56,
+          "methods": []
+        },
+        {
+          "name": "TaskStatus",
+          "kind": "alias",
+          "startLine": 111,
+          "endLine": 111,
+          "methods": [
+            "Active",
+            "Terminal"
           ]
         },
         {
-          "source": "net/http",
-          "specifiers": [
-            "http"
-          ]
+          "name": "EventType",
+          "kind": "alias",
+          "startLine": 140,
+          "endLine": 140,
+          "methods": []
         },
         {
-          "source": "sync",
-          "specifiers": [
-            "sync"
-          ]
+          "name": "CreateRequest",
+          "kind": "struct",
+          "startLine": 156,
+          "endLine": 164,
+          "methods": []
         },
         {
-          "source": "sync/atomic",
-          "specifiers": [
-            "atomic"
-          ]
+          "name": "TaskMetrics",
+          "kind": "struct",
+          "startLine": 248,
+          "endLine": 294,
+          "methods": []
         },
         {
-          "source": "testing",
-          "specifiers": [
-            "testing"
-          ]
+          "name": "TaskLog",
+          "kind": "struct",
+          "startLine": 297,
+          "endLine": 301,
+          "methods": []
         },
         {
-          "source": "time",
-          "specifiers": [
-            "time"
+          "name": "Task",
+          "kind": "struct",
+          "startLine": 304,
+          "endLine": 325,
+          "methods": []
+        },
+        {
+          "name": "Event",
+          "kind": "struct",
+          "startLine": 328,
+          "endLine": 338,
+          "methods": []
+        },
+        {
+          "name": "ConnectionPlanResponse",
+          "kind": "struct",
+          "startLine": 342,
+          "endLine": 347,
+          "methods": []
+        },
+        {
+          "name": "CreateResponse",
+          "kind": "struct",
+          "startLine": 351,
+          "endLine": 357,
+          "methods": []
+        },
+        {
+          "name": "APIError",
+          "kind": "struct",
+          "startLine": 360,
+          "endLine": 365,
+          "methods": [
+            "Error"
           ]
         }
       ],
-      "exports": [
-        "TestLottery"
+      "imports": [
+        "fmt",
+        "time"
       ],
-      "totalLines": 85,
+      "exports": [],
+      "totalLines": 385,
+      "hasStructuralAnalysis": true
+    },
+    "internal/loadtest/types_test.go": {
+      "filePath": "internal/loadtest/types_test.go",
+      "contentHash": "430d9d80b1170bfba6929dd224beded0871e8a805c278d272c107581c460144f",
+      "functions": [
+        {
+          "name": "TestTierWhitelist",
+          "startLine": 5,
+          "endLine": 24
+        },
+        {
+          "name": "TestQueryTideWhitelist",
+          "startLine": 26,
+          "endLine": 46
+        },
+        {
+          "name": "TestCreateRequestAcceptsControlledConnectionModes",
+          "startLine": 48,
+          "endLine": 74
+        },
+        {
+          "name": "TestCreateRequestRejectsUncontrolledInputs",
+          "startLine": 76,
+          "endLine": 99
+        },
+        {
+          "name": "TestValidateSeckillExperimentsKeepVariablesIsolated",
+          "startLine": 101,
+          "endLine": 132
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "testing"
+      ],
+      "exports": [],
+      "totalLines": 133,
+      "hasStructuralAnalysis": true
+    },
+    "internal/metrics/archive_read.go": {
+      "filePath": "internal/metrics/archive_read.go",
+      "contentHash": "970d1b268154a538f1cdeeabcc31a7c884deff6733ce972238a25c00ca0877bc",
+      "functions": [
+        {
+          "name": "archiveMeter",
+          "startLine": 77,
+          "endLine": 82
+        },
+        {
+          "name": "RecordArchiveRequest",
+          "startLine": 85,
+          "endLine": 97
+        },
+        {
+          "name": "RecordArchiveLatency",
+          "startLine": 100,
+          "endLine": 113
+        },
+        {
+          "name": "RecordArchiveSQLQueries",
+          "startLine": 117,
+          "endLine": 130
+        },
+        {
+          "name": "RecordArchiveCacheHit",
+          "startLine": 132,
+          "endLine": 132
+        },
+        {
+          "name": "RecordArchiveCacheMiss",
+          "startLine": 133,
+          "endLine": 133
+        },
+        {
+          "name": "RecordArchiveCacheError",
+          "startLine": 134,
+          "endLine": 134
+        },
+        {
+          "name": "RecordArchiveCacheCoalesced",
+          "startLine": 135,
+          "endLine": 135
+        },
+        {
+          "name": "appendBounded",
+          "startLine": 137,
+          "endLine": 144
+        },
+        {
+          "name": "ResetArchiveRead",
+          "startLine": 147,
+          "endLine": 166
+        },
+        {
+          "name": "SnapshotArchiveRead",
+          "startLine": 169,
+          "endLine": 177
+        },
+        {
+          "name": "snapshotArchivePath",
+          "startLine": 179,
+          "endLine": 210
+        }
+      ],
+      "classes": [
+        {
+          "name": "ArchiveReadSnapshot",
+          "kind": "struct",
+          "startLine": 20,
+          "endLine": 25,
+          "methods": []
+        },
+        {
+          "name": "ArchiveReadPathSnapshot",
+          "kind": "struct",
+          "startLine": 28,
+          "endLine": 51,
+          "methods": []
+        },
+        {
+          "name": "archivePathMeter",
+          "kind": "struct",
+          "startLine": 53,
+          "endLine": 70,
+          "methods": []
+        }
+      ],
+      "imports": [
+        "sort",
+        "sync",
+        "sync/atomic",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 211,
+      "hasStructuralAnalysis": true
+    },
+    "internal/metrics/archive_read_test.go": {
+      "filePath": "internal/metrics/archive_read_test.go",
+      "contentHash": "191b5737562ecdeaa3cd3f227f025ee2ac76b1c9362a5b33e3cf455ae6e8769a",
+      "functions": [
+        {
+          "name": "TestArchiveReadMetricsKeepPathsIndependent",
+          "startLine": 8,
+          "endLine": 40
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "testing",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 41,
       "hasStructuralAnalysis": true
     },
     "internal/metrics/cacheaside.go": {
       "filePath": "internal/metrics/cacheaside.go",
-      "contentHash": "fde09a9a5967f9422d1cddd40840844b0f24f3b1d0f96802b28605fcad80eea5",
+      "contentHash": "abc27f6681f191de8f9a6f8185eb978a7c41c2765ab12d65da8063e98119786b",
       "functions": [
         {
+          "name": "resetCacheAsideMetrics",
+          "startLine": 109,
+          "endLine": 130
+        },
+        {
           "name": "RecordCacheAsideRequest",
-          "params": [],
-          "exported": true,
-          "lineCount": 12
+          "startLine": 133,
+          "endLine": 144
+        },
+        {
+          "name": "RecordCacheAsideLatency",
+          "startLine": 148,
+          "endLine": 161
         },
         {
           "name": "RecordCacheAsideDBLatency",
-          "params": [
-            "ms"
-          ],
-          "exported": true,
-          "lineCount": 13
+          "startLine": 164,
+          "endLine": 176
         },
         {
           "name": "RecordCacheHit",
-          "params": [],
-          "exported": true,
-          "lineCount": 1
+          "startLine": 179,
+          "endLine": 179
         },
         {
           "name": "RecordCacheMiss",
-          "params": [],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 182,
+          "endLine": 187
+        },
+        {
+          "name": "RecordCacheAsideDBRead",
+          "startLine": 190,
+          "endLine": 192
+        },
+        {
+          "name": "RecordCacheAsideDBWrite",
+          "startLine": 195,
+          "endLine": 197
         },
         {
           "name": "RecordCacheAsideCompleted",
-          "params": [
-            "giftID"
-          ],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 200,
+          "endLine": 205
         },
         {
           "name": "RecordCacheAsideSoldOut",
-          "params": [],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 208,
+          "endLine": 213
         },
         {
           "name": "RecordCacheAsideRejected",
-          "params": [],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 216,
+          "endLine": 221
         },
         {
           "name": "SetCacheAsidePool",
-          "params": [
-            "inUse",
-            "capacity"
-          ],
-          "exported": true,
-          "lineCount": 4
+          "startLine": 225,
+          "endLine": 228
         },
         {
           "name": "SetCircuitState",
-          "params": [
-            "state"
-          ],
-          "exported": true,
-          "lineCount": 15
+          "startLine": 231,
+          "endLine": 245
         },
         {
           "name": "SnapshotCacheAside",
-          "params": [],
-          "returnType": "CacheAsideSnapshot",
-          "exported": true,
-          "lineCount": 50
+          "startLine": 248,
+          "endLine": 309
         },
         {
           "name": "addEvent",
-          "params": [
-            "title",
-            "detail",
-            "tone"
-          ],
-          "exported": false,
-          "lineCount": 13
+          "receiver": "cacheMeter",
+          "startLine": 311,
+          "endLine": 323
         }
       ],
       "classes": [
         {
           "name": "CacheAsideSnapshot",
-          "methods": [],
-          "properties": [
-            "At",
-            "QPS",
-            "TotalRequests",
-            "Completed",
-            "SoldOut",
-            "Rejected",
-            "CacheHits",
-            "CacheMisses",
-            "CacheHitRate",
-            "DBAvgLatency",
-            "DBP95Latency",
-            "DBMaxLatency",
-            "PoolInUse",
-            "PoolCapacity",
-            "PoolUsage",
-            "CircuitState",
-            "Events"
-          ],
-          "exported": true,
-          "lineCount": 42
+          "kind": "struct",
+          "startLine": 23,
+          "endLine": 78,
+          "methods": []
         },
         {
           "name": "cacheMeter",
+          "kind": "struct",
+          "startLine": 80,
+          "endLine": 101,
           "methods": [
             "addEvent"
-          ],
-          "properties": [
-            "totalRequests",
-            "completed",
-            "soldOut",
-            "rejected",
-            "cacheHits",
-            "cacheMisses",
-            "dbMaxLatency",
-            "poolInUse",
-            "poolCapacity",
-            "circuitState",
-            "mu",
-            "dbLatencySamples",
-            "secondBuckets",
-            "events"
-          ],
-          "exported": false,
-          "lineCount": 18
+          ]
         }
       ],
       "imports": [
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "sort",
-          "specifiers": [
-            "sort"
-          ]
-        },
-        {
-          "source": "sync",
-          "specifiers": [
-            "sync"
-          ]
-        },
-        {
-          "source": "sync/atomic",
-          "specifiers": [
-            "atomic"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        }
+        "fmt",
+        "sort",
+        "sync",
+        "sync/atomic",
+        "time"
       ],
-      "exports": [
-        "CacheAsideSnapshot",
-        "RecordCacheAsideRequest",
-        "RecordCacheAsideDBLatency",
-        "RecordCacheHit",
-        "RecordCacheMiss",
-        "RecordCacheAsideCompleted",
-        "RecordCacheAsideSoldOut",
-        "RecordCacheAsideRejected",
-        "SetCacheAsidePool",
-        "SetCircuitState",
-        "SnapshotCacheAside"
-      ],
-      "totalLines": 244,
+      "exports": [],
+      "totalLines": 324,
       "hasStructuralAnalysis": true
     },
     "internal/metrics/metrics.go": {
       "filePath": "internal/metrics/metrics.go",
-      "contentHash": "84c905b413f4f074f6f7d5ac4052609d043a0e4ef9fc1e4c0c1f030381575caf",
+      "contentHash": "444af20c970f6f01f1fa191e0d6c2416100014fa8ced521449733b1bb68333ac",
       "functions": [
         {
+          "name": "SetRateLimitQPS",
+          "startLine": 138,
+          "endLine": 140
+        },
+        {
           "name": "InitInventory",
-          "params": [
-            "activityStock",
-            "redisStock"
-          ],
-          "exported": true,
-          "lineCount": 5
+          "startLine": 149,
+          "endLine": 153
+        },
+        {
+          "name": "ResetAll",
+          "startLine": 157,
+          "endLine": 181
         },
         {
           "name": "RecordRequest",
-          "params": [
-            "duration"
-          ],
-          "exported": true,
-          "lineCount": 23
+          "startLine": 185,
+          "endLine": 207
         },
         {
           "name": "RecordRedisPreDeduct",
-          "params": [
-            "giftID"
-          ],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 211,
+          "endLine": 216
         },
         {
           "name": "RecordInventoryRollback",
-          "params": [
-            "giftID",
-            "reason"
-          ],
-          "exported": true,
-          "lineCount": 4
+          "startLine": 220,
+          "endLine": 223
         },
         {
           "name": "RecordQueueSuccess",
-          "params": [
-            "giftID"
-          ],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 226,
+          "endLine": 231
         },
         {
           "name": "RecordRateLimited",
-          "params": [],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 235,
+          "endLine": 240
         },
         {
           "name": "RecordStockFailed",
-          "params": [
-            "reason"
-          ],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 244,
+          "endLine": 249
         },
         {
           "name": "RecordMQEnqueued",
-          "params": [],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 253,
+          "endLine": 258
         },
         {
           "name": "RecordMQConsumed",
-          "params": [
-            "timeoutRollback"
-          ],
-          "exported": true,
-          "lineCount": 16
+          "startLine": 262,
+          "endLine": 277
+        },
+        {
+          "name": "RecordCreateOrderEnqueued",
+          "startLine": 280,
+          "endLine": 282
+        },
+        {
+          "name": "RecordCreateOrderConsumed",
+          "startLine": 286,
+          "endLine": 288
         },
         {
           "name": "RecordOrderCompleted",
-          "params": [
-            "giftID"
-          ],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 291,
+          "endLine": 296
         },
         {
           "name": "RecordGiveUp",
-          "params": [
-            "giftID"
-          ],
-          "exported": true,
-          "lineCount": 3
+          "startLine": 300,
+          "endLine": 302
         },
         {
           "name": "RecordSystemError",
-          "params": [
-            "title",
-            "err"
-          ],
-          "exported": true,
-          "lineCount": 7
+          "startLine": 306,
+          "endLine": 313
         },
         {
           "name": "SnapshotNow",
-          "params": [],
-          "returnType": "Snapshot",
-          "exported": true,
-          "lineCount": 45
+          "startLine": 317,
+          "endLine": 375
         },
         {
           "name": "addEvent",
-          "params": [
-            "title",
-            "detail",
-            "tone"
-          ],
-          "exported": false,
-          "lineCount": 13
+          "receiver": "meter",
+          "startLine": 377,
+          "endLine": 389
         },
         {
           "name": "updateMax",
-          "params": [
-            "addr",
-            "value"
-          ],
-          "exported": false,
-          "lineCount": 11
+          "startLine": 391,
+          "endLine": 401
         },
         {
           "name": "shouldEmit",
-          "params": [
-            "n"
-          ],
-          "returnType": "bool",
-          "exported": false,
-          "lineCount": 3
+          "startLine": 403,
+          "endLine": 405
         },
         {
           "name": "recentQPS",
-          "params": [
-            "now",
-            "buckets"
-          ],
-          "returnType": "int64",
-          "exported": false,
-          "lineCount": 22
+          "startLine": 407,
+          "endLine": 428
         },
         {
           "name": "average",
-          "params": [
-            "values"
-          ],
-          "returnType": "int64",
-          "exported": false,
-          "lineCount": 10
+          "startLine": 430,
+          "endLine": 439
         },
         {
           "name": "percentile",
-          "params": [
-            "values",
-            "p"
-          ],
-          "returnType": "int64",
-          "exported": false,
-          "lineCount": 7
+          "startLine": 441,
+          "endLine": 447
         },
         {
           "name": "dbStockText",
-          "params": [
-            "activityStock",
-            "completedOrders"
-          ],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 13
+          "startLine": 449,
+          "endLine": 461
         }
       ],
       "classes": [
         {
           "name": "Event",
-          "methods": [],
-          "properties": [
-            "Time",
-            "Title",
-            "Detail",
-            "Tone"
-          ],
-          "exported": true,
-          "lineCount": 12
+          "kind": "struct",
+          "startLine": 18,
+          "endLine": 29,
+          "methods": []
         },
         {
           "name": "Snapshot",
-          "methods": [],
-          "properties": [
-            "At",
-            "ActivityStock",
-            "RedisStock",
-            "DBStock",
-            "TotalRequests",
-            "QueueSuccess",
-            "RateLimited",
-            "StockFailed",
-            "MQPending",
-            "CompletedOrders",
-            "AvgLatency",
-            "MaxLatency",
-            "P95",
-            "P99",
-            "QPS",
-            "Oversold",
-            "SimulationTotal",
-            "SimulationDone",
-            "Events",
-            "CacheAside"
-          ],
-          "exported": true,
-          "lineCount": 60
+          "kind": "struct",
+          "startLine": 33,
+          "endLine": 114,
+          "methods": []
         },
         {
           "name": "meter",
+          "kind": "struct",
+          "startLine": 116,
+          "endLine": 135,
           "methods": [
             "addEvent"
-          ],
-          "properties": [
-            "activityStock",
-            "redisStock",
-            "totalRequests",
-            "queueSuccess",
-            "rateLimited",
-            "stockFailed",
-            "mqPending",
-            "completedOrders",
-            "maxLatency",
-            "mu",
-            "latencySamples",
-            "secondBuckets",
-            "events"
-          ],
-          "exported": false,
-          "lineCount": 16
+          ]
         }
       ],
       "imports": [
+        "fmt",
+        "sort",
+        "sync",
+        "sync/atomic",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 462,
+      "hasStructuralAnalysis": true
+    },
+    "internal/metrics/mysql_pressure.go": {
+      "filePath": "internal/metrics/mysql_pressure.go",
+      "contentHash": "83bcd848460b15e776cb1b5331200a24c3ce38542d18176a67d6e171e320df10",
+      "functions": [
         {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
+          "name": "RecordPreDeductMySQL",
+          "startLine": 45,
+          "endLine": 47
         },
         {
-          "source": "sort",
-          "specifiers": [
-            "sort"
-          ]
+          "name": "resetPreDeductMySQLMetrics",
+          "startLine": 49,
+          "endLine": 51
         },
         {
-          "source": "sync",
-          "specifiers": [
-            "sync"
-          ]
+          "name": "SnapshotPreDeductMySQL",
+          "startLine": 53,
+          "endLine": 55
         },
         {
-          "source": "sync/atomic",
-          "specifiers": [
-            "atomic"
-          ]
+          "name": "recordMySQLPressure",
+          "startLine": 57,
+          "endLine": 81
         },
         {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
+          "name": "resetMySQLPressure",
+          "startLine": 83,
+          "endLine": 93
+        },
+        {
+          "name": "snapshotMySQLPressure",
+          "startLine": 95,
+          "endLine": 124
         }
       ],
-      "exports": [
-        "Event",
-        "Snapshot",
-        "InitInventory",
-        "RecordRequest",
-        "RecordRedisPreDeduct",
-        "RecordInventoryRollback",
-        "RecordQueueSuccess",
-        "RecordRateLimited",
-        "RecordStockFailed",
-        "RecordMQEnqueued",
-        "RecordMQConsumed",
-        "RecordOrderCompleted",
-        "RecordGiveUp",
-        "RecordSystemError",
-        "SnapshotNow"
+      "classes": [
+        {
+          "name": "MySQLPressureSnapshot",
+          "kind": "struct",
+          "startLine": 12,
+          "endLine": 26,
+          "methods": []
+        },
+        {
+          "name": "mysqlPressureMeter",
+          "kind": "struct",
+          "startLine": 28,
+          "endLine": 37,
+          "methods": []
+        }
       ],
-      "totalLines": 379,
+      "imports": [
+        "sort",
+        "sync",
+        "sync/atomic",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 125,
+      "hasStructuralAnalysis": true
+    },
+    "internal/metrics/seckill_probe.go": {
+      "filePath": "internal/metrics/seckill_probe.go",
+      "contentHash": "086566676062b3db7fe57d7567c8c1af6877565bb8fb3e85bb39a22afd712088",
+      "functions": [
+        {
+          "name": "RecordRateLimitProbe",
+          "startLine": 34,
+          "endLine": 58
+        },
+        {
+          "name": "ResetRateLimitProbe",
+          "startLine": 61,
+          "endLine": 69
+        },
+        {
+          "name": "SnapshotRateLimitProbe",
+          "startLine": 72,
+          "endLine": 86
+        }
+      ],
+      "classes": [
+        {
+          "name": "RateLimitProbeSnapshot",
+          "kind": "struct",
+          "startLine": 12,
+          "endLine": 19,
+          "methods": []
+        },
+        {
+          "name": "rateLimitProbeMeter",
+          "kind": "struct",
+          "startLine": 21,
+          "endLine": 29,
+          "methods": []
+        }
+      ],
+      "imports": [
+        "sort",
+        "sync",
+        "sync/atomic",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 87,
+      "hasStructuralAnalysis": true
+    },
+    "internal/metrics/seckill_probe_test.go": {
+      "filePath": "internal/metrics/seckill_probe_test.go",
+      "contentHash": "0f083727fb25aa0e62f6018aa0a515890f15f8c414ba4dee3c50e34e9c463933",
+      "functions": [
+        {
+          "name": "TestRateLimitProbeMetricsStaySeparateAndReset",
+          "startLine": 8,
+          "endLine": 26
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "testing",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 27,
       "hasStructuralAnalysis": true
     },
     "internal/mq/consumer.go": {
       "filePath": "internal/mq/consumer.go",
-      "contentHash": "27db06a6a1b10ce1bba3c236de671ffcc6e7af1a0232aa3a30f3daf88bc0065e",
+      "contentHash": "d8a01e1408721dd50aa4c829938821d87c3c8eca7ef744ca6aa1fde0fd2d3f50",
       "functions": [
         {
           "name": "Enabled",
-          "params": [],
-          "returnType": "bool",
-          "exported": true,
-          "lineCount": 3
+          "startLine": 45,
+          "endLine": 47
         },
         {
           "name": "Endpoint",
-          "params": [],
-          "returnType": "string",
-          "exported": true,
-          "lineCount": 3
+          "startLine": 49,
+          "endLine": 51
+        },
+        {
+          "name": "CancelTopic",
+          "startLine": 55,
+          "endLine": 57
+        },
+        {
+          "name": "OrderTopic",
+          "startLine": 61,
+          "endLine": 63
+        },
+        {
+          "name": "PurchaseInvalidationTopic",
+          "startLine": 67,
+          "endLine": 69
         },
         {
           "name": "Topic",
-          "params": [],
-          "returnType": "string",
-          "exported": true,
-          "lineCount": 3
+          "startLine": 72,
+          "endLine": 72
+        },
+        {
+          "name": "OrderConsumerGroup",
+          "startLine": 76,
+          "endLine": 79
+        },
+        {
+          "name": "PurchaseCacheConsumerGroup",
+          "startLine": 83,
+          "endLine": 85
         },
         {
           "name": "ConsumerGroup",
-          "params": [],
-          "returnType": "string",
-          "exported": true,
-          "lineCount": 3
+          "startLine": 88,
+          "endLine": 88
+        },
+        {
+          "name": "ValidateConsumerConfig",
+          "startLine": 92,
+          "endLine": 121
         },
         {
           "name": "InitRocketLog",
-          "params": [],
-          "exported": true,
-          "lineCount": 7
+          "startLine": 123,
+          "endLine": 129
         },
         {
-          "name": "GetConsumer",
-          "params": [],
-          "returnType": "(rmq_client.SimpleConsumer, error)",
-          "exported": true,
-          "lineCount": 37
+          "name": "newSimpleConsumer",
+          "startLine": 133,
+          "endLine": 155
         },
         {
-          "name": "ReceiveCancelOrder",
-          "params": [],
-          "exported": true,
-          "lineCount": 57
+          "name": "waitConsumerRetry",
+          "startLine": 157,
+          "endLine": 159
+        },
+        {
+          "name": "waitConsumerReceiveRetry",
+          "startLine": 163,
+          "endLine": 165
+        },
+        {
+          "name": "waitConsumerDelay",
+          "startLine": 167,
+          "endLine": 176
+        },
+        {
+          "name": "ackConsumerMessage",
+          "startLine": 180,
+          "endLine": 184
+        },
+        {
+          "name": "StopConsumers",
+          "startLine": 188,
+          "endLine": 207
         },
         {
           "name": "StopConsumer",
-          "params": [],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 210,
+          "endLine": 210
         }
       ],
       "classes": [],
       "imports": [
+        "context",
+        "fmt",
+        "log/slog",
+        "os",
+        "silas/internal/util",
+        "strings",
+        "sync",
+        "time",
+        "github.com/apache/rocketmq-clients/golang/v5",
+        "github.com/apache/rocketmq-clients/golang/v5/credentials"
+      ],
+      "exports": [],
+      "totalLines": 211,
+      "hasStructuralAnalysis": true
+    },
+    "internal/mq/consumer_test.go": {
+      "filePath": "internal/mq/consumer_test.go",
+      "contentHash": "0ebbc02228cf1590b1073fa6f8c5dd6036285b5388f3e41c7965a0a805102f0d",
+      "functions": [
         {
-          "source": "context",
-          "specifiers": [
-            "context"
-          ]
+          "name": "resetConsumerEnv",
+          "startLine": 12,
+          "endLine": 25
         },
         {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
+          "name": "TestConsumerConfigurationSeparatesResponsibilities",
+          "startLine": 27,
+          "endLine": 54
         },
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
+          "name": "TestConsumerConfigurationRejectsSharedGroupAndTopic",
+          "startLine": 56,
+          "endLine": 73
         },
         {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
+          "name": "TestLegacyOrderConsumerGroupFallback",
+          "startLine": 75,
+          "endLine": 85
         },
         {
-          "source": "silas/internal/database",
-          "specifiers": [
-            "database"
-          ]
+          "name": "TestOrderConsumerRoutesOnlyOrderLifecycleTopics",
+          "startLine": 87,
+          "endLine": 121
         },
         {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
-        },
-        {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
-        },
-        {
-          "source": "sync",
-          "specifiers": [
-            "sync"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "github.com/apache/rocketmq-clients/golang/v5",
-          "specifiers": [
-            "rmq_client"
-          ]
-        },
-        {
-          "source": "github.com/apache/rocketmq-clients/golang/v5/credentials",
-          "specifiers": [
-            "credentials"
-          ]
-        },
-        {
-          "source": "github.com/bytedance/sonic",
-          "specifiers": [
-            "sonic"
-          ]
+          "name": "TestPurchaseCacheConsumerRoutesOnlyInvalidationTopic",
+          "startLine": 123,
+          "endLine": 148
         }
       ],
-      "exports": [
-        "Enabled",
-        "Endpoint",
-        "Topic",
-        "ConsumerGroup",
-        "InitRocketLog",
-        "GetConsumer",
-        "ReceiveCancelOrder",
-        "StopConsumer"
+      "classes": [],
+      "imports": [
+        "encoding/json",
+        "errors",
+        "silas/internal/database",
+        "strings",
+        "testing",
+        "time"
       ],
-      "totalLines": 188,
+      "exports": [],
+      "totalLines": 149,
+      "hasStructuralAnalysis": true
+    },
+    "internal/mq/order_consumer.go": {
+      "filePath": "internal/mq/order_consumer.go",
+      "contentHash": "50f1684879e90f2ff571b4e0f78a2566860bbdaf3632ec464db29f55b7793253",
+      "functions": [
+        {
+          "name": "GetOrderConsumer",
+          "startLine": 21,
+          "endLine": 37
+        },
+        {
+          "name": "orderConsumerSubscriptions",
+          "startLine": 39,
+          "endLine": 44
+        },
+        {
+          "name": "RunOrderConsumer",
+          "startLine": 48,
+          "endLine": 104
+        },
+        {
+          "name": "handleOrderMessage",
+          "startLine": 106,
+          "endLine": 142
+        }
+      ],
+      "classes": [
+        {
+          "name": "CreateOrderHandler",
+          "kind": "alias",
+          "startLine": 16,
+          "endLine": 16,
+          "methods": []
+        },
+        {
+          "name": "TimeoutHandler",
+          "kind": "alias",
+          "startLine": 17,
+          "endLine": 17,
+          "methods": []
+        }
+      ],
+      "imports": [
+        "context",
+        "errors",
+        "fmt",
+        "log/slog",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "github.com/apache/rocketmq-clients/golang/v5",
+        "github.com/bytedance/sonic"
+      ],
+      "exports": [],
+      "totalLines": 143,
       "hasStructuralAnalysis": true
     },
     "internal/mq/producer.go": {
       "filePath": "internal/mq/producer.go",
-      "contentHash": "7a7becd7c7688472669e4d9d46a06e23a6d425d5ced0b2690696754e4e81256b",
+      "contentHash": "3558bf1f31245d37d6e29e47d27cfcaa6c49d794a26e90b09824b9acfcfdf19f",
       "functions": [
         {
           "name": "GetProducer",
-          "params": [],
-          "returnType": "(rmq_client.Producer, error)",
-          "exported": true,
-          "lineCount": 50
+          "startLine": 30,
+          "endLine": 82
         },
         {
           "name": "SendCancelOrder",
-          "params": [
-            "order",
-            "delay"
-          ],
-          "returnType": "error",
-          "exported": true,
-          "lineCount": 37
+          "startLine": 93,
+          "endLine": 128
+        },
+        {
+          "name": "SendCreateOrder",
+          "startLine": 132,
+          "endLine": 153
+        },
+        {
+          "name": "SendPurchaseCacheInvalidation",
+          "startLine": 157,
+          "endLine": 179
         },
         {
           "name": "StopProducter",
-          "params": [],
-          "exported": true,
-          "lineCount": 6
+          "startLine": 183,
+          "endLine": 188
         }
       ],
       "classes": [],
       "imports": [
+        "context",
+        "fmt",
+        "log/slog",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "sync",
+        "time",
+        "github.com/apache/rocketmq-clients/golang/v5",
+        "github.com/apache/rocketmq-clients/golang/v5/credentials",
+        "github.com/bytedance/sonic"
+      ],
+      "exports": [],
+      "totalLines": 189,
+      "hasStructuralAnalysis": true
+    },
+    "internal/mq/purchase_cache_consumer.go": {
+      "filePath": "internal/mq/purchase_cache_consumer.go",
+      "contentHash": "07d6ee35fc466b4e68a5d0212a4757998500447d89dce5944c0181c926061585",
+      "functions": [
         {
-          "source": "context",
-          "specifiers": [
-            "context"
-          ]
+          "name": "GetPurchaseCacheConsumer",
+          "startLine": 20,
+          "endLine": 36
         },
         {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
+          "name": "purchaseCacheConsumerSubscriptions",
+          "startLine": 38,
+          "endLine": 42
         },
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
+          "name": "RunPurchaseCacheConsumer",
+          "startLine": 46,
+          "endLine": 101
         },
         {
-          "source": "silas/internal/database",
-          "specifiers": [
-            "database"
-          ]
-        },
-        {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
-        },
-        {
-          "source": "sync",
-          "specifiers": [
-            "sync"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "github.com/apache/rocketmq-clients/golang/v5",
-          "specifiers": [
-            "rmq_client"
-          ]
-        },
-        {
-          "source": "github.com/apache/rocketmq-clients/golang/v5/credentials",
-          "specifiers": [
-            "credentials"
-          ]
-        },
-        {
-          "source": "github.com/bytedance/sonic",
-          "specifiers": [
-            "sonic"
-          ]
+          "name": "handlePurchaseCacheMessage",
+          "startLine": 103,
+          "endLine": 126
         }
       ],
-      "exports": [
-        "GetProducer",
-        "SendCancelOrder",
-        "StopProducter"
+      "classes": [
+        {
+          "name": "PurchaseInvalidationHandler",
+          "kind": "alias",
+          "startLine": 16,
+          "endLine": 16,
+          "methods": []
+        }
       ],
-      "totalLines": 137,
+      "imports": [
+        "context",
+        "errors",
+        "fmt",
+        "log/slog",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "github.com/apache/rocketmq-clients/golang/v5",
+        "github.com/bytedance/sonic"
+      ],
+      "exports": [],
+      "totalLines": 127,
       "hasStructuralAnalysis": true
     },
     "internal/mq/rocket_client.go": {
@@ -2599,94 +3745,36 @@
       "functions": [
         {
           "name": "newRocketClient",
-          "params": [
-            "config"
-          ],
-          "returnType": "(rmq_client.Client, error)",
-          "exported": false,
-          "lineCount": 10
+          "startLine": 21,
+          "endLine": 30
         },
         {
           "name": "genRocketClientID",
-          "params": [],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 5
+          "startLine": 35,
+          "endLine": 39
         },
         {
           "name": "asciiHostName",
-          "params": [],
-          "returnType": "string",
-          "exported": false,
-          "lineCount": 30
+          "startLine": 43,
+          "endLine": 72
         },
         {
           "name": "setRocketClientID",
-          "params": [
-            "client",
-            "clientID"
-          ],
-          "returnType": "error",
-          "exported": false,
-          "lineCount": 14
+          "startLine": 77,
+          "endLine": 90
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
-          "source": "reflect",
-          "specifiers": [
-            "reflect"
-          ]
-        },
-        {
-          "source": "strconv",
-          "specifiers": [
-            "strconv"
-          ]
-        },
-        {
-          "source": "strings",
-          "specifiers": [
-            "strings"
-          ]
-        },
-        {
-          "source": "sync/atomic",
-          "specifiers": [
-            "atomic"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "unsafe",
-          "specifiers": [
-            "unsafe"
-          ]
-        },
-        {
-          "source": "github.com/apache/rocketmq-clients/golang/v5",
-          "specifiers": [
-            "rmq_client"
-          ]
-        }
+        "fmt",
+        "os",
+        "reflect",
+        "strconv",
+        "strings",
+        "sync/atomic",
+        "time",
+        "unsafe",
+        "github.com/apache/rocketmq-clients/golang/v5"
       ],
       "exports": [],
       "totalLines": 91,
@@ -2694,743 +3782,974 @@
     },
     "internal/router/router.go": {
       "filePath": "internal/router/router.go",
-      "contentHash": "e8760160ed1f00ba22ef65d337b59df1e5408532ba11f4488965a53eefd59920",
+      "contentHash": "607739cf2d6aa9f07f1dd1128c448621040bae9224b950314940623d614414f0",
       "functions": [
         {
           "name": "New",
-          "params": [
-            "handlers"
-          ],
-          "returnType": "*gin.Engine",
-          "exported": true,
-          "lineCount": 10
+          "startLine": 34,
+          "endLine": 43
         },
         {
           "name": "registerStaticAssets",
-          "params": [
-            "engine"
-          ],
-          "exported": false,
-          "lineCount": 7
+          "startLine": 45,
+          "endLine": 51
         },
         {
           "name": "registerPages",
-          "params": [
-            "engine"
-          ],
-          "exported": false,
-          "lineCount": 8
+          "startLine": 53,
+          "endLine": 79
         },
         {
           "name": "registerAPIRoutes",
-          "params": [
-            "engine",
-            "handlers"
-          ],
-          "exported": false,
-          "lineCount": 9
+          "startLine": 81,
+          "endLine": 107
         }
       ],
       "classes": [
         {
           "name": "Handlers",
-          "methods": [],
-          "properties": [
-            "Gift",
-            "Order"
-          ],
-          "exported": true,
-          "lineCount": 7
+          "kind": "struct",
+          "startLine": 12,
+          "endLine": 30,
+          "methods": []
         }
       ],
       "imports": [
-        {
-          "source": "net/http",
-          "specifiers": [
-            "http"
-          ]
-        },
-        {
-          "source": "silas/internal/handler",
-          "specifiers": [
-            "handler"
-          ]
-        },
-        {
-          "source": "github.com/gin-gonic/gin",
-          "specifiers": [
-            "gin"
-          ]
-        }
+        "net/http",
+        "silas/internal/handler",
+        "github.com/gin-gonic/gin"
       ],
-      "exports": [
-        "Handlers",
-        "New"
-      ],
-      "totalLines": 59,
+      "exports": [],
+      "totalLines": 108,
       "hasStructuralAnalysis": true
     },
-    "internal/service/circuit_breaker_test.go": {
-      "filePath": "internal/service/circuit_breaker_test.go",
-      "contentHash": "9f1847930fff24de19963e075aa5c88ba333ac51d5467b1a5e54d449452ee061",
+    "internal/service/archive.go": {
+      "filePath": "internal/service/archive.go",
+      "contentHash": "283a6113f31bfff08d9fe56223a4494df2fc98660baa779c505b74eae51640ec",
       "functions": [
         {
-          "name": "TestCircuitBreakerTripAndRecover",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 43
+          "name": "NewArchiveService",
+          "startLine": 29,
+          "endLine": 31
         },
         {
-          "name": "TestCircuitBreakerHalfOpenReTrip",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 22
+          "name": "List",
+          "receiver": "ArchiveService",
+          "startLine": 34,
+          "endLine": 40
         },
         {
-          "name": "TestCircuitBreakerStaysClosedUnderLightLoad",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 16
-        }
-      ],
-      "classes": [],
-      "imports": [
-        {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
+          "name": "ReadDirect",
+          "receiver": "ArchiveService",
+          "startLine": 43,
+          "endLine": 52
         },
         {
-          "source": "testing",
-          "specifiers": [
-            "testing"
-          ]
+          "name": "ReadCached",
+          "receiver": "ArchiveService",
+          "startLine": 57,
+          "endLine": 108
         },
         {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        }
-      ],
-      "exports": [
-        "TestCircuitBreakerTripAndRecover",
-        "TestCircuitBreakerHalfOpenReTrip",
-        "TestCircuitBreakerStaysClosedUnderLightLoad"
-      ],
-      "totalLines": 96,
-      "hasStructuralAnalysis": true
-    },
-    "internal/service/circuit_breaker.go": {
-      "filePath": "internal/service/circuit_breaker.go",
-      "contentHash": "877a82b4dd15b8ebd2553ca84c6edcfb55f3018284f15c2beebe177b776ebd4f",
-      "functions": [
-        {
-          "name": "newCircuitBreaker",
-          "params": [],
-          "returnType": "*CircuitBreaker",
-          "exported": false,
-          "lineCount": 11
+          "name": "validateArchiveMaterialID",
+          "startLine": 110,
+          "endLine": 115
         },
         {
-          "name": "Allow",
-          "params": [],
-          "returnType": "bool",
-          "exported": true,
-          "lineCount": 24
+          "name": "readMySQL",
+          "receiver": "ArchiveService",
+          "startLine": 117,
+          "endLine": 129
         },
         {
-          "name": "Report",
-          "params": [
-            "latencyMs",
-            "poolUsage"
-          ],
-          "exported": true,
-          "lineCount": 34
-        },
-        {
-          "name": "trip",
-          "params": [],
-          "exported": false,
-          "lineCount": 6
-        },
-        {
-          "name": "State",
-          "params": [],
-          "returnType": "string",
-          "exported": true,
-          "lineCount": 12
+          "name": "ResetChapter",
+          "receiver": "ArchiveService",
+          "startLine": 132,
+          "endLine": 138
         }
       ],
       "classes": [
         {
-          "name": "CircuitBreaker",
+          "name": "ArchiveSource",
+          "kind": "alias",
+          "startLine": 13,
+          "endLine": 13,
+          "methods": []
+        },
+        {
+          "name": "ArchiveService",
+          "kind": "struct",
+          "startLine": 24,
+          "endLine": 27,
           "methods": [
-            "Allow",
-            "Report",
-            "trip",
-            "State"
-          ],
-          "properties": [
-            "mu",
-            "state",
-            "openedAt",
-            "consecutiveOverload",
-            "halfOpenProbes",
-            "yellowLatencyMs",
-            "redLatencyMs",
-            "redPoolUsage",
-            "tripThreshold",
-            "cooldown",
-            "halfOpenMax"
-          ],
-          "exported": true,
-          "lineCount": 17
+            "List",
+            "ReadDirect",
+            "ReadCached",
+            "readMySQL",
+            "ResetChapter"
+          ]
         }
       ],
       "imports": [
+        "errors",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "strconv",
+        "sync",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 139,
+      "hasStructuralAnalysis": true
+    },
+    "internal/service/archive_test.go": {
+      "filePath": "internal/service/archive_test.go",
+      "contentHash": "0695c71840b19dfe052be52e6e75767b10781aa3b1a9ebd6213f743a5b6e9b93",
+      "functions": [
         {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
+          "name": "TestValidateArchiveMaterialIDOnlyAllowsStarMarrow",
+          "startLine": 8,
+          "endLine": 18
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "silas/internal/database",
+        "testing"
+      ],
+      "exports": [],
+      "totalLines": 19,
+      "hasStructuralAnalysis": true
+    },
+    "internal/service/circuit_breaker.go": {
+      "filePath": "internal/service/circuit_breaker.go",
+      "contentHash": "12e0ad49ff96df770033b8bffdefb5d666d9351ed2476426e8ac0558475f0776",
+      "functions": [
+        {
+          "name": "newCircuitBreaker",
+          "startLine": 53,
+          "endLine": 74
         },
         {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
+          "name": "Allow",
+          "receiver": "CircuitBreaker",
+          "startLine": 78,
+          "endLine": 102
         },
         {
-          "source": "sync",
-          "specifiers": [
-            "sync"
-          ]
+          "name": "Report",
+          "receiver": "CircuitBreaker",
+          "startLine": 106,
+          "endLine": 146
         },
         {
-          "source": "time",
-          "specifiers": [
-            "time"
+          "name": "isOverloaded",
+          "receiver": "CircuitBreaker",
+          "startLine": 148,
+          "endLine": 156
+        },
+        {
+          "name": "trip",
+          "receiver": "CircuitBreaker",
+          "startLine": 158,
+          "endLine": 165
+        },
+        {
+          "name": "Reset",
+          "receiver": "CircuitBreaker",
+          "startLine": 169,
+          "endLine": 178
+        },
+        {
+          "name": "State",
+          "receiver": "CircuitBreaker",
+          "startLine": 181,
+          "endLine": 192
+        }
+      ],
+      "classes": [
+        {
+          "name": "circuitState",
+          "kind": "alias",
+          "startLine": 12,
+          "endLine": 12,
+          "methods": []
+        },
+        {
+          "name": "CircuitBreaker",
+          "kind": "struct",
+          "startLine": 29,
+          "endLine": 48,
+          "methods": [
+            "Allow",
+            "Report",
+            "isOverloaded",
+            "trip",
+            "Reset",
+            "State"
           ]
         }
       ],
-      "exports": [
-        "CircuitBreaker",
-        "Allow",
-        "Report",
-        "State"
+      "imports": [
+        "silas/internal/metrics",
+        "silas/internal/util",
+        "sync",
+        "time"
       ],
-      "totalLines": 145,
+      "exports": [],
+      "totalLines": 193,
+      "hasStructuralAnalysis": true
+    },
+    "internal/service/circuit_breaker_test.go": {
+      "filePath": "internal/service/circuit_breaker_test.go",
+      "contentHash": "0af304c02c1fd6a20ec7fe2703d674ab35b2e2a0f3abb3a5e72d105b430b2979",
+      "functions": [
+        {
+          "name": "TestCircuitBreakerTripAndRecover",
+          "startLine": 11,
+          "endLine": 62
+        },
+        {
+          "name": "TestCircuitBreakerHalfOpenReTrip",
+          "startLine": 65,
+          "endLine": 86
+        },
+        {
+          "name": "TestCircuitBreakerStaysClosedUnderLightLoad",
+          "startLine": 89,
+          "endLine": 104
+        },
+        {
+          "name": "TestCircuitBreakerPoolPressureNeedsLatencyToTrip",
+          "startLine": 107,
+          "endLine": 130
+        },
+        {
+          "name": "TestCircuitBreakerReset",
+          "startLine": 133,
+          "endLine": 148
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "silas/internal/metrics",
+        "testing",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 149,
       "hasStructuralAnalysis": true
     },
     "internal/service/errors.go": {
       "filePath": "internal/service/errors.go",
-      "contentHash": "441b417e8906d451d0086bd61a5df69e9216b55f70818ad4dbf263ddcddccffe",
+      "contentHash": "363ae2a532ee7080d62261280ef2a065b7e1ed6d1006ebb12c1c419f67c45fe8",
       "functions": [
         {
           "name": "NewAppError",
-          "params": [
-            "code",
-            "message",
-            "err"
-          ],
-          "returnType": "*AppError",
-          "exported": true,
-          "lineCount": 8
+          "startLine": 62,
+          "endLine": 69
         },
         {
           "name": "Error",
-          "params": [],
-          "returnType": "string",
-          "exported": true,
-          "lineCount": 9
+          "receiver": "AppError",
+          "startLine": 71,
+          "endLine": 79
         }
       ],
       "classes": [
         {
           "name": "AppError",
+          "kind": "struct",
+          "startLine": 45,
+          "endLine": 57,
           "methods": [
             "Error"
-          ],
-          "properties": [
-            "Code",
-            "Message",
-            "Err",
-            "Attrs"
-          ],
-          "exported": true,
-          "lineCount": 13
+          ]
         }
       ],
       "imports": [
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        }
+        "fmt"
       ],
-      "exports": [
-        "AppError",
-        "NewAppError",
-        "Error"
-      ],
-      "totalLines": 61,
-      "hasStructuralAnalysis": true
-    },
-    "internal/service/limiter_test.go": {
-      "filePath": "internal/service/limiter_test.go",
-      "contentHash": "e0f5e592222c899ca914adcf39b3da0804b0e1b2dbdf9eddbecefd2189327652",
-      "functions": [
-        {
-          "name": "TestTokenBucketLimiter",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 18
-        },
-        {
-          "name": "TestTokenBucketLimiterDisabled",
-          "params": [
-            "t"
-          ],
-          "exported": true,
-          "lineCount": 9
-        }
-      ],
-      "classes": [],
-      "imports": [
-        {
-          "source": "testing",
-          "specifiers": [
-            "testing"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        }
-      ],
-      "exports": [
-        "TestTokenBucketLimiter",
-        "TestTokenBucketLimiterDisabled"
-      ],
-      "totalLines": 36,
+      "exports": [],
+      "totalLines": 80,
       "hasStructuralAnalysis": true
     },
     "internal/service/limiter.go": {
       "filePath": "internal/service/limiter.go",
-      "contentHash": "d7893c39b7b408580187d057dfdb85f48249034ac87da34f956780f378343abc",
+      "contentHash": "57ea84f8b9afda2a676927b171469017d0b40f32af927629576edc0cf9eaefe6",
       "functions": [
         {
           "name": "newTokenBucketLimiter",
-          "params": [
-            "qps"
-          ],
-          "returnType": "*tokenBucketLimiter",
-          "exported": false,
-          "lineCount": 14
+          "startLine": 28,
+          "endLine": 41
         },
         {
           "name": "Allow",
-          "params": [],
-          "returnType": "bool",
-          "exported": true,
-          "lineCount": 16
+          "receiver": "tokenBucketLimiter",
+          "startLine": 46,
+          "endLine": 61
+        },
+        {
+          "name": "Reset",
+          "receiver": "tokenBucketLimiter",
+          "startLine": 65,
+          "endLine": 73
         },
         {
           "name": "refill",
-          "params": [
-            "now"
-          ],
-          "exported": false,
-          "lineCount": 16
+          "receiver": "tokenBucketLimiter",
+          "startLine": 78,
+          "endLine": 93
         }
       ],
       "classes": [
         {
           "name": "tokenBucketLimiter",
+          "kind": "struct",
+          "startLine": 12,
+          "endLine": 23,
           "methods": [
             "Allow",
+            "Reset",
             "refill"
-          ],
-          "properties": [
-            "rate",
-            "burst",
-            "tokens",
-            "lastRefill",
-            "mu"
-          ],
-          "exported": false,
-          "lineCount": 12
+          ]
         }
       ],
       "imports": [
-        {
-          "source": "sync",
-          "specifiers": [
-            "sync"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        }
+        "sync",
+        "time"
       ],
-      "exports": [
-        "Allow"
-      ],
-      "totalLines": 82,
+      "exports": [],
+      "totalLines": 94,
       "hasStructuralAnalysis": true
     },
-    "internal/service/lottery_cacheaside.go": {
-      "filePath": "internal/service/lottery_cacheaside.go",
-      "contentHash": "513d2e8a7db1af84c0fb7bac7a7dd63dbba015a2bfd16b7c10b6af9c4abf5c9c",
+    "internal/service/limiter_test.go": {
+      "filePath": "internal/service/limiter_test.go",
+      "contentHash": "a4da1eba2c91145642171743b3f7fe8a5891e00fd58b1f60f406c0e4f3d6ec13",
       "functions": [
         {
-          "name": "NewCacheAsideLotteryService",
-          "params": [
-            "store"
-          ],
-          "returnType": "*CacheAsideLotteryService",
-          "exported": true,
-          "lineCount": 8
+          "name": "TestTokenBucketLimiter",
+          "startLine": 8,
+          "endLine": 25
         },
         {
-          "name": "Draw",
-          "params": [
-            "uid"
-          ],
-          "returnType": "(*LotteryResult, *AppError)",
-          "exported": true,
-          "lineCount": 96
+          "name": "TestTokenBucketLimiterDisabled",
+          "startLine": 27,
+          "endLine": 35
         },
         {
-          "name": "reportPressure",
-          "params": [
-            "stat"
-          ],
-          "exported": false,
-          "lineCount": 13
+          "name": "TestTokenBucketLimiterResetRestoresFullBurst",
+          "startLine": 37,
+          "endLine": 47
+        }
+      ],
+      "classes": [],
+      "imports": [
+        "testing",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 48,
+      "hasStructuralAnalysis": true
+    },
+    "internal/service/loadtest.go": {
+      "filePath": "internal/service/loadtest.go",
+      "contentHash": "0c1c8164cbb09b6471c04c0b115e7e4a5c0208f70defc7617df1f5719967d687",
+      "functions": [
+        {
+          "name": "NewLoadtestService",
+          "startLine": 17,
+          "endLine": 19
         },
         {
-          "name": "restore",
-          "params": [
-            "giftID",
-            "reason"
-          ],
-          "exported": false,
-          "lineCount": 7
+          "name": "Start",
+          "receiver": "LoadtestService",
+          "startLine": 22,
+          "endLine": 40
         },
         {
-          "name": "poolUsagePercent",
-          "params": [
-            "inUse",
-            "capacity"
-          ],
-          "returnType": "int",
-          "exported": false,
-          "lineCount": 6
+          "name": "PlanConnections",
+          "receiver": "LoadtestService",
+          "startLine": 43,
+          "endLine": 61
+        },
+        {
+          "name": "Get",
+          "receiver": "LoadtestService",
+          "startLine": 64,
+          "endLine": 70
+        },
+        {
+          "name": "Stop",
+          "receiver": "LoadtestService",
+          "startLine": 73,
+          "endLine": 80
+        },
+        {
+          "name": "OpenEvents",
+          "receiver": "LoadtestService",
+          "startLine": 83,
+          "endLine": 89
+        },
+        {
+          "name": "loadtestAppError",
+          "startLine": 91,
+          "endLine": 93
         }
       ],
       "classes": [
         {
-          "name": "CacheAsideLotteryService",
+          "name": "LoadtestService",
+          "kind": "struct",
+          "startLine": 12,
+          "endLine": 14,
           "methods": [
-            "Draw",
-            "reportPressure",
-            "restore"
-          ],
-          "properties": [
-            "store",
-            "breaker"
-          ],
-          "exported": true,
-          "lineCount": 4
+            "Start",
+            "PlanConnections",
+            "Get",
+            "Stop",
+            "OpenEvents"
+          ]
         }
       ],
       "imports": [
-        {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
-        },
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "silas/internal/database",
-          "specifiers": [
-            "database"
-          ]
-        },
-        {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
-        },
-        {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
-        }
+        "context",
+        "log/slog",
+        "net/http",
+        "silas/internal/loadtest"
       ],
-      "exports": [
-        "CacheAsideLotteryService",
-        "NewCacheAsideLotteryService",
-        "Draw"
-      ],
-      "totalLines": 172,
+      "exports": [],
+      "totalLines": 94,
       "hasStructuralAnalysis": true
     },
     "internal/service/lottery.go": {
       "filePath": "internal/service/lottery.go",
-      "contentHash": "fb114351aacde4ce62a05ab1c27a214c123cdddd77fbb118e08ef2ae6335e0ac",
+      "contentHash": "3a7da405f8c70b026c631eba8a957f66d16a8274db2a035142f72a5707d0d603",
       "functions": [
         {
           "name": "NewLotteryService",
-          "params": [
-            "store",
-            "opts"
-          ],
-          "returnType": "*LotteryService",
-          "exported": true,
-          "lineCount": 7
+          "startLine": 76,
+          "endLine": 83
         },
         {
-          "name": "ListGifts",
-          "params": [],
-          "returnType": "([]*database.Gift, *AppError)",
-          "exported": true,
-          "lineCount": 15
+          "name": "ProbeRateLimit",
+          "receiver": "LotteryService",
+          "startLine": 87,
+          "endLine": 89
+        },
+        {
+          "name": "ResetRateLimiter",
+          "receiver": "LotteryService",
+          "startLine": 92,
+          "endLine": 94
+        },
+        {
+          "name": "ListMaterials",
+          "receiver": "LotteryService",
+          "startLine": 98,
+          "endLine": 116
         },
         {
           "name": "Draw",
-          "params": [
-            "uid"
-          ],
-          "returnType": "(*LotteryResult, *AppError)",
-          "exported": true,
-          "lineCount": 101
+          "receiver": "LotteryService",
+          "startLine": 136,
+          "endLine": 267
+        },
+        {
+          "name": "recordMySQLPressure",
+          "receiver": "LotteryService",
+          "startLine": 269,
+          "endLine": 272
         },
         {
           "name": "rollbackAdmission",
-          "params": [
-            "uid",
-            "giftID",
-            "reason"
-          ],
-          "exported": false,
-          "lineCount": 16
+          "startLine": 274,
+          "endLine": 296
         }
       ],
       "classes": [
         {
           "name": "LotteryService",
+          "kind": "struct",
+          "startLine": 26,
+          "endLine": 29,
           "methods": [
-            "ListGifts",
-            "Draw"
-          ],
-          "properties": [
-            "store",
-            "limiter"
-          ],
-          "exported": true,
-          "lineCount": 4
+            "ProbeRateLimit",
+            "ResetRateLimiter",
+            "ListMaterials",
+            "Draw",
+            "recordMySQLPressure"
+          ]
         },
         {
           "name": "LotteryOptions",
-          "methods": [],
-          "properties": [
-            "RateLimitQPS"
-          ],
-          "exported": true,
-          "lineCount": 5
+          "kind": "struct",
+          "startLine": 33,
+          "endLine": 37,
+          "methods": []
         },
         {
           "name": "LotteryResult",
-          "methods": [],
-          "properties": [
-            "UID",
-            "GiftID",
-            "GiftName",
-            "Price",
-            "Delay"
-          ],
-          "exported": true,
-          "lineCount": 16
+          "kind": "struct",
+          "startLine": 41,
+          "endLine": 61,
+          "methods": []
+        },
+        {
+          "name": "SeckillMaterialView",
+          "kind": "struct",
+          "startLine": 65,
+          "endLine": 71,
+          "methods": []
         }
       ],
       "imports": [
+        "errors",
+        "fmt",
+        "log/slog",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "silas/internal/mq",
+        "silas/internal/util",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 297,
+      "hasStructuralAnalysis": true
+    },
+    "internal/service/lottery_cacheaside.go": {
+      "filePath": "internal/service/lottery_cacheaside.go",
+      "contentHash": "fe2bdccbcf0e9df3458e7aa7862a5cc33fec945b2cf56962b213c28b5ce7e565",
+      "functions": [
         {
-          "source": "errors",
-          "specifiers": [
-            "errors"
-          ]
+          "name": "NewCacheAsideLotteryService",
+          "startLine": 26,
+          "endLine": 33
         },
         {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
+          "name": "ResetCircuitBreaker",
+          "receiver": "CacheAsideLotteryService",
+          "startLine": 37,
+          "endLine": 42
         },
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
+          "name": "Draw",
+          "receiver": "CacheAsideLotteryService",
+          "startLine": 53,
+          "endLine": 152
         },
         {
-          "source": "silas/internal/database",
-          "specifiers": [
-            "database"
-          ]
+          "name": "reportPressure",
+          "receiver": "CacheAsideLotteryService",
+          "startLine": 156,
+          "endLine": 174
         },
         {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
-          ]
-        },
+          "name": "poolUsagePercent",
+          "startLine": 176,
+          "endLine": 181
+        }
+      ],
+      "classes": [
         {
-          "source": "silas/internal/mq",
-          "specifiers": [
-            "mq"
-          ]
-        },
-        {
-          "source": "silas/internal/util",
-          "specifiers": [
-            "util"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
+          "name": "CacheAsideLotteryService",
+          "kind": "struct",
+          "startLine": 20,
+          "endLine": 23,
+          "methods": [
+            "ResetCircuitBreaker",
+            "Draw",
+            "reportPressure"
           ]
         }
       ],
-      "exports": [
-        "LotteryService",
-        "LotteryOptions",
-        "LotteryResult",
-        "NewLotteryService",
-        "ListGifts",
-        "Draw"
+      "imports": [
+        "errors",
+        "fmt",
+        "log/slog",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "silas/internal/mq",
+        "silas/internal/util",
+        "time"
       ],
-      "totalLines": 220,
+      "exports": [],
+      "totalLines": 182,
       "hasStructuralAnalysis": true
     },
     "internal/service/order.go": {
       "filePath": "internal/service/order.go",
-      "contentHash": "48d53cd3f9f2cb488757d97db6c32e3234bec8764b4791babc0bd14bc11fa544",
+      "contentHash": "fccbf4b8666a2a0613a5fce8e399e067aca6eeb9a0dbe9ab4cc8392116486fbb",
       "functions": [
         {
           "name": "NewOrderService",
-          "params": [
-            "store"
-          ],
-          "returnType": "*OrderService",
-          "exported": true,
-          "lineCount": 4
+          "startLine": 28,
+          "endLine": 31
+        },
+        {
+          "name": "CreateRedisPendingOrder",
+          "receiver": "OrderService",
+          "startLine": 35,
+          "endLine": 96
         },
         {
           "name": "Pay",
-          "params": [
-            "uid",
-            "gid"
-          ],
-          "returnType": "*AppError",
-          "exported": true,
-          "lineCount": 32
+          "receiver": "OrderService",
+          "startLine": 100,
+          "endLine": 167
+        },
+        {
+          "name": "payBeforeLedgerCreated",
+          "receiver": "OrderService",
+          "startLine": 169,
+          "endLine": 178
+        },
+        {
+          "name": "appErrorForAdmission",
+          "startLine": 180,
+          "endLine": 196
         },
         {
           "name": "GiveUp",
-          "params": [
-            "uid",
-            "gid"
-          ],
-          "returnType": "*AppError",
-          "exported": true,
-          "lineCount": 19
+          "receiver": "OrderService",
+          "startLine": 199,
+          "endLine": 209
         },
         {
-          "name": "rollbackClaimedInventory",
-          "params": [
-            "uid",
-            "gid",
-            "reason"
-          ],
-          "exported": false,
-          "lineCount": 11
+          "name": "TimeoutCancel",
+          "receiver": "OrderService",
+          "startLine": 212,
+          "endLine": 228
+        },
+        {
+          "name": "cancel",
+          "receiver": "OrderService",
+          "startLine": 230,
+          "endLine": 289
+        },
+        {
+          "name": "Status",
+          "receiver": "OrderService",
+          "startLine": 293,
+          "endLine": 327
         }
       ],
       "classes": [
         {
           "name": "OrderService",
+          "kind": "struct",
+          "startLine": 14,
+          "endLine": 16,
           "methods": [
+            "CreateRedisPendingOrder",
             "Pay",
-            "GiveUp"
-          ],
-          "properties": [
-            "store"
-          ],
-          "exported": true,
-          "lineCount": 3
+            "payBeforeLedgerCreated",
+            "GiveUp",
+            "TimeoutCancel",
+            "cancel",
+            "Status"
+          ]
+        },
+        {
+          "name": "OrderStateView",
+          "kind": "struct",
+          "startLine": 19,
+          "endLine": 26,
+          "methods": []
         }
       ],
       "imports": [
+        "errors",
+        "fmt",
+        "log/slog",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "time"
+      ],
+      "exports": [],
+      "totalLines": 328,
+      "hasStructuralAnalysis": true
+    },
+    "internal/service/purchase_experiment.go": {
+      "filePath": "internal/service/purchase_experiment.go",
+      "contentHash": "3b2ffd560c95b9ea1a98dd0961567555ef1bd0fd7cf2296f2eae978ce640a61d",
+      "functions": [
         {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
+          "name": "NewPurchaseLabService",
+          "startLine": 75,
+          "endLine": 88
+        },
+        {
+          "name": "State",
+          "receiver": "PurchaseLabService",
+          "startLine": 169,
+          "endLine": 175
+        },
+        {
+          "name": "Reset",
+          "receiver": "PurchaseLabService",
+          "startLine": 178,
+          "endLine": 192
+        },
+        {
+          "name": "RunExperiment",
+          "receiver": "PurchaseLabService",
+          "startLine": 196,
+          "endLine": 418
+        },
+        {
+          "name": "executePurchase",
+          "receiver": "PurchaseLabService",
+          "startLine": 422,
+          "endLine": 460
+        },
+        {
+          "name": "Query",
+          "receiver": "PurchaseLabService",
+          "startLine": 463,
+          "endLine": 474
+        },
+        {
+          "name": "executeQueryBatch",
+          "receiver": "PurchaseLabService",
+          "startLine": 476,
+          "endLine": 517
+        },
+        {
+          "name": "GetRun",
+          "receiver": "PurchaseLabService",
+          "startLine": 520,
+          "endLine": 570
+        },
+        {
+          "name": "RunOutboxWorker",
+          "receiver": "PurchaseLabService",
+          "startLine": 573,
+          "endLine": 597
+        },
+        {
+          "name": "setPublisherBatchActive",
+          "receiver": "PurchaseLabService",
+          "startLine": 599,
+          "endLine": 603
+        },
+        {
+          "name": "publisherBatchIsActive",
+          "receiver": "PurchaseLabService",
+          "startLine": 605,
+          "endLine": 609
+        },
+        {
+          "name": "wakePublisher",
+          "receiver": "PurchaseLabService",
+          "startLine": 611,
+          "endLine": 617
+        },
+        {
+          "name": "setPublisherNextScan",
+          "receiver": "PurchaseLabService",
+          "startLine": 619,
+          "endLine": 623
+        },
+        {
+          "name": "recordPublisherScan",
+          "receiver": "PurchaseLabService",
+          "startLine": 625,
+          "endLine": 631
+        },
+        {
+          "name": "attachPublisherSnapshot",
+          "receiver": "PurchaseLabService",
+          "startLine": 635,
+          "endLine": 655
+        },
+        {
+          "name": "publishAvailableOutbox",
+          "receiver": "PurchaseLabService",
+          "startLine": 657,
+          "endLine": 684
+        },
+        {
+          "name": "ConsumeCacheInvalidation",
+          "receiver": "PurchaseLabService",
+          "startLine": 688,
+          "endLine": 714
+        },
+        {
+          "name": "validatePurchaseExperimentRequest",
+          "startLine": 716,
+          "endLine": 736
+        },
+        {
+          "name": "deleteMaterialCacheWithRetry",
+          "startLine": 738,
+          "endLine": 758
+        },
+        {
+          "name": "purchaseChildRequestID",
+          "startLine": 760,
+          "endLine": 765
+        },
+        {
+          "name": "purchaseOutboxRetryDelay",
+          "startLine": 767,
+          "endLine": 775
+        },
+        {
+          "name": "refreshRunOutboxState",
+          "startLine": 777,
+          "endLine": 842
+        },
+        {
+          "name": "storeRun",
+          "receiver": "PurchaseLabService",
+          "startLine": 844,
+          "endLine": 848
+        },
+        {
+          "name": "clonePurchaseExperimentRun",
+          "startLine": 850,
+          "endLine": 860
+        },
+        {
+          "name": "newPurchaseTraceRecorder",
+          "startLine": 868,
+          "endLine": 870
+        },
+        {
+          "name": "add",
+          "receiver": "purchaseTraceRecorder",
+          "startLine": 872,
+          "endLine": 886
+        },
+        {
+          "name": "cloneInt",
+          "startLine": 888,
+          "endLine": 894
+        },
+        {
+          "name": "durationMilliseconds",
+          "startLine": 896,
+          "endLine": 898
+        },
+        {
+          "name": "percentile99",
+          "startLine": 900,
+          "endLine": 914
+        },
+        {
+          "name": "purchaseLabError",
+          "startLine": 916,
+          "endLine": 924
+        }
+      ],
+      "classes": [
+        {
+          "name": "PurchaseStrategy",
+          "kind": "alias",
+          "startLine": 40,
+          "endLine": 40,
+          "methods": []
+        },
+        {
+          "name": "PurchaseTraceStep",
+          "kind": "struct",
+          "startLine": 44,
+          "endLine": 56,
+          "methods": []
+        },
+        {
+          "name": "PurchaseLabService",
+          "kind": "struct",
+          "startLine": 60,
+          "endLine": 73,
+          "methods": [
+            "State",
+            "Reset",
+            "RunExperiment",
+            "executePurchase",
+            "Query",
+            "executeQueryBatch",
+            "GetRun",
+            "RunOutboxWorker",
+            "setPublisherBatchActive",
+            "publisherBatchIsActive",
+            "wakePublisher",
+            "setPublisherNextScan",
+            "recordPublisherScan",
+            "attachPublisherSnapshot",
+            "publishAvailableOutbox",
+            "ConsumeCacheInvalidation",
+            "storeRun"
           ]
         },
         {
-          "source": "silas/internal/database",
-          "specifiers": [
-            "database"
-          ]
+          "name": "PurchaseExperimentRequest",
+          "kind": "struct",
+          "startLine": 93,
+          "endLine": 98,
+          "methods": []
         },
         {
-          "source": "silas/internal/metrics",
-          "specifiers": [
-            "metrics"
+          "name": "PurchaseQuerySample",
+          "kind": "struct",
+          "startLine": 100,
+          "endLine": 106,
+          "methods": []
+        },
+        {
+          "name": "PurchaseOutboxView",
+          "kind": "struct",
+          "startLine": 108,
+          "endLine": 116,
+          "methods": []
+        },
+        {
+          "name": "PurchaseExperimentRun",
+          "kind": "struct",
+          "startLine": 119,
+          "endLine": 151,
+          "methods": []
+        },
+        {
+          "name": "purchaseQueryBatchResult",
+          "kind": "struct",
+          "startLine": 153,
+          "endLine": 156,
+          "methods": []
+        },
+        {
+          "name": "purchaseExecutionResult",
+          "kind": "struct",
+          "startLine": 158,
+          "endLine": 166,
+          "methods": []
+        },
+        {
+          "name": "purchaseTraceRecorder",
+          "kind": "struct",
+          "startLine": 862,
+          "endLine": 866,
+          "methods": [
+            "add"
           ]
         }
       ],
-      "exports": [
-        "OrderService",
-        "NewOrderService",
-        "Pay",
-        "GiveUp"
+      "imports": [
+        "context",
+        "errors",
+        "fmt",
+        "log/slog",
+        "regexp",
+        "silas/internal/database",
+        "silas/internal/metrics",
+        "silas/internal/mq",
+        "sort",
+        "sync",
+        "time"
       ],
-      "totalLines": 105,
+      "exports": [],
+      "totalLines": 925,
       "hasStructuralAnalysis": true
     },
     "internal/util/config.go": {
@@ -3439,40 +4758,17 @@
       "functions": [
         {
           "name": "InitViper",
-          "params": [
-            "dir",
-            "file",
-            "FileType"
-          ],
-          "returnType": "*viper.Viper",
-          "exported": true,
-          "lineCount": 12
+          "startLine": 28,
+          "endLine": 39
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "fmt",
-          "specifiers": [
-            "fmt"
-          ]
-        },
-        {
-          "source": "path",
-          "specifiers": [
-            "path"
-          ]
-        },
-        {
-          "source": "github.com/spf13/viper",
-          "specifiers": [
-            "viper"
-          ]
-        }
+        "fmt",
+        "path",
+        "github.com/spf13/viper"
       ],
-      "exports": [
-        "InitViper"
-      ],
+      "exports": [],
       "totalLines": 40,
       "hasStructuralAnalysis": true
     },
@@ -3482,55 +4778,26 @@
       "functions": [
         {
           "name": "EnvString",
-          "params": [
-            "key",
-            "fallback"
-          ],
-          "returnType": "string",
-          "exported": true,
-          "lineCount": 7
+          "startLine": 10,
+          "endLine": 16
         },
         {
           "name": "EnvInt",
-          "params": [
-            "key",
-            "fallback"
-          ],
-          "returnType": "int",
-          "exported": true,
-          "lineCount": 11
+          "startLine": 20,
+          "endLine": 30
         },
         {
           "name": "EnvBool",
-          "params": [
-            "key",
-            "fallback"
-          ],
-          "returnType": "bool",
-          "exported": true,
-          "lineCount": 11
+          "startLine": 34,
+          "endLine": 44
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "os",
-          "specifiers": [
-            "os"
-          ]
-        },
-        {
-          "source": "strconv",
-          "specifiers": [
-            "strconv"
-          ]
-        }
+        "os",
+        "strconv"
       ],
-      "exports": [
-        "EnvString",
-        "EnvInt",
-        "EnvBool"
-      ],
+      "exports": [],
       "totalLines": 45,
       "hasStructuralAnalysis": true
     },
@@ -3540,43 +4807,18 @@
       "functions": [
         {
           "name": "InitSlog",
-          "params": [
-            "logFile"
-          ],
-          "exported": true,
-          "lineCount": 43
+          "startLine": 14,
+          "endLine": 56
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "log/slog",
-          "specifiers": [
-            "slog"
-          ]
-        },
-        {
-          "source": "strings",
-          "specifiers": [
-            "strings"
-          ]
-        },
-        {
-          "source": "time",
-          "specifiers": [
-            "time"
-          ]
-        },
-        {
-          "source": "github.com/lestrrat-go/file-rotatelogs",
-          "specifiers": [
-            "rotatelogs"
-          ]
-        }
+        "log/slog",
+        "strings",
+        "time",
+        "github.com/lestrrat-go/file-rotatelogs"
       ],
-      "exports": [
-        "InitSlog"
-      ],
+      "exports": [],
       "totalLines": 57,
       "hasStructuralAnalysis": true
     },
@@ -3586,32 +4828,16 @@
       "functions": [
         {
           "name": "Lottery",
-          "params": [
-            "probs"
-          ],
-          "returnType": "int",
-          "exported": true,
-          "lineCount": 16
+          "startLine": 12,
+          "endLine": 27
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "math/rand/v2",
-          "specifiers": [
-            "v2"
-          ]
-        },
-        {
-          "source": "sort",
-          "specifiers": [
-            "sort"
-          ]
-        }
+        "math/rand/v2",
+        "sort"
       ],
-      "exports": [
-        "Lottery"
-      ],
+      "exports": [],
       "totalLines": 28,
       "hasStructuralAnalysis": true
     },
@@ -3621,19 +4847,13 @@
       "functions": [
         {
           "name": "main",
-          "params": [],
-          "exported": false,
-          "lineCount": 7
+          "startLine": 5,
+          "endLine": 11
         }
       ],
       "classes": [],
       "imports": [
-        {
-          "source": "silas/internal/app",
-          "specifiers": [
-            "app"
-          ]
-        }
+        "silas/internal/app"
       ],
       "exports": [],
       "totalLines": 12,
@@ -3641,13 +4861,13 @@
     },
     "readme.md": {
       "filePath": "readme.md",
-      "contentHash": "4f51e921b1efa2f601ccd69257cc1adadad96b3526856b3686f19fef8fbbdd13",
+      "contentHash": "65a8a57b6e3c2a0c209ffb2534644ee6f5ac8f1870bc5080ae4c86b483007c4c",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 310,
-      "hasStructuralAnalysis": true
+      "totalLines": 298,
+      "hasStructuralAnalysis": false
     },
     "scripts/restart-app.ps1": {
       "filePath": "scripts/restart-app.ps1",
@@ -3661,12 +4881,12 @@
     },
     "scripts/run-local-app.ps1": {
       "filePath": "scripts/run-local-app.ps1",
-      "contentHash": "5aab861626b21133caa19ecf2f6b6f0af506916d59517711c2708cac91c98aa1",
+      "contentHash": "11f52cfc7ebd51a82e527da0f1b609d90d072ed4d8fa2b81690bb161740d70df",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 39,
+      "totalLines": 42,
       "hasStructuralAnalysis": false
     },
     "scripts/run-local-loadtest.ps1": {
@@ -3699,82 +4919,295 @@
       "totalLines": 8,
       "hasStructuralAnalysis": false
     },
-    "views/css/lottery.css": {
-      "filePath": "views/css/lottery.css",
-      "contentHash": "a34bfc75ba81b1645f6535901bd63be89fce9c345dd190071006c75bdda1eb2f",
+    "views/css/base.css": {
+      "filePath": "views/css/base.css",
+      "contentHash": "ed961967dee7357c52a4cafadc7dfd1ca288f75f938015d22ea8c9d6fc407ccc",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 707,
+      "totalLines": 88,
       "hasStructuralAnalysis": false
     },
-    "views/html/lottery.html": {
-      "filePath": "views/html/lottery.html",
-      "contentHash": "ed84e64479aa52574a21718b326bf30ee27eb5b7026eacfb4f021e517c301baa",
+    "views/css/experiment-header-nav.css": {
+      "filePath": "views/css/experiment-header-nav.css",
+      "contentHash": "cae844dbc271d03473776ceb808184c9c1d3b593029405c7f96b1d874b5e1af4",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 236,
+      "totalLines": 114,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/experiment-planner.css": {
+      "filePath": "views/css/experiment-planner.css",
+      "contentHash": "bf4446fc6a1fac789f530bcc09f19cbf46b087590c01656b7296f026de133632",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 444,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/lab-foundation.css": {
+      "filePath": "views/css/lab-foundation.css",
+      "contentHash": "993ffc43319809a2d258ef0dd44369e1c5a9fb189898bd34cf2e696a16912276",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 161,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/market-street.css": {
+      "filePath": "views/css/market-street.css",
+      "contentHash": "3ef643682dcbdadf95b6ff8c692617055ce6a3421bffaff073ed879449350127",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 517,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/material-shop.css": {
+      "filePath": "views/css/material-shop.css",
+      "contentHash": "d8b592746075ed89393aa283d52f20f1935668cc48ec37fe84f2cd286750af7a",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2114,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/pay.css": {
+      "filePath": "views/css/pay.css",
+      "contentHash": "14b28c32cdae80cf5af168ff86e9e009405953ae4cb5214973023769ee8064ff",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 52,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/purchase-lab-layout.css": {
+      "filePath": "views/css/purchase-lab-layout.css",
+      "contentHash": "a7f59e4b79a28b7a37b895d5833701902611322cb35cbab86fb284832aec2330",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1689,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/purchase-lab.css": {
+      "filePath": "views/css/purchase-lab.css",
+      "contentHash": "bc6ad8de7ed61476e78d39e4f82050278216010f24eccdfa8fdd9bcf33334b12",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1236,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/query-lab-layout.css": {
+      "filePath": "views/css/query-lab-layout.css",
+      "contentHash": "1fe7a961d1572e39845b6f39c1c5a2b9dc23fefb0aa8e04ca96eeaaa03dff042",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 983,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/query-lab.css": {
+      "filePath": "views/css/query-lab.css",
+      "contentHash": "4bbfe0be717fa9d5e9281f4d1d5e5ed1091b29621a5c282cb155fe437cd00dd4",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1968,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/seckill.css": {
+      "filePath": "views/css/seckill.css",
+      "contentHash": "5d19ec7b3394027f7101882c522ca3b0c1aaa68b656196ec8959e0f832737b76",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 271,
+      "hasStructuralAnalysis": false
+    },
+    "views/css/world-style.css": {
+      "filePath": "views/css/world-style.css",
+      "contentHash": "fcb01dc034612bd61d4b5ee675bacb3e6caa685b36a27e06b3264cf7f4ef1300",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 393,
+      "hasStructuralAnalysis": false
+    },
+    "views/html/market-street.html": {
+      "filePath": "views/html/market-street.html",
+      "contentHash": "9d83ea3dfd7cad117ed55406076869ba8ce5b0ee313f6c3a74ac36847837f30f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 159,
+      "hasStructuralAnalysis": false
+    },
+    "views/html/market.html": {
+      "filePath": "views/html/market.html",
+      "contentHash": "52f0961b7cc8e830ffefed5fc7b24377ef9759a9ae3c28287485b65fe352a59d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 369,
       "hasStructuralAnalysis": false
     },
     "views/html/pay.html": {
       "filePath": "views/html/pay.html",
-      "contentHash": "7224d1d66f079d4aeb442ac2e8f2bc07bc6d4fd144de0d72bcd28cba0909d01e",
+      "contentHash": "36aff1ab4ca81fe26b15aeedfc3744ffdf4fe21c5eefae8896b2af9ebfdbd699",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 118,
+      "totalLines": 181,
       "hasStructuralAnalysis": false
     },
-    "views/js/lucky-canvas.js": {
-      "filePath": "views/js/lucky-canvas.js",
-      "contentHash": "a88302d49abec48151e6ca11325049a8119c0e2f8f4fd5ce62941ae4eb69b40e",
+    "views/html/purchase-lab.html": {
+      "filePath": "views/html/purchase-lab.html",
+      "contentHash": "99d3aa8ba936914c78303bba7c26d3528e8285c40e571795d1f50fbe842a3a35",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 21,
-      "hasStructuralAnalysis": true
+      "totalLines": 580,
+      "hasStructuralAnalysis": false
+    },
+    "views/html/query-lab.html": {
+      "filePath": "views/html/query-lab.html",
+      "contentHash": "2cda129f8065ad1527dcb42135f3934b0da20fda5b4c74ab0defcdf8f71977f3",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 568,
+      "hasStructuralAnalysis": false
+    },
+    "views/html/seckill.html": {
+      "filePath": "views/html/seckill.html",
+      "contentHash": "e76fa19770c870188842255e0d78ce1bcf4fa3d275306e322ee5e09c4dbe019d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 196,
+      "hasStructuralAnalysis": false
+    },
+    "views/img/market-street-bg.svg": {
+      "filePath": "views/img/market-street-bg.svg",
+      "contentHash": "939b76814ad6fe236a99764ca48599623f6f3a3e0952d429c81d9dbf34d4aacf",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 164,
+      "hasStructuralAnalysis": false
+    },
+    "views/js/experiment-state.js": {
+      "filePath": "views/js/experiment-state.js",
+      "contentHash": "ba26a39e97178768cc68c81a0f1579c8a7ab267132663085d2760d6fb98ef781",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 189,
+      "hasStructuralAnalysis": false
+    },
+    "views/js/market-planner-bootstrap.js": {
+      "filePath": "views/js/market-planner-bootstrap.js",
+      "contentHash": "37e027d3964601854df95f2b3396898551f6a66d5460a6414cfea7e71ba7c0bc",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": false
+    },
+    "views/js/market-scene-config.js": {
+      "filePath": "views/js/market-scene-config.js",
+      "contentHash": "569b2aec1fca97489df625a3e15a8adec0fe1c3cbbd33b2c25154a04b5180add",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 59,
+      "hasStructuralAnalysis": false
+    },
+    "views/js/market-street.js": {
+      "filePath": "views/js/market-street.js",
+      "contentHash": "154b18ebe64b6e3cf174e25c6272f2aa2309772ffe2a3ae6832c511be14b67cd",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 150,
+      "hasStructuralAnalysis": false
+    },
+    "views/js/market.js": {
+      "filePath": "views/js/market.js",
+      "contentHash": "3ed37b66a2dee9c91212caadffdc6230edb9b4b851f705907c16da06e767ca16",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1228,
+      "hasStructuralAnalysis": false
     },
     "views/js/my.js": {
       "filePath": "views/js/my.js",
-      "contentHash": "94fa965dff0add8631755bbc73e58d9d0eee66278948dd0c387cdfaa83a9cb66",
-      "functions": [
-        {
-          "name": "getCookie",
-          "params": [
-            "name"
-          ],
-          "exported": false,
-          "lineCount": 7
-        },
-        {
-          "name": "deleteCookie",
-          "params": [
-            "name"
-          ],
-          "exported": false,
-          "lineCount": 3
-        }
-      ],
+      "contentHash": "eeab361bf1108f36f510e5649f21c8646b75ad79405ef4c9a634e59d421ee530",
+      "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
       "totalLines": 12,
-      "hasStructuralAnalysis": true
+      "hasStructuralAnalysis": false
     },
-    "views/js/seckill-lab.js": {
-      "filePath": "views/js/seckill-lab.js",
-      "contentHash": "475e486bfdf8a96e9d9939c47d6a3aae54e7decf431c8901f5ee058a24f12324",
+    "views/js/purchase-lab.js": {
+      "filePath": "views/js/purchase-lab.js",
+      "contentHash": "49d94a7eaf4095a2ad1a8089b30ef77109323d75936fa9ee382999e7a780a44c",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 584,
-      "hasStructuralAnalysis": true
+      "totalLines": 3083,
+      "hasStructuralAnalysis": false
+    },
+    "views/js/query-lab.js": {
+      "filePath": "views/js/query-lab.js",
+      "contentHash": "710a70202d352a0b5e34d7f82c78d64a711eca6f2d24b06c38c8ed3880b2a4d1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3192,
+      "hasStructuralAnalysis": false
+    },
+    "views/js/seckill.js": {
+      "filePath": "views/js/seckill.js",
+      "contentHash": "736be1b7348a83f085c07463b4086d686c99aa437b69c0048312fd646e789b3f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 616,
+      "hasStructuralAnalysis": false
     }
   }
 }
