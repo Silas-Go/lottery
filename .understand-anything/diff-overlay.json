@@ -1,0 +1,31 @@
+{
+  "version": "1.0.0",
+  "baseBranch": "master",
+  "generatedAt": "2026-08-06T15:34:37Z",
+  "changedFiles": [
+    "internal/loadtest/runner.go",
+    "internal/loadtest/types.go",
+    "internal/metrics/archive_scenario.go",
+    "internal/metrics/archive_scenario_test.go",
+    "views/css/query-lab.css",
+    "views/html/query-lab.html",
+    "views/js/experiment-state.js",
+    "views/js/query-lab.js"
+  ],
+  "changedNodeIds": [
+    "file:internal/loadtest/runner.go",
+    "file:internal/loadtest/types.go",
+    "file:views/css/query-lab.css",
+    "file:views/html/query-lab.html",
+    "file:views/js/experiment-state.js",
+    "file:views/js/query-lab.js"
+  ],
+  "affectedNodeIds": [
+    "file:cmd/loadtest-runner/main.go",
+    "file:internal/app/app.go",
+    "file:internal/handler/loadtest.go",
+    "file:internal/service/loadtest.go",
+    "file:internal/loadtest/runner_test.go",
+    "file:internal/loadtest/types_test.go"
+  ]
+}

@@ -278,6 +278,28 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 	return tier, ""
 }
 
+// ScenarioWindowMetrics 是热点击穿任务冻结的一秒真实窗口；三个窗口口径一致，
+// 页面可以直接比较稳态、失效冲击与恢复后的缓存路径。
+type ScenarioWindowMetrics struct {
+	Requests           int64   `json:"requests"`
+	PositiveCacheHits  int64   `json:"positiveCacheHits"`
+	RedisMisses        int64   `json:"redisMisses"`
+	CoalescedAfterMiss int64   `json:"coalescedAfterMiss"`
+	MySQLFallbacks     int64   `json:"mysqlFallbacks"`
+	SQLQueries         int64   `json:"sqlQueries"`
+	CacheRebuilds      int64   `json:"cacheRebuilds"`
+	Errors             int64   `json:"errors"`
+	HitRate            float64 `json:"hitRate"`
+	P95MS              int64   `json:"p95Ms"`
+	MaxLatencyMS       int64   `json:"maxLatencyMs"`
+}
+
+type ScenarioComparisonMetrics struct {
+	Stable    ScenarioWindowMetrics `json:"stable"`
+	Impact    ScenarioWindowMetrics `json:"impact"`
+	Recovered ScenarioWindowMetrics `json:"recovered"`
+}
+
 // TaskMetrics 合并 wrk2 延迟/吞吐结果与应用已有的缓存、SQL 指标。
 type TaskMetrics struct {
 	ActualRequests       int64   `json:"actualRequests"`
@@ -298,38 +320,39 @@ type TaskMetrics struct {
 	// LatencyScheduleFallbacks 是 wrk2 发现修正延迟时序矛盾后改用真实请求延迟的样本数。
 	LatencyScheduleFallbacks int64 `json:"latencyScheduleFallbacks"`
 	// LatencySamplesDropped 是仍被 HDR Histogram 边界拒绝的非法延迟样本数。
-	LatencySamplesDropped int64   `json:"latencySamplesDropped"`
-	RedisHits             int64   `json:"redisHits"`
-	MySQLFallbacks        int64   `json:"mysqlFallbacks"`
-	SQLQueries            int64   `json:"sqlQueries"`
-	CacheHitRate          float64 `json:"cacheHitRate"`
-	PoolPeak              int64   `json:"poolPeak"`
-	PoolCapacity          int64   `json:"poolCapacity"`
-	RedisMisses           int64   `json:"redisMisses,omitempty"`
-	CoalescedAfterMiss    int64   `json:"coalescedAfterMiss,omitempty"`
-	CacheRebuilds         int64   `json:"cacheRebuilds,omitempty"`
-	NegativeCacheHits     int64   `json:"negativeCacheHits,omitempty"`
-	NegativeCacheWrites   int64   `json:"negativeCacheWrites,omitempty"`
-	NonexistentRequests   int64   `json:"nonexistentRequests,omitempty"`
-	InvalidMySQLQueries   int64   `json:"invalidMySQLQueries,omitempty"`
-	ExpectedNotFound      int64   `json:"expectedNotFound,omitempty"`
-	CurrentRequests       int64   `json:"currentRequests,omitempty"`
-	CurrentPositiveHits   int64   `json:"currentPositiveHits,omitempty"`
-	CurrentRedisMisses    int64   `json:"currentRedisMisses,omitempty"`
-	CurrentNegativeHits   int64   `json:"currentNegativeHits,omitempty"`
-	CurrentMySQLFallbacks int64   `json:"currentMySQLFallbacks,omitempty"`
-	CurrentHitRate        float64 `json:"currentHitRate,omitempty"`
-	CurrentP95MS          int64   `json:"currentP95Ms,omitempty"`
-	CurrentMaxLatencyMS   int64   `json:"currentMaxLatencyMs,omitempty"`
-	RunMaxLatencyMS       int64   `json:"runMaxLatencyMs,omitempty"`
-	ScenarioPhase         string  `json:"scenarioPhase,omitempty"`
-	KeyPresent            bool    `json:"keyPresent"`
-	KeyPTTLMillis         int64   `json:"keyPttlMillis,omitempty"`
-	EvictedAt             string  `json:"evictedAt,omitempty"`
-	RebuiltAt             string  `json:"rebuiltAt,omitempty"`
-	StableAt              string  `json:"stableAt,omitempty"`
-	RebuildDurationMS     int64   `json:"rebuildDurationMs,omitempty"`
-	RecoveryDurationMS    int64   `json:"recoveryDurationMs,omitempty"`
+	LatencySamplesDropped int64                      `json:"latencySamplesDropped"`
+	RedisHits             int64                      `json:"redisHits"`
+	MySQLFallbacks        int64                      `json:"mysqlFallbacks"`
+	SQLQueries            int64                      `json:"sqlQueries"`
+	CacheHitRate          float64                    `json:"cacheHitRate"`
+	PoolPeak              int64                      `json:"poolPeak"`
+	PoolCapacity          int64                      `json:"poolCapacity"`
+	RedisMisses           int64                      `json:"redisMisses,omitempty"`
+	CoalescedAfterMiss    int64                      `json:"coalescedAfterMiss,omitempty"`
+	CacheRebuilds         int64                      `json:"cacheRebuilds,omitempty"`
+	NegativeCacheHits     int64                      `json:"negativeCacheHits,omitempty"`
+	NegativeCacheWrites   int64                      `json:"negativeCacheWrites,omitempty"`
+	NonexistentRequests   int64                      `json:"nonexistentRequests,omitempty"`
+	InvalidMySQLQueries   int64                      `json:"invalidMySQLQueries,omitempty"`
+	ExpectedNotFound      int64                      `json:"expectedNotFound,omitempty"`
+	CurrentRequests       int64                      `json:"currentRequests,omitempty"`
+	CurrentPositiveHits   int64                      `json:"currentPositiveHits,omitempty"`
+	CurrentRedisMisses    int64                      `json:"currentRedisMisses,omitempty"`
+	CurrentNegativeHits   int64                      `json:"currentNegativeHits,omitempty"`
+	CurrentMySQLFallbacks int64                      `json:"currentMySQLFallbacks,omitempty"`
+	CurrentHitRate        float64                    `json:"currentHitRate,omitempty"`
+	CurrentP95MS          int64                      `json:"currentP95Ms,omitempty"`
+	CurrentMaxLatencyMS   int64                      `json:"currentMaxLatencyMs,omitempty"`
+	RunMaxLatencyMS       int64                      `json:"runMaxLatencyMs,omitempty"`
+	ScenarioPhase         string                     `json:"scenarioPhase,omitempty"`
+	KeyPresent            bool                       `json:"keyPresent"`
+	KeyPTTLMillis         int64                      `json:"keyPttlMillis,omitempty"`
+	EvictedAt             string                     `json:"evictedAt,omitempty"`
+	RebuiltAt             string                     `json:"rebuiltAt,omitempty"`
+	StableAt              string                     `json:"stableAt,omitempty"`
+	RebuildDurationMS     int64                      `json:"rebuildDurationMs,omitempty"`
+	RecoveryDurationMS    int64                      `json:"recoveryDurationMs,omitempty"`
+	ScenarioComparison    *ScenarioComparisonMetrics `json:"scenarioComparison,omitempty"`
 
 	// 以下字段只用于秒杀实验，避免把预期的 429、售罄和系统异常混成一个 Error Rate。
 	AllowedRequests     int64   `json:"allowedRequests,omitempty"`

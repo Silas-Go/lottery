@@ -51,4 +51,44 @@ func TestArchiveScenarioRecoveryRequiresThreeCleanSeconds(t *testing.T) {
 	if snapshot.Phase != "recovered" || snapshot.StableAt == "" || snapshot.RecoveryDurationMS <= 0 {
 		t.Fatalf("three clean seconds should close the recovery window: %+v", snapshot)
 	}
+	if snapshot.Recovered.Requests != 100 || snapshot.Recovered.HitRate != 100 {
+		t.Fatalf("recovered comparison window was not frozen: %+v", snapshot.Recovered)
+	}
+}
+
+func TestArchiveScenarioFreezesStableImpactAndRecoveredWindows(t *testing.T) {
+	meter := useFreshArchiveScenarioMeter(t)
+	now := time.Now()
+	meter.active = true
+	meter.scenario = "cache-breakdown"
+	meter.phase = "stable"
+	meter.seconds[now.Unix()-1] = &archiveScenarioBucket{
+		ArchiveScenarioCounters: ArchiveScenarioCounters{Requests: 300, PositiveCacheHits: 300},
+		latencies:               []int64{1, 1, 2},
+	}
+
+	RecordArchiveScenarioEvicted(now)
+	RecordArchiveScenarioSample(ArchiveScenarioSample{
+		RedisMiss: true, MySQLFallback: true, CacheRebuilt: true,
+		Duration: 4 * time.Millisecond,
+	})
+	RecordArchiveScenarioSample(ArchiveScenarioSample{
+		RedisMiss: true, Coalesced: true, Duration: 3 * time.Millisecond,
+	})
+	RecordArchiveScenarioSample(ArchiveScenarioSample{
+		PositiveCacheHit: true, Duration: time.Millisecond,
+	})
+
+	snapshot := SnapshotArchiveScenario()
+	if snapshot.Stable.Requests != 300 || snapshot.Stable.HitRate != 100 {
+		t.Fatalf("stable comparison window was not frozen: %+v", snapshot.Stable)
+	}
+	if snapshot.Impact.Requests != 3 || snapshot.Impact.RedisMisses != 2 ||
+		snapshot.Impact.MySQLFallbacks != 1 || snapshot.Impact.CoalescedAfterMiss != 1 ||
+		snapshot.Impact.CacheRebuilds != 1 {
+		t.Fatalf("impact comparison window did not preserve real paths: %+v", snapshot.Impact)
+	}
+	if snapshot.Impact.HitRate <= 0 || snapshot.Impact.HitRate >= 100 || snapshot.Impact.MaxLatency != 4 {
+		t.Fatalf("impact comparison window did not preserve rate or latency: %+v", snapshot.Impact)
+	}
 }

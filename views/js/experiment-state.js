@@ -4,6 +4,7 @@
     var STORAGE_KEY = "silas.cache-aside.experiment-state.v1";
     // v2 使用“最终 DTO + 实际 SQL 条数”口径，不能与旧版单表 DB Read 结果混合比较。
     var RESULTS_KEY = "silas.cache-aside.experiment-results.v2";
+    var SCENARIO_RESULTS_KEY = "silas.cache-aside.scenario-results.v1";
     var PENDING_RUN_KEY = "silas.cache-aside.pending-run.v2";
     // v2 为每个购买方案保存完整 run trace、Outbox 证据和查询探针快照；
     // 旧版只含最终指标，不能满足逐步回看，因此不与新结构混读。
@@ -137,6 +138,7 @@
     function clearResults() {
         try {
             global.sessionStorage.removeItem(RESULTS_KEY);
+            global.sessionStorage.removeItem(SCENARIO_RESULTS_KEY);
             global.sessionStorage.removeItem(PENDING_RUN_KEY);
         } catch (_) {
             // 页面仍会立即收到清空事件；禁用存储只影响跨页面恢复。
@@ -150,6 +152,33 @@
         return function () { global.removeEventListener(RESULTS_EVENT_NAME, handle); };
     }
 
+    function readScenarioResults() {
+        var results = safeParse(SCENARIO_RESULTS_KEY, {});
+        return results && typeof results === "object" && !Array.isArray(results) ? results : {};
+    }
+
+    function listScenarioResults() {
+        return clone(readScenarioResults());
+    }
+
+    function scenarioResult(key) {
+        var result = readScenarioResults()[key];
+        return result ? clone(result) : null;
+    }
+
+    function saveScenarioResult(candidate) {
+        candidate = clone(candidate || {});
+        if (!candidate.key) {
+            throw new Error("scenario result key is required");
+        }
+        var result = Object.assign({}, candidate, { frozenAt: new Date().toISOString() });
+        var results = readScenarioResults();
+        results[result.key] = result;
+        safeWrite(SCENARIO_RESULTS_KEY, results);
+        global.dispatchEvent(new CustomEvent(RESULTS_EVENT_NAME, { detail: clone(result) }));
+        return Object.freeze(clone(result));
+    }
+
     global.SilasExperimentResults = Object.freeze({
         list: listResults,
         latest: latestResult,
@@ -157,6 +186,9 @@
         arm: armRun,
         pending: pendingRun,
         clearPending: clearPendingRun,
+        scenarios: listScenarioResults,
+        scenario: scenarioResult,
+        saveScenario: saveScenarioResult,
         clear: clearResults,
         subscribe: subscribeResults
     });

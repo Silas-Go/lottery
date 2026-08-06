@@ -593,6 +593,138 @@
         return Number(value || 0) > 0 ? Number(value).toLocaleString("zh-CN") + " ms" : "—";
     }
 
+    function formatScenarioRate(value, sampled) {
+        return sampled ? Number(value || 0).toLocaleString("zh-CN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }) + "%" : "—";
+    }
+
+    function renderBreakdownWindow(prefix, windowMetrics) {
+        windowMetrics = windowMetrics || {};
+        var sampled = Number(windowMetrics.requests || 0) > 0;
+        byId("breakdown-" + prefix + "-rate").textContent =
+            formatScenarioRate(windowMetrics.hitRate, sampled);
+        byId("breakdown-" + prefix + "-hit-miss").textContent = sampled ?
+            formatNumber(windowMetrics.positiveCacheHits) + " / " + formatNumber(windowMetrics.redisMisses) : "—";
+        byId("breakdown-" + prefix + "-fallbacks").textContent = sampled ?
+            formatNumber(windowMetrics.mysqlFallbacks) : "—";
+        byId("breakdown-" + prefix + "-latency").textContent = sampled ?
+            formatScenarioDuration(windowMetrics.p95Ms) + " / " +
+                formatScenarioDuration(windowMetrics.maxLatencyMs) : "—";
+    }
+
+    function renderBreakdownComparison() {
+        var result = experimentResults.scenario("breakdown");
+        var metrics = result && result.metrics || {};
+        var comparison = metrics.scenarioComparison || {};
+        renderBreakdownWindow("stable", comparison.stable);
+        renderBreakdownWindow("impact", comparison.impact);
+        renderBreakdownWindow("recovered", comparison.recovered);
+        if (!result || !comparison.stable || !comparison.impact || !comparison.recovered) {
+            byId("breakdown-result-status").textContent = "等待完整任务";
+            byId("breakdown-verdict").textContent =
+                "完成一轮热点击穿任务后，这里固定对比真实稳态、失效后 1 秒与恢复窗口。";
+            return;
+        }
+        byId("breakdown-result-status").textContent = "FROZEN · " +
+            formatResultQPS(result.expectedRate) + " · " + result.expectedDurationSeconds + "s";
+        var stable = comparison.stable;
+        var impact = comparison.impact;
+        var recovered = comparison.recovered;
+        var coalesced = Number(metrics.coalescedAfterMiss || impact.coalescedAfterMiss || 0);
+        var fallback = Number(impact.mysqlFallbacks || 0);
+        var verdict = "真实失效后 1 秒出现 " + formatNumber(impact.redisMisses) +
+            " 次 MISS、" + formatNumber(fallback) + " 次 MySQL 回源，命中率 " +
+            formatScenarioRate(stable.hitRate, true) + " → " +
+            formatScenarioRate(impact.hitRate, true) + " → " +
+            formatScenarioRate(recovered.hitRate, true) + "。";
+        if (fallback === 1) {
+            verdict += Number(impact.redisMisses || 0) > 1 ?
+                "其中 " + formatNumber(coalesced) +
+                    " 个请求等待后复用重建结果，现有按 Key 互斥没有让并发 MISS 全部打到 MySQL。" :
+                "本轮只有 1 次真实回源和 1 次重建，未观察到并发回源放大。";
+        } else if (fallback > 1) {
+            verdict += "本轮观察到多个并发回源，需要继续评估互斥重建是否失效。";
+        }
+        verdict += " 整轮命中率 " + formatScenarioRate(metrics.cacheHitRate, true) +
+            "，失效到稳定 " + formatScenarioDuration(metrics.recoveryDurationMs) + "。";
+        byId("breakdown-verdict").textContent = verdict;
+    }
+
+    function scenarioComparisonIsFair(left, right) {
+        return Boolean(left && right &&
+            Number(left.probeArchiveId || 0) === Number(right.probeArchiveId || 0) &&
+            Number(left.expectedRate || 0) === Number(right.expectedRate || 0) &&
+            Number(left.expectedDurationSeconds || 0) === Number(right.expectedDurationSeconds || 0) &&
+            left.connectionMode === right.connectionMode &&
+            Number(left.connections || 0) === Number(right.connections || 0));
+    }
+
+    function renderPenetrationColumn(name, result) {
+        var metrics = result && result.metrics || {};
+        var requests = Number(metrics.nonexistentRequests || 0);
+        var sampled = requests > 0;
+        var invalidRate = sampled ? Number(metrics.invalidMySQLQueries || 0) * 100 / requests : 0;
+        byId("penetration-" + name + "-requests").textContent = sampled ? formatNumber(requests) : "—";
+        byId("penetration-" + name + "-misses").textContent = sampled ?
+            formatNumber(metrics.redisMisses) : "—";
+        byId("penetration-" + name + "-negative-hits").textContent = sampled ?
+            formatNumber(metrics.negativeCacheHits) : "—";
+        byId("penetration-" + name + "-invalid").textContent = sampled ?
+            formatNumber(metrics.invalidMySQLQueries) : "—";
+        byId("penetration-" + name + "-invalid-rate").textContent =
+            formatScenarioRate(invalidRate, sampled);
+        byId("penetration-" + name + "-p95").textContent = sampled ?
+            formatScenarioDuration(metrics.requestP95Ms) : "—";
+        byId("penetration-" + name + "-errors").textContent = sampled ?
+            formatScenarioRate(metrics.errorRate, true) : "—";
+    }
+
+    function renderPenetrationComparison() {
+        var none = experimentResults.scenario("penetration:none");
+        var negative = experimentResults.scenario("penetration:negative-cache");
+        renderPenetrationColumn("none", none);
+        renderPenetrationColumn("negative", negative);
+        if (!none || !negative) {
+            byId("penetration-result-status").textContent = none ? "无保护已冻结 · 等待负缓存" :
+                (negative ? "负缓存已冻结 · 等待无保护" : "等待两轮任务");
+            byId("penetration-verdict").textContent =
+                "用相同速率、连接数和时长各运行一轮，页面才会给出保护效果结论。";
+            return;
+        }
+        if (!scenarioComparisonIsFair(none, negative)) {
+            byId("penetration-result-status").textContent = "NOT COMPARABLE";
+            byId("penetration-verdict").textContent =
+                "两轮的不存在 ID、目标速率、连接数或时长不同，只能并列查看，不能裁定保护效果。";
+            return;
+        }
+        byId("penetration-result-status").textContent = "FROZEN · 同条件";
+        var base = none.metrics || {};
+        var protectedMetrics = negative.metrics || {};
+        var baseInvalid = Number(base.invalidMySQLQueries || 0);
+        var protectedInvalid = Number(protectedMetrics.invalidMySQLQueries || 0);
+        var reduction = baseInvalid > 0 ? Math.max(0, (baseInvalid - protectedInvalid) * 100 / baseInvalid) : 0;
+        var protectedRequests = Math.max(1, Number(protectedMetrics.nonexistentRequests || 0));
+        var interception = Number(protectedMetrics.negativeCacheHits || 0) * 100 / protectedRequests;
+        byId("penetration-verdict").textContent =
+            "无保护把 " + formatNumber(baseInvalid) + " 次不存在请求打到 MySQL；负缓存后只剩 " +
+            formatNumber(protectedInvalid) + " 次，无效查询减少 " + formatScenarioRate(reduction, true) +
+            "，负缓存拦截 " + formatScenarioRate(interception, true) + "。正常 DTO Redis MISS 仍单列，" +
+            "不冒充缓存命中；P95 " + formatScenarioDuration(base.requestP95Ms) + " → " +
+            formatScenarioDuration(protectedMetrics.requestP95Ms) + "。";
+    }
+
+    function renderScenarioComparison(scenario) {
+        byId("breakdown-comparison").hidden = scenario !== "breakdown";
+        byId("penetration-comparison").hidden = scenario !== "penetration";
+        if (scenario === "breakdown") {
+            renderBreakdownComparison();
+        } else if (scenario === "penetration") {
+            renderPenetrationComparison();
+        }
+    }
+
     function renderScenarioObservation(task) {
         var relevantTask = taskMatchesSelection(task) && taskScenario(task) !== "steady" ? task : null;
         var scenario = relevantTask ? taskScenario(relevantTask) : state.scenario;
@@ -647,6 +779,7 @@
         }
         byId("breakdown-evidence").hidden = scenario !== "breakdown";
         byId("penetration-evidence").hidden = scenario !== "penetration";
+        renderScenarioComparison(scenario);
     }
 
     function renderScenarioControls(task) {
@@ -1452,6 +1585,61 @@
             item.appendChild(message);
             host.appendChild(item);
         });
+    }
+
+    function freezeScenarioResult(task) {
+        var scenario = taskScenario(task);
+        if (state.loadtestResultSaved || task.status !== "completed" || scenario === "steady") {
+            return;
+        }
+        var key = scenario === "breakdown" ? "breakdown" :
+            "penetration:" + (task.protection === "negative-cache" ? "negative-cache" : "none");
+        var existing = experimentResults.scenario(key);
+        if (existing && existing.taskId === task.taskId) {
+            state.loadtestResultSaved = true;
+            renderScenarioComparison(scenario);
+            return;
+        }
+        var metrics = task.metrics || {};
+        var tier = task.tier || {};
+        experimentResults.saveScenario({
+            key: key,
+            taskId: task.taskId,
+            scenario: scenario,
+            protection: task.protection || "none",
+            archiveId: Number(task.archiveId || 0),
+            probeArchiveId: Number(task.probeArchiveId || 0),
+            expectedRate: Number(tier.rate || 0),
+            expectedDurationSeconds: Number(tier.durationSeconds || 0),
+            connectionMode: task.connectionMode || "",
+            connections: Number(tier.connections || 0),
+            metrics: {
+                actualRequests: Number(metrics.actualRequests || 0),
+                redisHits: Number(metrics.redisHits || 0),
+                redisMisses: Number(metrics.redisMisses || 0),
+                mysqlFallbacks: Number(metrics.mysqlFallbacks || 0),
+                cacheHitRate: Number(metrics.cacheHitRate || 0),
+                coalescedAfterMiss: Number(metrics.coalescedAfterMiss || 0),
+                cacheRebuilds: Number(metrics.cacheRebuilds || 0),
+                negativeCacheHits: Number(metrics.negativeCacheHits || 0),
+                negativeCacheWrites: Number(metrics.negativeCacheWrites || 0),
+                nonexistentRequests: Number(metrics.nonexistentRequests || 0),
+                invalidMySQLQueries: Number(metrics.invalidMySQLQueries || 0),
+                requestP95Ms: Number(metrics.requestP95Ms || 0),
+                runMaxLatencyMs: Number(metrics.runMaxLatencyMs || 0),
+                errorRate: Number(metrics.errorRate || 0),
+                rebuildDurationMs: Number(metrics.rebuildDurationMs || 0),
+                recoveryDurationMs: Number(metrics.recoveryDurationMs || 0),
+                scenarioComparison: metrics.scenarioComparison || null
+            }
+        });
+        state.loadtestResultSaved = true;
+        experimentResults.clearPending();
+        state.pendingRun = null;
+        renderScenarioComparison(scenario);
+        byId("freeze-status").textContent = scenario === "breakdown" ?
+            "热点击穿三个阶段已冻结" : "缓存穿透本轮结果已冻结";
+        showToast("场景真实结果已冻结，可继续完成对比。", "success");
     }
 
     function freezeLoadtestResult(task) {
@@ -2346,9 +2534,7 @@
                     renderCrowdConversion(task);
                     loadCrowdMaterialRecord(task);
                 } else {
-                    experimentResults.clearPending();
-                    state.pendingRun = null;
-                    byId("freeze-status").textContent = "场景任务已完成 · 未写入稳态路径对比";
+                    freezeScenarioResult(task);
                 }
                 stopLoadtestConnections();
             }
@@ -3262,6 +3448,7 @@
         state.previousRead = null;
         resetMetricsHistory();
         renderFrozenResults();
+        renderScenarioComparison(state.scenario);
         byId("freeze-status").textContent = "对比已清空 · 等待新一轮测试";
         try {
             var result = await requestJSON("/api/chapters/cache-aside/reset", { method: "POST" });
@@ -3467,8 +3654,12 @@
         document.body.dataset.entryMode = state.entry;
         renderExperimentState(currentExperiment());
         experimentState.subscribe(renderExperimentState);
-        experimentResults.subscribe(renderFrozenResults);
+        experimentResults.subscribe(function () {
+            renderFrozenResults();
+            renderScenarioComparison(state.scenario);
+        });
         renderFrozenResults();
+        renderScenarioComparison(state.scenario);
         resetRouteVisual();
         updateControlState();
         updateMetricsPlaybackControls();

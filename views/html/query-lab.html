@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260806-cache-scenarios-v1" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260806-scenario-comparison-v1" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
@@ -226,6 +226,59 @@
                             <span><small>负缓存写入</small><strong id="scenario-negative-writes">—</strong></span>
                             <span><small>无效 MySQL 查询</small><strong id="scenario-invalid-queries">—</strong></span>
                         </div>
+                        <section id="breakdown-comparison" class="scenario-result-comparison" aria-labelledby="breakdown-comparison-title" hidden>
+                            <header>
+                                <div><small>FROZEN PHASE COMPARISON</small><strong id="breakdown-comparison-title">失效前后发生了什么</strong></div>
+                                <span id="breakdown-result-status">等待完整任务</span>
+                            </header>
+                            <div class="scenario-phase-comparison">
+                                <article>
+                                    <header><small>01</small><strong>稳定命中</strong></header>
+                                    <dl>
+                                        <div><dt>命中率</dt><dd id="breakdown-stable-rate">—</dd></div>
+                                        <div><dt>HIT / MISS</dt><dd id="breakdown-stable-hit-miss">—</dd></div>
+                                        <div><dt>MySQL 回源</dt><dd id="breakdown-stable-fallbacks">—</dd></div>
+                                        <div><dt>服务端 P95 / 峰值</dt><dd id="breakdown-stable-latency">—</dd></div>
+                                    </dl>
+                                </article>
+                                <article class="is-impact">
+                                    <header><small>02</small><strong>失效后 1 秒</strong></header>
+                                    <dl>
+                                        <div><dt>命中率</dt><dd id="breakdown-impact-rate">—</dd></div>
+                                        <div><dt>HIT / MISS</dt><dd id="breakdown-impact-hit-miss">—</dd></div>
+                                        <div><dt>MySQL 回源</dt><dd id="breakdown-impact-fallbacks">—</dd></div>
+                                        <div><dt>服务端 P95 / 峰值</dt><dd id="breakdown-impact-latency">—</dd></div>
+                                    </dl>
+                                </article>
+                                <article class="is-recovered">
+                                    <header><small>03</small><strong>恢复稳定</strong></header>
+                                    <dl>
+                                        <div><dt>命中率</dt><dd id="breakdown-recovered-rate">—</dd></div>
+                                        <div><dt>HIT / MISS</dt><dd id="breakdown-recovered-hit-miss">—</dd></div>
+                                        <div><dt>MySQL 回源</dt><dd id="breakdown-recovered-fallbacks">—</dd></div>
+                                        <div><dt>服务端 P95 / 峰值</dt><dd id="breakdown-recovered-latency">—</dd></div>
+                                    </dl>
+                                </article>
+                            </div>
+                            <p id="breakdown-verdict">完成一轮热点击穿任务后，这里固定对比真实稳态、冲击与恢复窗口。</p>
+                        </section>
+                        <section id="penetration-comparison" class="scenario-result-comparison" aria-labelledby="penetration-comparison-title" hidden>
+                            <header>
+                                <div><small>FROZEN A/B COMPARISON</small><strong id="penetration-comparison-title">无保护 vs 负缓存</strong></div>
+                                <span id="penetration-result-status">等待两轮任务</span>
+                            </header>
+                            <div class="scenario-ab-table" role="table" aria-label="缓存穿透保护前后结果比较">
+                                <div class="is-head" role="row"><span>指标</span><strong>无保护</strong><strong>负缓存</strong></div>
+                                <div role="row"><span>不存在 ID 请求</span><strong id="penetration-none-requests">—</strong><strong id="penetration-negative-requests">—</strong></div>
+                                <div role="row"><span>正常 Redis MISS</span><strong id="penetration-none-misses">—</strong><strong id="penetration-negative-misses">—</strong></div>
+                                <div role="row"><span>负缓存命中</span><strong id="penetration-none-negative-hits">—</strong><strong id="penetration-negative-negative-hits">—</strong></div>
+                                <div role="row"><span>无效 MySQL 查询</span><strong id="penetration-none-invalid">—</strong><strong id="penetration-negative-invalid">—</strong></div>
+                                <div role="row"><span>无效回源率</span><strong id="penetration-none-invalid-rate">—</strong><strong id="penetration-negative-invalid-rate">—</strong></div>
+                                <div role="row"><span>实际请求 P95</span><strong id="penetration-none-p95">—</strong><strong id="penetration-negative-p95">—</strong></div>
+                                <div role="row"><span>错误率</span><strong id="penetration-none-errors">—</strong><strong id="penetration-negative-errors">—</strong></div>
+                            </div>
+                            <p id="penetration-verdict">用相同速率、连接数和时长各运行一轮，页面才会给出保护效果结论。</p>
+                        </section>
                         <p id="scenario-proof-copy">所有状态来自任务 SSE 与 Redis / MySQL 的真实请求指标。</p>
                     </section>
 
@@ -611,8 +664,8 @@
     </dialog>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
-    <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/query-lab.js?v=20260805-cache-scenarios-v1"></script>
+    <script src="/js/experiment-state.js?v=20260806-scenario-comparison-v1"></script>
+    <script src="/js/query-lab.js?v=20260806-scenario-comparison-v1"></script>
 </body>
 
 </html>

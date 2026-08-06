@@ -722,6 +722,13 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 			r.finish(id, StatusFailed, CodeRunnerFailure, "热点失效、重建与稳定恢复证据不完整", EventFailed)
 			return
 		}
+		comparison := metrics.ScenarioComparison
+		if comparison == nil || comparison.Stable.Requests <= 0 || comparison.Impact.Requests <= 0 ||
+			comparison.Recovered.Requests <= 0 || comparison.Impact.RedisMisses <= 0 ||
+			comparison.Impact.CacheRebuilds != 1 {
+			r.finish(id, StatusFailed, CodeRunnerFailure, "热点失效前、冲击与恢复对比窗口不完整", EventFailed)
+			return
+		}
 	}
 	if task.Experiment == ExperimentCachePenetration {
 		if metrics.NonexistentRequests <= 0 || metrics.ExpectedNotFound <= 0 || metrics.InvalidMySQLQueries <= 0 {
@@ -844,6 +851,9 @@ type archiveScenarioMetricSnapshot struct {
 	KeyPTTLMillis      int64                         `json:"keyPttlMillis"`
 	Current            archiveScenarioMetricCounters `json:"current"`
 	Round              archiveScenarioMetricCounters `json:"round"`
+	Stable             archiveScenarioMetricCounters `json:"stable"`
+	Impact             archiveScenarioMetricCounters `json:"impact"`
+	Recovered          archiveScenarioMetricCounters `json:"recovered"`
 	EvictedAt          string                        `json:"evictedAt"`
 	RebuiltAt          string                        `json:"rebuiltAt"`
 	StableAt           string                        `json:"stableAt"`
@@ -946,7 +956,7 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 		if scenario.Round.Requests > 0 {
 			errorRate = float64(scenario.Round.Errors) * 100 / float64(scenario.Round.Requests)
 		}
-		return TaskMetrics{
+		metrics := TaskMetrics{
 			ActualRequests:        scenario.Round.Requests,
 			ActualQPS:             float64(scenario.Current.Requests),
 			ErrorRate:             errorRate,
@@ -979,7 +989,15 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 			StableAt:              scenario.StableAt,
 			RebuildDurationMS:     scenario.RebuildDurationMS,
 			RecoveryDurationMS:    scenario.RecoveryDurationMS,
-		}, nil
+		}
+		if task.Experiment == ExperimentCacheBreakdown {
+			metrics.ScenarioComparison = &ScenarioComparisonMetrics{
+				Stable:    archiveScenarioWindowMetrics(scenario.Stable),
+				Impact:    archiveScenarioWindowMetrics(scenario.Impact),
+				Recovered: archiveScenarioWindowMetrics(scenario.Recovered),
+			}
+		}
+		return metrics, nil
 	}
 	path := snapshot.ArchiveRead.Direct
 	if task.Mode == "cached" {
@@ -1007,6 +1025,16 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 		PoolPeak:       path.PoolPeak,
 		PoolCapacity:   path.PoolCapacity,
 	}, nil
+}
+
+func archiveScenarioWindowMetrics(source archiveScenarioMetricCounters) ScenarioWindowMetrics {
+	return ScenarioWindowMetrics{
+		Requests: source.Requests, PositiveCacheHits: source.PositiveCacheHits,
+		RedisMisses: source.RedisMisses, CoalescedAfterMiss: source.CoalescedAfterMiss,
+		MySQLFallbacks: source.MySQLFallbacks, SQLQueries: source.SQLQueries,
+		CacheRebuilds: source.CacheRebuilds, Errors: source.Errors, HitRate: source.HitRate,
+		P95MS: source.P95Latency, MaxLatencyMS: source.MaxLatency,
+	}
 }
 
 func (r *Runner) transition(id string, next TaskStatus, message string) bool {
