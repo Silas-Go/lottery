@@ -57,6 +57,9 @@
         connectionPlanRequest: 0,
         tideTrace: {
             taskId: "",
+            eventHighWater: 0,
+            seenMilestones: {},
+            lastStep: null,
             sequence: 0,
             requestHighWater: 0,
             hitHighWater: 0,
@@ -1432,9 +1435,15 @@
         failed: 5,
         stopped: 5
     });
+    var loadtestScenarioPhaseRank = Object.freeze({
+        stable: 0,
+        evicted: 1,
+        recovering: 2,
+        recovered: 3
+    });
 
-    // GET、轮询和 SSE 会并行返回。这里按同一任务的单调状态与 elapsedSeconds
-    // 合并，避免较慢的旧快照或首次 SSE 历史回放把 running/completed 画面倒退。
+    // GET、轮询和 SSE 会并行返回。这里按同一任务的单调状态、elapsedSeconds
+    // 与热点实验阶段合并，避免旧快照把 running/completed 或 DEL 后证据倒退。
     // SSE 增量没有 tier/mode 等完整字段，因此必须保留已有锁定配置。
     function mergeLoadtestTask(current, incoming) {
         if (!incoming) {
@@ -1459,11 +1468,20 @@
         var incomingElapsed = Number(incoming.elapsedSeconds || 0);
         var currentRequests = Number(current.metrics && current.metrics.actualRequests || 0);
         var incomingRequests = Number(incoming.metrics && incoming.metrics.actualRequests || 0);
+        var currentScenarioPhase = current.metrics && current.metrics.scenarioPhase || "";
+        var incomingScenarioPhase = incoming.metrics && incoming.metrics.scenarioPhase || "";
+        var currentScenarioKnown = Object.prototype.hasOwnProperty.call(
+            loadtestScenarioPhaseRank, currentScenarioPhase);
+        var incomingScenarioKnown = Object.prototype.hasOwnProperty.call(
+            loadtestScenarioPhaseRank, incomingScenarioPhase);
+        var scenarioRegressed = currentScenarioKnown &&
+            (!incomingScenarioKnown || loadtestScenarioPhaseRank[incomingScenarioPhase] <
+                loadtestScenarioPhaseRank[currentScenarioPhase]);
         var currentTerminal = ["completed", "failed", "stopped"].indexOf(current.status) >= 0;
         var incomingTerminal = ["completed", "failed", "stopped"].indexOf(incoming.status) >= 0;
         var stale = (currentTerminal &&
                 (!incomingTerminal || incoming.status !== current.status)) ||
-            incomingRank < currentRank ||
+            incomingRank < currentRank || scenarioRegressed ||
             (incomingRank === currentRank &&
                 (incomingElapsed < currentElapsed ||
                     (incomingElapsed === currentElapsed && incomingRequests < currentRequests)));
@@ -1477,6 +1495,11 @@
             merged.errorCode = current.errorCode;
             merged.errorMessage = current.errorMessage;
         }
+        ["evictedAt", "rebuiltAt", "stableAt"].forEach(function (field) {
+            if (current.metrics && current.metrics[field] && !merged.metrics[field]) {
+                merged.metrics[field] = current.metrics[field];
+            }
+        });
         return merged;
     }
 
@@ -1734,8 +1757,8 @@
         return target > 0 ? Math.min(100, Number(metrics.actualQps || 0) * 100 / target) : 0;
     }
 
-    // 查询潮汐没有逐请求 trace。这里固定复用一对卷轴，只用聚合指标授权有限的“代表性配对”；
-    // Sxx 是视觉编号，不写回任务、日志或结果，也不声称对应服务端某一条真实请求。
+    // 查询潮汐没有逐请求 trace。动画只消费任务 SSE 的有序事件及其指标快照；
+    // 全局 metrics SSE 和任务 GET 只负责静态渲染，不能据累计差值补画“代表性请求”。
     function tideTraceRawPath(task) {
         if (task && taskScenario(task) !== "steady") {
             var taskMetrics = task.metrics || {};
@@ -1796,6 +1819,9 @@
         var rawPath = tideTraceRawPath(task) || {};
         stopTideTraceMotion();
         sampler.taskId = task && task.taskId || "";
+        sampler.eventHighWater = 0;
+        sampler.seenMilestones = {};
+        sampler.lastStep = null;
         sampler.sequence = 0;
         sampler.requestHighWater = 0;
         sampler.hitHighWater = 0;
@@ -1813,6 +1839,8 @@
         if (stage) {
             stage.dataset.hasResponse = "false";
             stage.dataset.cacheRefillObserved = "false";
+            stage.removeAttribute("data-causal-step");
+            stage.removeAttribute("data-cache-kind");
         }
     }
 
@@ -1901,13 +1929,45 @@
         var medium = qps >= 250;
         return {
             request: (fast ? 1450 : (medium ? 1700 : 2000)) +
-                (route === "cache-miss" ? 420 : 0),
+                (["cache-miss", "cache-rebuild", "negative-build"].indexOf(route) >= 0 ? 420 : 0),
             response: fast ? 1350 : (medium ? 1550 : 1800),
             pause: fast ? 240 : (medium ? 420 : 700)
         };
     }
 
     function tideTraceRequestAnchors(route) {
+        if (route === "cache-evicted") {
+            return [
+                document.querySelector(".tide-service-icon"),
+                byId("tide-redis-device")
+            ];
+        }
+        if (route === "dto-miss") {
+            return [
+                document.querySelector(".tide-scroll-maker"),
+                document.querySelector(".tide-conduit-bank"),
+                document.querySelector(".tide-service-icon"),
+                byId("tide-redis-device")
+            ];
+        }
+        if (route === "mysql-404") {
+            return [byId("tide-redis-device"), byId("tide-mysql-device")];
+        }
+        if (route === "negative-build") {
+            return [
+                byId("tide-redis-device"),
+                document.querySelector(".tide-service-icon"),
+                byId("tide-redis-device"),
+                byId("tide-mysql-device")
+            ];
+        }
+        if (route === "negative-hit") {
+            return [
+                byId("tide-redis-device"),
+                document.querySelector(".tide-service-icon"),
+                byId("tide-redis-device")
+            ];
+        }
         var anchors = [
             document.querySelector(".tide-scroll-maker"),
             document.querySelector(".tide-backlog-scrolls"),
@@ -1918,7 +1978,7 @@
             anchors.push(byId("tide-mysql-device"));
         } else {
             anchors.push(byId("tide-redis-device"));
-            if (route === "cache-miss") {
+            if (["cache-miss", "cache-rebuild", "negative-build"].indexOf(route) >= 0) {
                 anchors.push(byId("tide-mysql-device"));
             }
         }
@@ -1927,7 +1987,7 @@
 
     function tideTraceResponseAnchors(route) {
         return [
-            route === "direct" || route === "cache-miss" ?
+            ["direct", "cache-miss", "cache-rebuild", "mysql-404", "negative-build"].indexOf(route) >= 0 ?
                 byId("tide-mysql-device") : byId("tide-redis-device"),
             document.querySelector(".tide-service-icon"),
             document.querySelector(".tide-conduit-bank"),
@@ -1941,6 +2001,125 @@
             byId("tide-mysql-device"),
             byId("tide-redis-device")
         ];
+    }
+
+    function tideCausalEvidenceID(step) {
+        return step && step.eventID ? "SSE #" + step.eventID : "任务指标快照";
+    }
+
+    function tideCausalStepCopy(step) {
+        var metrics = step.metrics || {};
+        var evidence = tideCausalEvidenceID(step);
+        var copies = {
+            "breakdown-stable": {
+                badge: "因果 1/4 · 热点稳定",
+                kitchen: "DTO Key HIT · MySQL 待机",
+                why: "热点 DTO 已预热，连续任务指标先形成稳定命中基线",
+                handling: "请求直接从 Redis 返回，MySQL 不参与这段稳态窗口",
+                evidence: evidence + "：正缓存命中 " + formatNumber(metrics.redisHits) +
+                    "，当前命中率 " + Number(metrics.currentHitRate || metrics.cacheHitRate || 0).toFixed(1) + "%"
+            },
+            "breakdown-evicted": {
+                badge: "因果 2/4 · 真实 DEL",
+                kitchen: "DTO Key 已删除 · 等待 MISS",
+                why: "稳定命中基线成立后，Runner 才注入热点 Key 失效",
+                handling: "服务端真实执行 Redis DEL；后续请求不能继续命中旧 DTO",
+                evidence: evidence + " cache_evicted · " + (step.at || "事件时间已记录")
+            },
+            "breakdown-rebuilt": {
+                badge: "因果 3/4 · 回源重建",
+                kitchen: "DTO MISS → MySQL → SET DTO",
+                why: "真实 DEL 之后，请求在 DTO Key 上发生 MISS",
+                handling: "按 Key 互斥合并回源，由实际 MySQL 查询重建 DTO 并写回 Redis",
+                evidence: evidence + " cache_rebuilt：MISS " + formatNumber(metrics.redisMisses) +
+                    "，MySQL 回源 " + formatNumber(metrics.mysqlFallbacks) +
+                    "，重建 " + formatNumber(metrics.cacheRebuilds) +
+                    "，合并等待 " + formatNumber(metrics.coalescedAfterMiss)
+            },
+            "breakdown-recovered": {
+                badge: "因果 4/4 · 恢复稳定",
+                kitchen: "DTO Key HIT · 重建生效",
+                why: "DTO 已由真实回源重建，后续请求重新具备可命中的副本",
+                handling: "连续恢复窗口继续读取 Redis，并观察命中率是否稳定",
+                evidence: evidence + " cache_recovered：当前命中率 " +
+                    Number(metrics.currentHitRate || metrics.cacheHitRate || 0).toFixed(1) +
+                    "% ，恢复耗时 " + formatScenarioDuration(metrics.recoveryDurationMs)
+            },
+            "penetration-dto-miss": {
+                badge: "因果 1/" + (step.protection === "negative-cache" ? "3" : "2") + " · DTO MISS",
+                kitchen: "DTO Key MISS · 不是缓存 HIT",
+                why: "材料 900004 不存在，因此正常 DTO Key 没有可返回的详情副本",
+                handling: "Go API 先读取正常 DTO Key，并得到真实 Redis MISS",
+                evidence: evidence + " metric：正常 DTO MISS " + formatNumber(metrics.redisMisses)
+            },
+            "penetration-mysql-404": {
+                badge: "因果 2/2 · MySQL 404",
+                kitchen: "DTO MISS → MySQL NOT FOUND",
+                why: "无保护模式没有负缓存拦截正常 DTO MISS",
+                handling: "每次请求继续回源 MySQL 确认不存在，再返回预期 404",
+                evidence: evidence + " metric：无效 MySQL 查询 " + formatNumber(metrics.invalidMySQLQueries) +
+                    "，预期 404 " + formatNumber(metrics.expectedNotFound)
+            },
+            "penetration-negative-build": {
+                badge: "因果 2/3 · 首次建立负缓存",
+                kitchen: "DTO MISS → NEG MISS×2 → MySQL → SET NEG",
+                why: "本轮开始时正常 DTO Key 与负缓存 Key 都尚未命中",
+                handling: "负缓存首查 MISS 后进入按 Key 互斥；leader 二查仍 MISS 才回源，确认不存在后只写短 TTL 负缓存，不写 DTO",
+                evidence: evidence + " metric：负缓存写入 " + formatNumber(metrics.negativeCacheWrites) +
+                    "，无效 MySQL 查询 " + formatNumber(metrics.invalidMySQLQueries) +
+                    "，互斥后二查命中 " + formatNumber(metrics.coalescedAfterMiss)
+            },
+            "penetration-negative-hit": {
+                badge: "因果 3/3 · 负缓存命中",
+                kitchen: "DTO MISS → NEG HIT(首查/二查) → 404",
+                why: "正常 DTO 仍然 MISS，但前一步已经建立 not-found 负缓存",
+                handling: "后续请求要么首查命中负缓存，要么在按 Key 互斥后二查命中；两条路径都直接返回预期 404 并跳过 MySQL",
+                evidence: evidence + " metric：负缓存命中 " + formatNumber(metrics.negativeCacheHits) +
+                    "，其中二查命中 " + formatNumber(metrics.coalescedAfterMiss) +
+                    "、锁外快命中 " + formatNumber(Math.max(0,
+                        Number(metrics.negativeCacheHits || 0) - Number(metrics.coalescedAfterMiss || 0))) +
+                    "；正常 DTO 命中仍为 " + formatNumber(metrics.redisHits)
+            },
+            "breakdown-completed": {
+                badge: "因果闭环 · 证据冻结",
+                kitchen: "DEL → MISS → 重建 → 恢复",
+                why: "热点失效实验已经收到任务终态",
+                handling: "Runner 停止发流并冻结稳态、冲击、恢复三个真实窗口",
+                evidence: evidence + " completed：重建 " + formatNumber(metrics.cacheRebuilds) +
+                    "，MySQL 回源 " + formatNumber(metrics.mysqlFallbacks) +
+                    "，恢复耗时 " + formatScenarioDuration(metrics.recoveryDurationMs)
+            },
+            "penetration-completed": {
+                badge: "因果闭环 · 证据冻结",
+                kitchen: step.protection === "negative-cache" ?
+                    "DTO MISS → 负缓存 HIT → 404" : "DTO MISS → MySQL → 404",
+                why: "缓存穿透实验已经收到任务终态",
+                handling: step.protection === "negative-cache" ?
+                    "冻结首次 MySQL 确认、一次负缓存写入及后续拦截" :
+                    "冻结每次 DTO MISS 后继续回源 MySQL 的无保护基线",
+                evidence: evidence + " completed：不存在请求 " + formatNumber(metrics.nonexistentRequests) +
+                    "，无效 MySQL 查询 " + formatNumber(metrics.invalidMySQLQueries) +
+                    "，负缓存命中 " + formatNumber(metrics.negativeCacheHits) +
+                    "，预期 404 " + formatNumber(metrics.expectedNotFound)
+            }
+        };
+        return copies[step.kind] || null;
+    }
+
+    function renderTideCausalStep(step) {
+        var copy = tideCausalStepCopy(step);
+        var stage = byId("query-tide-stage");
+        if (!copy || !stage) {
+            return;
+        }
+        stage.dataset.causalStep = step.kind;
+        stage.dataset.cacheKind = step.kind.indexOf("negative") >= 0 ? "negative" : "dto";
+        byId("query-tide-badge").textContent = copy.badge;
+        byId("tide-kitchen-title").textContent = copy.kitchen;
+        byId("query-tide-explanation").textContent =
+            "为什么发生：" + copy.why + " → 系统怎么处理：" + copy.handling +
+            " → 最终证据：" + copy.evidence + "。";
+        byId("tide-response-copy").textContent = "动画由 " + tideCausalEvidenceID(step) + " 推进";
     }
 
     function finishTideTraceSample(sample) {
@@ -1963,8 +2142,11 @@
         var stage = byId("query-tide-stage");
         stage.removeAttribute("data-trace-route");
         stage.removeAttribute("data-trace-phase");
-        if (!state.loadtestTask || state.loadtestTask.status !== "running" ||
-            sampler.queue.length === 0) {
+        if (!state.loadtestTask || sampler.queue.length === 0) {
+            return;
+        }
+        var nextEventDriven = typeof sampler.queue[0] !== "string";
+        if (!nextEventDriven && state.loadtestTask.status !== "running") {
             return;
         }
         clearTideTraceTimer();
@@ -1977,8 +2159,8 @@
     function releaseTideTraceResponse(sample) {
         var sampler = state.tideTrace;
         if (sampler.active !== sample || sample.phase !== "waiting" ||
-            !sampler.responseEvidence || !state.loadtestTask ||
-            state.loadtestTask.status !== "running") {
+            !sample.responseProven || !state.loadtestTask ||
+            (!sample.eventDriven && state.loadtestTask.status !== "running")) {
             return;
         }
         sample.phase = "response";
@@ -2009,8 +2191,8 @@
     function startTideCacheRefill(sample) {
         var sampler = state.tideTrace;
         if (sampler.active !== sample || sample.phase !== "waiting-refill" ||
-            !sampler.refillEvidence || !state.loadtestTask ||
-            state.loadtestTask.status !== "running") {
+            !sample.refillProven || !state.loadtestTask ||
+            (!sample.eventDriven && state.loadtestTask.status !== "running")) {
             return false;
         }
         sample.phase = "refill";
@@ -2023,6 +2205,7 @@
         byId("tide-trace-request").style.opacity = "0";
         var refill = byId("tide-trace-refill");
         refill.querySelector("b").textContent = sample.id;
+        refill.querySelector("em").textContent = sample.negativeRefill ? "负缓存 SET ↑" : "DTO SET ↑";
         refill.dataset.pairId = sample.id;
         refill.style.opacity = "1";
         sample.refillMotion = animateTideToken(
@@ -2033,7 +2216,8 @@
         );
         sample.refillMotion.finished.then(function (completed) {
             if (!completed || sampler.active !== sample ||
-                !state.loadtestTask || state.loadtestTask.status !== "running") {
+                !state.loadtestTask ||
+                (!sample.eventDriven && state.loadtestTask.status !== "running")) {
                 return;
             }
             refill.style.opacity = "0";
@@ -2053,12 +2237,13 @@
             if (startTideCacheRefill(sample)) {
                 return;
             }
-            sample.refillChecks += 1;
-            // MISS 只证明开始回源。若下一次观测仍没有后续命中证据，
-            // 允许真实完成响应返回，但不补画“MySQL 已成功回填 Redis”。
-            if (sample.refillChecks > 1 && sampler.responseEvidence) {
-                sample.phase = "waiting";
-                releaseTideTraceResponse(sample);
+            if (!sample.eventDriven) {
+                sample.refillChecks += 1;
+                if (sample.refillChecks > 1 && sampler.responseEvidence) {
+                    sample.phase = "waiting";
+                    sample.responseProven = true;
+                    releaseTideTraceResponse(sample);
+                }
             }
             return;
         }
@@ -2067,36 +2252,65 @@
         }
     }
 
-    function startTideTraceSample(route) {
+    function startTideTraceSample(step) {
         var sampler = state.tideTrace;
         var task = state.loadtestTask;
-        if (!task || task.status !== "running") {
+        var eventDriven = typeof step !== "string";
+        if (!task || (!eventDriven && task.status !== "running")) {
             return;
         }
+        if (!eventDriven) {
+            step = {
+                route: step,
+                responseProven: sampler.responseEvidence,
+                refillProven: sampler.refillEvidence
+            };
+        }
+        if (step.displayOnly) {
+            sampler.lastStep = step;
+            renderTideCausalStep(step);
+            return;
+        }
+        var route = step.route;
         sampler.sequence = sampler.sequence % 99 + 1;
-        var pairID = "S" + String(sampler.sequence).padStart(2, "0");
+        var pairID = step.eventID ? "#" + step.eventID :
+            (eventDriven ? "E" : "S") + String(sampler.sequence).padStart(2, "0");
         var request = byId("tide-trace-request");
         var response = byId("tide-trace-response");
         request.querySelector("b").textContent = pairID;
         response.querySelector("b").textContent = pairID;
         request.dataset.pairId = pairID;
         response.dataset.pairId = pairID;
+        request.querySelector("em").textContent = step.requestLabel || "REQ →";
+        response.querySelector("em").textContent = step.responseLabel || "← RES";
         response.style.opacity = "0";
         var sample = {
             id: pairID,
             route: route,
+            kind: step.kind,
             phase: "request",
             tempo: tideTraceTempo(task, route),
             requestMotion: null,
             refillMotion: null,
+            responseMotion: null,
+            eventDriven: eventDriven,
             refillChecks: 0,
-            responseMotion: null
+            noResponse: Boolean(step.noResponse),
+            refillProven: Boolean(step.refillProven),
+            negativeRefill: Boolean(step.negativeRefill),
+            responseProven: step.responseProven !== false
         };
         sampler.active = sample;
+        if (step.kind) {
+            sampler.lastStep = step;
+        }
         sampler.lastStartedAt = Date.now();
         var stage = byId("query-tide-stage");
         stage.dataset.traceRoute = route;
         stage.dataset.tracePhase = "request";
+        if (step.kind) {
+            renderTideCausalStep(step);
+        }
         sample.requestMotion = animateTideToken(
             request,
             tideTraceRequestAnchors(route),
@@ -2105,10 +2319,15 @@
         );
         sample.requestMotion.finished.then(function (completed) {
             if (!completed || sampler.active !== sample ||
-                !state.loadtestTask || state.loadtestTask.status !== "running") {
+                !state.loadtestTask ||
+                (!sample.eventDriven && state.loadtestTask.status !== "running")) {
                 return;
             }
-            sample.phase = route === "cache-miss" ? "waiting-refill" : "waiting";
+            if (sample.noResponse) {
+                finishTideTraceSample(sample);
+                return;
+            }
+            sample.phase = sample.refillProven ? "waiting-refill" : "waiting";
             stage.dataset.tracePhase = "processing";
             advanceTideTraceSample(sample);
         });
@@ -2116,8 +2335,11 @@
 
     function pumpTideTrace() {
         var sampler = state.tideTrace;
-        if (sampler.active || sampler.queue.length === 0 ||
-            !state.loadtestTask || state.loadtestTask.status !== "running") {
+        if (sampler.active || sampler.queue.length === 0 || !state.loadtestTask) {
+            return;
+        }
+        var nextEventDriven = typeof sampler.queue[0] !== "string";
+        if (!nextEventDriven && state.loadtestTask.status !== "running") {
             return;
         }
         startTideTraceSample(sampler.queue.shift());
@@ -2133,11 +2355,16 @@
         if (sampler.taskId !== taskID) {
             resetTideTraceSampler(task);
         }
-        updateTideResponseEvidence(task);
+        // 受控场景的已接收事件队列独立于 Runner live 状态；终态只停止 SSE，
+        // 不能清掉断线回放时已经收到、但尚未演完的真实因果步骤。
+        if (taskScenario(task) !== "steady") {
+            return;
+        }
         if (task.status !== "running") {
             stopTideTraceMotion();
             return;
         }
+        updateTideResponseEvidence(task);
 
         var metrics = task.metrics || {};
         var requests = Math.max(sampler.requestHighWater,
@@ -2149,13 +2376,10 @@
         var rawPath = tideTraceRawPath(task) || {};
         var coalesced = Math.max(sampler.coalescedHighWater,
             Number(rawPath.coalesced || 0));
-        var negativeHits = Math.max(sampler.negativeHighWater,
-            Number(rawPath.negativeCacheHits || metrics.negativeCacheHits || 0));
         var requestDelta = requests - sampler.requestHighWater;
         var hitDelta = hits - sampler.hitHighWater;
         var fallbackDelta = fallbacks - sampler.fallbackHighWater;
         var coalescedDelta = coalesced - sampler.coalescedHighWater;
-        var negativeDelta = negativeHits - sampler.negativeHighWater;
         if (task.mode === "cached" && fallbackDelta > 0) {
             sampler.refillPending = true;
             sampler.refillHitFloor = sampler.hitHighWater;
@@ -2164,14 +2388,12 @@
         sampler.hitHighWater = hits;
         sampler.fallbackHighWater = fallbacks;
         sampler.coalescedHighWater = coalesced;
-        sampler.negativeHighWater = negativeHits;
         if (task.mode === "cached" && sampler.refillPending &&
             (coalescedDelta > 0 || hits > sampler.refillHitFloor)) {
             sampler.refillPending = false;
             sampler.refillEvidence = true;
             byId("query-tide-stage").dataset.cacheRefillObserved = "true";
         }
-
         if (state.reducedMotion) {
             return;
         }
@@ -2185,11 +2407,7 @@
             if (hitDelta > 0) {
                 routes.push("cache-hit");
             }
-            if (negativeDelta > 0) {
-                routes.push("negative-hit");
-            }
-            if (routes.length === 1 && sampleLimit > 1 &&
-                hitDelta + fallbackDelta > 1) {
+            if (routes.length === 1 && sampleLimit > 1 && hitDelta + fallbackDelta > 1) {
                 routes.push(routes[0]);
             }
         } else if (requestDelta > 0) {
@@ -2203,12 +2421,127 @@
                 sampler.queue.push(route);
             }
         });
-        if (sampler.active &&
-            (sampler.active.phase === "waiting" ||
-                sampler.active.phase === "waiting-refill")) {
-            advanceTideTraceSample(sampler.active);
+        if (sampler.active && !sampler.active.eventDriven) {
+            sampler.active.responseProven = sampler.responseEvidence;
+            sampler.active.refillProven = sampler.refillEvidence;
+            if (sampler.active.phase === "waiting" || sampler.active.phase === "waiting-refill") {
+                advanceTideTraceSample(sampler.active);
+            }
         }
         pumpTideTrace();
+    }
+
+    function enqueueTideCausalMilestone(key, step) {
+        var sampler = state.tideTrace;
+        if (sampler.seenMilestones[key]) {
+            return;
+        }
+        sampler.seenMilestones[key] = true;
+        if (state.reducedMotion) {
+            sampler.lastStep = step;
+            renderTideCausalStep(step);
+            return;
+        }
+        sampler.queue.push(step);
+        pumpTideTrace();
+    }
+
+    // 只有任务 SSE 处理器可以调用这里。event.id 是 Runner 的单调序号，既用于断线回放，
+    // 也用于前端去重；GET 快照和全局 metrics SSE 不得进入这条动画队列。
+    function ingestTideCausalEvent(eventName, update, task) {
+        if (!task || state.entry !== "crowd" || taskScenario(task) === "steady") {
+            return;
+        }
+        var sampler = state.tideTrace;
+        if (sampler.taskId !== (task.taskId || "")) {
+            resetTideTraceSampler(task);
+        }
+        var eventID = Number(update && update.id || 0);
+        if (eventID > 0 && eventID <= sampler.eventHighWater) {
+            return;
+        }
+        if (eventID > 0) {
+            sampler.eventHighWater = eventID;
+        }
+        var scenario = taskScenario(task);
+        var metrics = Object.assign({}, task.metrics || {}, update && update.metrics || {});
+        var base = {
+            eventID: eventID,
+            at: update && update.at ? new Date(update.at).toLocaleTimeString("zh-CN", { hour12: false }) : "",
+            metrics: metrics,
+            protection: task.protection || "none",
+            responseProven: true
+        };
+        if (scenario === "breakdown") {
+            if (eventName === "metric" && metrics.scenarioPhase === "stable" &&
+                Number(metrics.currentPositiveHits || metrics.redisHits || 0) > 0) {
+                enqueueTideCausalMilestone("breakdown-stable", Object.assign({}, base, {
+                    kind: "breakdown-stable", route: "cache-hit",
+                    requestLabel: "DTO GET →", responseLabel: "← DTO HIT"
+                }));
+            } else if (eventName === "cache_evicted") {
+                enqueueTideCausalMilestone("breakdown-evicted", Object.assign({}, base, {
+                    kind: "breakdown-evicted", route: "cache-evicted",
+                    requestLabel: "DEL →", noResponse: true
+                }));
+            } else if (eventName === "cache_rebuilt") {
+                enqueueTideCausalMilestone("breakdown-rebuilt", Object.assign({}, base, {
+                    kind: "breakdown-rebuilt", route: "cache-rebuild",
+                    requestLabel: "MISS 波 →", responseLabel: "← DTO",
+                    refillProven: true
+                }));
+            } else if (eventName === "cache_recovered") {
+                enqueueTideCausalMilestone("breakdown-recovered", Object.assign({}, base, {
+                    kind: "breakdown-recovered", route: "cache-hit",
+                    requestLabel: "DTO GET →", responseLabel: "← DTO HIT"
+                }));
+            }
+        } else if (eventName === "metric") {
+            if (Number(metrics.redisMisses || 0) > 0) {
+                enqueueTideCausalMilestone("penetration-dto-miss", Object.assign({}, base, {
+                    kind: "penetration-dto-miss", route: "dto-miss",
+                    requestLabel: "DTO GET →", noResponse: true
+                }));
+            }
+            if (task.protection === "negative-cache") {
+                if (Number(metrics.negativeCacheWrites || 0) > 0 &&
+                    Number(metrics.invalidMySQLQueries || 0) > 0) {
+                    enqueueTideCausalMilestone("penetration-negative-build", Object.assign({}, base, {
+                        kind: "penetration-negative-build", route: "negative-build",
+                        requestLabel: "首次 MISS →", responseLabel: "← 404",
+                        refillProven: true, negativeRefill: true
+                    }));
+                }
+                if (Number(metrics.negativeCacheHits || 0) > 0) {
+                    enqueueTideCausalMilestone("penetration-negative-hit", Object.assign({}, base, {
+                        kind: "penetration-negative-hit", route: "negative-hit",
+                        requestLabel: "NEG GET →", responseLabel: "← 404"
+                    }));
+                }
+            } else if (Number(metrics.invalidMySQLQueries || 0) > 0 &&
+                Number(metrics.expectedNotFound || 0) > 0) {
+                enqueueTideCausalMilestone("penetration-mysql-404", Object.assign({}, base, {
+                    kind: "penetration-mysql-404", route: "mysql-404",
+                    requestLabel: "SQL →", responseLabel: "← 404"
+                }));
+            }
+        }
+        if (eventName === "completed") {
+            var completedStep = Object.assign({}, base, {
+                kind: scenario + "-completed",
+                route: "",
+                protection: task.protection || "none",
+                displayOnly: true
+            });
+            enqueueTideCausalMilestone(completedStep.kind, completedStep);
+        }
+    }
+
+    function restoreTideCausalStep(task) {
+        var step = state.tideTrace.lastStep;
+        if (step && task && taskScenario(task) !== "steady") {
+            renderTideCausalStep(step);
+        }
     }
 
     function tideLaunchPhase(task, actualRequests) {
@@ -2347,6 +2680,7 @@
                 "投递欠账 · 完成率 " + formatCompletionRate(completion);
             byId("query-tide-explanation").textContent =
                 "查询卷轴产生速度超过当前通路的周转能力，部分卷轴未能按计划及时投递。";
+            restoreTideCausalStep(task);
             return;
         }
         byId("tide-backlog-title").textContent = "待发卷轴";
@@ -2358,6 +2692,7 @@
             byId("tide-backlog-copy").textContent = "已停止产生新请求";
             byId("query-tide-explanation").textContent =
                 "Runner 已停止发送请求，正在整理实际速率、延迟与连接错误。";
+            restoreTideCausalStep(task);
             return;
         }
         if (status === "completed") {
@@ -2399,6 +2734,7 @@
             byId("query-tide-explanation").textContent =
                 "创建任务后，Runner 会按锁定的 -c 启动连接配置，再按目标速率发送请求。";
         }
+        restoreTideCausalStep(task);
     }
 
     function renderLoadtestTask(task) {
@@ -2643,6 +2979,8 @@
                 try {
                     var update = JSON.parse(event.data);
                     var current = state.loadtestTask || loadtestTaskSeed(taskID);
+                    // 必须先消费终态因果事件；renderLoadtestTask 可能关闭已经终态的 SSE。
+                    ingestTideCausalEvent(eventName, update, current);
                     renderLoadtestTask(Object.assign({}, current, {
                         status: update.status || current.status,
                         elapsedSeconds: update.elapsedSeconds,

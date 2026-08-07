@@ -319,6 +319,41 @@ func TestRunnerLoadsLegacyPersistedTask(t *testing.T) {
 	}
 }
 
+func TestCacheStepEventsFreezeTaskMetrics(t *testing.T) {
+	record := &taskRecord{
+		Task: Task{ID: "cache-task", Status: StatusRunning},
+	}
+	runner := &Runner{
+		records:   map[string]*taskRecord{record.Task.ID: record},
+		order:     []string{record.Task.ID},
+		statePath: filepath.Join(t.TempDir(), "tasks.json"),
+	}
+	eventTypes := []EventType{EventCacheEvicted, EventCacheRebuilt, EventCacheRecovered}
+	for index, eventType := range eventTypes {
+		record.Task.Metrics = TaskMetrics{
+			SQLQueries:    int64(index + 1),
+			ScenarioPhase: string(eventType),
+		}
+		runner.emitStep(record.Task.ID, eventType, "cache step", "success")
+	}
+
+	// 模拟下一轮实时采样覆盖任务指标，已发布事件仍应保留各自发生时的证据。
+	record.Task.Metrics = TaskMetrics{SQLQueries: 99, ScenarioPhase: "later"}
+	for index, event := range record.Events {
+		if event.Metrics == nil {
+			t.Fatalf("event %s omitted metrics", event.Type)
+		}
+		if event.Metrics.SQLQueries != int64(index+1) || event.Metrics.ScenarioPhase != string(eventTypes[index]) {
+			t.Fatalf("event %s metrics were not frozen: %+v", event.Type, event.Metrics)
+		}
+	}
+
+	runner.emitStep(record.Task.ID, EventLog, "ordinary log", "info")
+	if event := record.Events[len(record.Events)-1]; event.Metrics != nil {
+		t.Fatalf("ordinary event unexpectedly included metrics: %+v", event)
+	}
+}
+
 func completedHistoricalTask(mode string, archiveID, rate int, requestP95MS float64) *taskRecord {
 	return &taskRecord{Task: Task{
 		ID:        mode,

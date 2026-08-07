@@ -1095,7 +1095,16 @@ func (r *Runner) emitStep(id string, eventType EventType, message, level string)
 		return
 	}
 	r.appendLogLocked(record, level, message)
-	r.publishLocked(record, eventType, message, nil)
+	var metrics *TaskMetrics
+	switch eventType {
+	case EventCacheEvicted, EventCacheRebuilt, EventCacheRecovered:
+		// 三个缓存因果节点携带已经写入任务的真实指标，但事件历史必须保存值副本；
+		// 不能直接引用 record.Task.Metrics，否则后续采样会改写旧事件的证据。
+		// cache_evicted 的类型本身证明 DEL；此处指标仍可能是删除前最后一帧。
+		snapshot := record.Task.Metrics
+		metrics = &snapshot
+	}
+	r.publishLocked(record, eventType, message, metrics)
 	r.persistLocked()
 }
 
