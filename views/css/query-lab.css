@@ -1383,6 +1383,45 @@ body.query-focus[data-entry-mode="crowd"][data-task-attached="true"] .query-cons
     box-shadow: inset 0 -4px #754793, 0 0 8px rgba(117, 71, 147, .38);
 }
 
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase][data-causal-step] .tide-service-icon {
+    outline: 3px double rgba(173, 119, 48, .72);
+    outline-offset: 4px;
+}
+
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="leader"][data-causal-step] .tide-cache-refill,
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="followers"][data-causal-step] .tide-cache-refill {
+    color: #287f52;
+    box-shadow: inset 3px 0 rgba(40, 127, 82, .34);
+}
+
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="wave"][data-causal-step] #tide-redis-device { outline: 2px dashed #b56e35; outline-offset: 3px; }
+
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="wave"][data-causal-step] #tide-mysql-device {
+    opacity: .18;
+    filter: grayscale(.8);
+    outline: 0;
+}
+
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="leader"][data-causal-step] #tide-redis-device,
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="leader"][data-causal-step] #tide-mysql-device { outline: 2px solid #b56e35; outline-offset: 3px; }
+
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="set"][data-causal-step] .tide-refill-token {
+    border-color: #376d4e;
+    background: #69aa78;
+    box-shadow: inset 0 -4px #46845b, 0 0 11px rgba(59, 135, 83, .46);
+}
+
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="set"][data-causal-step] #tide-redis-device,
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="set"][data-causal-step] #tide-mysql-device { opacity: 1; outline: 2px solid #4b9668; outline-offset: 3px; }
+
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="followers"][data-causal-step] #tide-redis-device { outline: 2px solid #4b9668; outline-offset: 3px; }
+
+body.query-focus[data-cache-scenario="breakdown"] .query-tide-stage[data-gate-phase="followers"][data-causal-step] #tide-mysql-device {
+    opacity: .18;
+    filter: grayscale(.8);
+    outline: 0;
+}
+
 .query-focus .query-tide-stage[data-fault-layer="connections"] .tide-conduit-node,
 .query-focus .query-tide-stage[data-fault-layer="backend"] .tide-kitchen-node,
 .query-focus .query-tide-stage[data-fault-layer="response"] .tide-response-node { border-color: #a85850; background: #fff0e8; }
@@ -1741,60 +1780,106 @@ to { border-color: #b88a3f; opacity: .8; background: rgba(194, 153, 70, .18); bo
 .query-focus #tide-mysql-device { grid-area: mysql; }
 
 .query-focus .query-tide-stage[data-backend-mode="cached"] .tide-kitchen-icons {
-    min-height: 116px;
+    min-height: 140px;
     grid-template-areas:
         "redis"
         "bridge"
         "mysql";
-    grid-template-rows: 42px 32px 42px;
+    grid-template-rows: 42px 56px 42px;
 }
 
 .query-focus .query-tide-stage[data-backend-mode="cached"] #tide-redis-device { grid-area: redis; }
 
 .query-focus .query-tide-stage[data-backend-mode="cached"] #tide-mysql-device { grid-area: mysql; opacity: .58; }
 
-.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge {
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode] {
     position: relative;
+    z-index: 5;
     display: grid;
-    width: 92px;
-    height: 32px;
+    width: 106px;
+    height: 54px;
     grid-area: bridge;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: center;
-    gap: 12px;
+    gap: 3px;
+    overflow: visible;
+    padding: 14px 4px 13px;
+    border: 2px double #6f746f;
+    color: #626b66;
+    background: #e6e8e2;
+    box-shadow: 3px 3px 0 rgba(65, 73, 68, .14);
 }
 
-.query-focus .tide-cache-bridge b {
-    position: relative;
-    z-index: 1;
-    display: grid;
-    height: 22px;
-    place-items: center;
-    padding: 0 2px;
-    background: rgba(249, 239, 212, .9);
-    font: 900 6px/1 "SFMono-Regular", Consolas, monospace;
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode]::before,
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode]::after {
+    position: absolute;
+    z-index: 2;
+    right: 3px;
+    left: 3px;
+    overflow: hidden;
+    font: 900 7px/1 "SFMono-Regular", Consolas, monospace;
+    text-align: center;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.query-focus .tide-cache-bridge b::before {
-    position: absolute;
-    z-index: -1;
-    top: -7px;
-    bottom: -7px;
-    left: 50%;
-    border-left: 2px dashed currentColor;
-    content: "";
-    transform: translateX(-50%);
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode]::before {
+    top: 3px;
+    content: "PROCESS-LOCAL · KEYED";
+}
+
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode]::after {
+    bottom: 3px;
+    content: attr(data-gate-subtitle);
+}
+
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode] b {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    height: 18px;
+    place-items: center;
+    padding: 0 2px;
+    border: 1px solid currentColor;
+    color: inherit;
+    background: rgba(252, 252, 247, .92);
+    font: 900 7px/1 "SFMono-Regular", Consolas, monospace;
+    white-space: nowrap;
+}
+
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode] b::before { display: none; }
+
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode="bypass"],
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode="idle"] { opacity: .76; filter: grayscale(.22); }
+
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge:is(
+    [data-gate-mode="dto"],
+    [data-gate-mode="neg"],
+    [data-gate-mode="wave"],
+    [data-gate-mode="leader"]
+) {
+    border-color: #8a6636;
+    color: #5f421f;
+    background: #f8e5ad;
+    box-shadow: 3px 3px 0 rgba(91, 62, 29, .18), 0 0 9px rgba(181, 110, 53, .28);
+}
+
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge:is(
+    [data-gate-mode="set"],
+    [data-gate-mode="followers"]
+) {
+    border-color: #497b5b;
+    color: #315f48;
+    background: #dcefd7;
 }
 
 .query-focus .tide-cache-miss { color: #a85c2f; }
 
 .query-focus .tide-cache-refill { color: #3c855f; }
 
-.query-focus .query-tide-stage[data-trace-route="cache-hit"] .tide-cache-bridge,
 .query-focus .query-tide-stage[data-trace-route="cache-hit"] #tide-mysql-device { opacity: .25; }
 
-.query-focus .query-tide-stage[data-trace-route="cache-miss"] #tide-mysql-device { opacity: 1; }
+.query-focus .query-tide-stage:is([data-trace-route="cache-miss"], [data-trace-route="cache-error"]) #tide-mysql-device { opacity: 1; }
 
 .query-focus .query-tide-stage[data-trace-route="cache-miss"][data-trace-phase="request"] .tide-cache-miss,
 .query-focus .query-tide-stage[data-trace-route="cache-miss"][data-trace-phase="processing"] .tide-cache-miss {
@@ -1905,6 +1990,12 @@ to { border-color: #b88a3f; opacity: .8; background: rgba(194, 153, 70, .18); bo
 
 @media (max-width: 920px) {
 .query-focus .query-tide-diagram { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 8px; padding: 12px; }
+
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode] { width: 100px; }
+
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode] b,
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode]::before,
+.query-focus .query-tide-stage[data-backend-mode="cached"] .tide-cache-bridge[data-gate-mode]::after { font-size: 7px; }
 
 .query-focus .query-tide-diagram::before { display: none; }
 

@@ -64,6 +64,7 @@
             requestHighWater: 0,
             hitHighWater: 0,
             fallbackHighWater: 0,
+            cacheErrorHighWater: 0,
             coalescedHighWater: 0,
             negativeHighWater: 0,
             refillHitFloor: 0,
@@ -550,6 +551,11 @@
     function renderExperimentState(next) {
         var cached = next.mode === "cached";
         document.body.dataset.labMode = next.mode;
+        var tideStage = byId("query-tide-stage");
+        if (tideStage && !loadtestIsActive(state.loadtestTask)) {
+            tideStage.dataset.backendMode = cached ? "cached" : "direct";
+            resetTideCacheBridge();
+        }
         byId("mode-direct").classList.toggle("is-active", !cached);
         byId("mode-cached").classList.toggle("is-active", cached);
         byId("mode-direct").setAttribute("aria-pressed", cached ? "false" : "true");
@@ -1812,6 +1818,78 @@
             stage.removeAttribute("data-trace-route");
             stage.removeAttribute("data-trace-phase");
         }
+        resetTideCacheBridge();
+    }
+
+    function resetTideCacheBridge() {
+        var bridge = document.querySelector(".tide-cache-bridge");
+        if (!bridge) {
+            return;
+        }
+        bridge.dataset.gateMode = "bypass";
+        bridge.dataset.gateSubtitle = "HIT BYPASS · MISS 才进入";
+        var miss = bridge.querySelector(".tide-cache-miss");
+        var refill = bridge.querySelector(".tide-cache-refill");
+        if (miss) {
+            miss.textContent = "KEY MUTEX";
+        }
+        if (refill) {
+            refill.textContent = "DOUBLE CHECK";
+        }
+    }
+
+    function renderTideCacheGate(step) {
+        var bridge = document.querySelector(".tide-cache-bridge");
+        if (!bridge) {
+            return;
+        }
+        resetTideCacheBridge();
+        if (!step) {
+            return;
+        }
+        if (!step.gatePhase) {
+            var routeStates = {
+                "cache-miss": ["dto", "DTO KEY · 首查 MISS"],
+                "cache-rebuild": ["dto", "DTO KEY · 首查 MISS"],
+                "negative-build": ["neg", "NEG KEY 900004 · MISS"],
+                "cache-error": ["bypass", "REDIS ERROR · 阶段未知"],
+                "dto-miss": ["bypass", "DTO KEY 900004 · BYPASS"],
+                "mysql-404": ["bypass", "无保护 · BYPASS"],
+                "negative-hit": ["bypass", "NEG KEY 900004 · HIT BYPASS"],
+                "cache-evicted": ["idle", "DEL 完成 · 等待首查"]
+            };
+            var routeState = routeStates[step.route];
+            if (routeState) {
+                bridge.dataset.gateMode = routeState[0];
+                bridge.dataset.gateSubtitle = routeState[1];
+            }
+            return;
+        }
+        var subtitles = {
+            wave: "DTO KEY · MISS 进入互斥",
+            leader: "DTO KEY · 二检 MISS",
+            set: "DTO KEY · SET 后解锁",
+            followers: "DTO KEY · 二检 HIT"
+        };
+        bridge.dataset.gateMode = step.gatePhase;
+        bridge.dataset.gateSubtitle = subtitles[step.gatePhase] || "按 Key 合并回源";
+        bridge.querySelector(".tide-cache-miss").textContent = "KEY MUTEX";
+        bridge.querySelector(".tide-cache-refill").textContent = "DOUBLE CHECK";
+    }
+
+    function clearTideScenarioMotion() {
+        stopTideTraceMotion();
+        state.tideTrace.taskId = "";
+        state.tideTrace.eventHighWater = 0;
+        state.tideTrace.seenMilestones = {};
+        state.tideTrace.lastStep = null;
+        var stage = byId("query-tide-stage");
+        if (stage) {
+            stage.removeAttribute("data-causal-step");
+            stage.removeAttribute("data-cache-kind");
+            stage.removeAttribute("data-gate-phase");
+        }
+        resetTideCacheBridge();
     }
 
     function resetTideTraceSampler(task) {
@@ -1826,6 +1904,7 @@
         sampler.requestHighWater = 0;
         sampler.hitHighWater = 0;
         sampler.fallbackHighWater = 0;
+        sampler.cacheErrorHighWater = Number(rawPath.cacheErrors || 0);
         sampler.coalescedHighWater = Number(rawPath.coalesced || 0);
         sampler.negativeHighWater = Number(rawPath.negativeCacheHits || 0);
         sampler.refillHitFloor = 0;
@@ -1841,7 +1920,9 @@
             stage.dataset.cacheRefillObserved = "false";
             stage.removeAttribute("data-causal-step");
             stage.removeAttribute("data-cache-kind");
+            stage.removeAttribute("data-gate-phase");
         }
+        resetTideCacheBridge();
     }
 
     function updateTideResponseEvidence(task) {
@@ -1929,7 +2010,8 @@
         var medium = qps >= 250;
         return {
             request: (fast ? 1450 : (medium ? 1700 : 2000)) +
-                (["cache-miss", "cache-rebuild", "negative-build"].indexOf(route) >= 0 ? 420 : 0),
+                (["cache-miss", "cache-rebuild", "cache-rebuild-wave",
+                    "cache-rebuild-leader", "negative-build", "cache-error"].indexOf(route) >= 0 ? 420 : 0),
             response: fast ? 1350 : (medium ? 1550 : 1800),
             pause: fast ? 240 : (medium ? 420 : 700)
         };
@@ -1951,13 +2033,41 @@
             ];
         }
         if (route === "mysql-404") {
-            return [byId("tide-redis-device"), byId("tide-mysql-device")];
-        }
-        if (route === "negative-build") {
             return [
                 byId("tide-redis-device"),
                 document.querySelector(".tide-service-icon"),
+                byId("tide-mysql-device")
+            ];
+        }
+        if (route === "cache-rebuild-wave") {
+            return [
+                document.querySelector(".tide-service-icon"),
                 byId("tide-redis-device"),
+                document.querySelector(".tide-cache-bridge")
+            ];
+        }
+        if (route === "cache-rebuild-leader") {
+            return [
+                document.querySelector(".tide-cache-bridge"),
+                byId("tide-redis-device"),
+                document.querySelector(".tide-cache-bridge"),
+                byId("tide-mysql-device")
+            ];
+        }
+        if (route === "cache-rebuild-followers") {
+            return [
+                document.querySelector(".tide-service-icon"),
+                document.querySelector(".tide-cache-bridge"),
+                byId("tide-redis-device")
+            ];
+        }
+        if (route === "negative-build") {
+            return [
+                document.querySelector(".tide-service-icon"),
+                byId("tide-redis-device"),
+                document.querySelector(".tide-cache-bridge"),
+                byId("tide-redis-device"),
+                document.querySelector(".tide-cache-bridge"),
                 byId("tide-mysql-device")
             ];
         }
@@ -1978,7 +2088,15 @@
             anchors.push(byId("tide-mysql-device"));
         } else {
             anchors.push(byId("tide-redis-device"));
-            if (["cache-miss", "cache-rebuild", "negative-build"].indexOf(route) >= 0) {
+            if (["cache-miss", "cache-rebuild"].indexOf(route) >= 0) {
+                anchors.push(document.querySelector(".tide-cache-bridge"));
+                anchors.push(byId("tide-redis-device"));
+                anchors.push(document.querySelector(".tide-cache-bridge"));
+                anchors.push(byId("tide-mysql-device"));
+            } else if (route === "cache-error") {
+                // cacheErrors 同时覆盖首查、锁内二检和 SET 失败；这里只画“Redis 异常后降级”，
+                // 不把常驻 Gate 当作已被经过的逐请求证据。
+                anchors.push(document.querySelector(".tide-service-icon"));
                 anchors.push(byId("tide-mysql-device"));
             }
         }
@@ -1987,7 +2105,7 @@
 
     function tideTraceResponseAnchors(route) {
         return [
-            ["direct", "cache-miss", "cache-rebuild", "mysql-404", "negative-build"].indexOf(route) >= 0 ?
+            ["direct", "cache-miss", "cache-rebuild", "cache-error", "mysql-404", "negative-build"].indexOf(route) >= 0 ?
                 byId("tide-mysql-device") : byId("tide-redis-device"),
             document.querySelector(".tide-service-icon"),
             document.querySelector(".tide-conduit-bank"),
@@ -1999,6 +2117,7 @@
     function tideTraceRefillAnchors() {
         return [
             byId("tide-mysql-device"),
+            document.querySelector(".tide-cache-bridge"),
             byId("tide-redis-device")
         ];
     }
@@ -2010,6 +2129,16 @@
     function tideCausalStepCopy(step) {
         var metrics = step.metrics || {};
         var evidence = tideCausalEvidenceID(step);
+        var gateMisses = Number(metrics.redisMisses || 0);
+        var gateLeaders = Number(metrics.mysqlFallbacks || 0);
+        var gateFollowers = Number(metrics.coalescedAfterMiss || 0);
+        var gateConserved = gateMisses === gateLeaders + gateFollowers;
+        var gateFrame = evidence + " " +
+            (step.kind === "breakdown-rebuild-followers" ? "cache_recovered" : "cache_rebuilt") +
+            " 冻结指标帧（语义拆解，不是逐请求 trace）：";
+        var gateEquation = "redisMisses " + formatNumber(gateMisses) + " = mysqlFallbacks " +
+            formatNumber(gateLeaders) + " + coalescedAfterMiss " + formatNumber(gateFollowers) +
+            (gateConserved ? "，守恒成立" : "，当前帧未守恒，不补猜缺口");
         var copies = {
             "breakdown-stable": {
                 badge: "因果 1/4 · 热点稳定",
@@ -2026,24 +2155,50 @@
                 handling: "服务端真实执行 Redis DEL；后续请求不能继续命中旧 DTO",
                 evidence: evidence + " cache_evicted · " + (step.at || "事件时间已记录")
             },
-            "breakdown-rebuilt": {
-                badge: "因果 3/4 · 回源重建",
-                kitchen: "DTO MISS → MySQL → SET DTO",
-                why: "真实 DEL 之后，请求在 DTO Key 上发生 MISS",
-                handling: "按 Key 互斥合并回源，由实际 MySQL 查询重建 DTO 并写回 Redis",
-                evidence: evidence + " cache_rebuilt：MISS " + formatNumber(metrics.redisMisses) +
-                    "，MySQL 回源 " + formatNumber(metrics.mysqlFallbacks) +
-                    "，重建 " + formatNumber(metrics.cacheRebuilds) +
-                    "，合并等待 " + formatNumber(metrics.coalescedAfterMiss)
+            "breakdown-rebuild-wave": {
+                badge: "因果 3A/3D · 已观察 MISS 进入闸门",
+                kitchen: "已观察 DTO MISS → Go FILL GATE",
+                why: "真实 DEL 后，截至 cache_rebuilt 帧已观察到同一热点 Key 的 Redis MISS",
+                handling: "这些已观察 MISS 回到 Go API 的按 Key 回源闸门；此帧不冒充最终完整波规模",
+                evidence: gateFrame + "截至该帧已观察 MISS " + formatNumber(gateMisses) + " 次"
+            },
+            "breakdown-rebuild-leader": {
+                badge: "因果 3B/3D · leader 回源",
+                kitchen: "leader 二检 MISS → MySQL",
+                why: "闸门只允许 leader 持有该 Key 的重建资格，followers 留在闸门等待",
+                handling: "leader 在锁内二次检查仍 MISS，才去 MySQL；followers 此时不访问 MySQL",
+                evidence: gateFrame + "leader = mysqlFallbacks " + formatNumber(gateLeaders) +
+                    "；followers 数量等待 cache_recovered 恢复点闭合"
+            },
+            "breakdown-rebuild-set": {
+                badge: "因果 3C/3D · leader SET DTO",
+                kitchen: "MySQL → leader SET DTO → Redis",
+                why: "leader 已从 MySQL 取得权威 DTO，闸门内的 followers 仍在等待同一个结果",
+                handling: "leader 把 DTO 写回 Redis 后释放按 Key 闸门，重建只记一次",
+                evidence: gateFrame + "cacheRebuilds " + formatNumber(metrics.cacheRebuilds) +
+                    "，SQL " + formatNumber(metrics.sqlQueries)
+            },
+            "breakdown-rebuild-followers": {
+                badge: "因果 3D/3D · followers 二检 HIT",
+                kitchen: "followers 醒来 → 二检 HIT · SKIP MySQL",
+                why: "cache_recovered 恢复点表明 leader 已完成 SET DTO，等待者已经继续执行",
+                handling: "followers 逐个在锁内二次检查命中新 DTO，直接返回并跳过 MySQL",
+                evidence: gateFrame + "恢复点闭合 followers；" + gateEquation
             },
             "breakdown-recovered": {
                 badge: "因果 4/4 · 恢复稳定",
                 kitchen: "DTO Key HIT · 重建生效",
-                why: "DTO 已由真实回源重建，后续请求重新具备可命中的副本",
-                handling: "连续恢复窗口继续读取 Redis，并观察命中率是否稳定",
+                why: gateFollowers > 0 ?
+                    "DTO 已重建且 followers 已二检命中，后续请求重新具备可命中的副本" :
+                    "DTO 已由 leader 重建；恢复帧中未观察到 follower 合并返回",
+                handling: gateFollowers > 0 ?
+                    "连续恢复窗口继续读取 Redis，并确认 followers 跳过 MySQL" :
+                    "连续恢复窗口继续读取 Redis；不补演 FOLLOW×0 路径",
                 evidence: evidence + " cache_recovered：当前命中率 " +
                     Number(metrics.currentHitRate || metrics.cacheHitRate || 0).toFixed(1) +
-                    "% ，恢复耗时 " + formatScenarioDuration(metrics.recoveryDurationMs)
+                    "% ，恢复耗时 " + formatScenarioDuration(metrics.recoveryDurationMs) +
+                    (gateFollowers > 0 ? "，followers " + formatNumber(gateFollowers) :
+                        "，未观察到 follower（coalescedAfterMiss=0）")
             },
             "penetration-dto-miss": {
                 badge: "因果 1/" + (step.protection === "negative-cache" ? "3" : "2") + " · DTO MISS",
@@ -2087,7 +2242,9 @@
                 handling: "Runner 停止发流并冻结稳态、冲击、恢复三个真实窗口",
                 evidence: evidence + " completed：重建 " + formatNumber(metrics.cacheRebuilds) +
                     "，MySQL 回源 " + formatNumber(metrics.mysqlFallbacks) +
-                    "，恢复耗时 " + formatScenarioDuration(metrics.recoveryDurationMs)
+                    "，恢复耗时 " + formatScenarioDuration(metrics.recoveryDurationMs) +
+                    "；终态 " + gateEquation +
+                    (gateFollowers > 0 ? "" : "；未观察到 follower")
             },
             "penetration-completed": {
                 badge: "因果闭环 · 证据冻结",
@@ -2114,12 +2271,20 @@
         }
         stage.dataset.causalStep = step.kind;
         stage.dataset.cacheKind = step.kind.indexOf("negative") >= 0 ? "negative" : "dto";
+        if (step.gatePhase) {
+            stage.dataset.gatePhase = step.gatePhase;
+        } else {
+            stage.removeAttribute("data-gate-phase");
+        }
+        renderTideCacheGate(step);
         byId("query-tide-badge").textContent = copy.badge;
         byId("tide-kitchen-title").textContent = copy.kitchen;
         byId("query-tide-explanation").textContent =
             "为什么发生：" + copy.why + " → 系统怎么处理：" + copy.handling +
             " → 最终证据：" + copy.evidence + "。";
-        byId("tide-response-copy").textContent = "动画由 " + tideCausalEvidenceID(step) + " 推进";
+        byId("tide-response-copy").textContent = step.semanticDecomposition ?
+            tideCausalEvidenceID(step) + " 同一冻结指标帧 · 语义拆解，非逐请求 trace" :
+            "动画由 " + tideCausalEvidenceID(step) + " 推进";
     }
 
     function finishTideTraceSample(sample) {
@@ -2142,6 +2307,9 @@
         var stage = byId("query-tide-stage");
         stage.removeAttribute("data-trace-route");
         stage.removeAttribute("data-trace-phase");
+        if (!sample.eventDriven) {
+            resetTideCacheBridge();
+        }
         if (!state.loadtestTask || sampler.queue.length === 0) {
             return;
         }
@@ -2210,7 +2378,7 @@
         refill.style.opacity = "1";
         sample.refillMotion = animateTideToken(
             refill,
-            tideTraceRefillAnchors(),
+            tideTraceRefillAnchors(sample.route),
             760,
             true
         );
@@ -2221,9 +2389,13 @@
                 return;
             }
             refill.style.opacity = "0";
-            sample.phase = "waiting";
-            stage.dataset.tracePhase = "processing";
-            releaseTideTraceResponse(sample);
+            if (sample.noResponse) {
+                finishTideTraceSample(sample);
+            } else {
+                sample.phase = "waiting";
+                stage.dataset.tracePhase = "processing";
+                releaseTideTraceResponse(sample);
+            }
         });
         return true;
     }
@@ -2263,7 +2435,8 @@
             step = {
                 route: step,
                 responseProven: sampler.responseEvidence,
-                refillProven: sampler.refillEvidence
+                refillProven: ["cache-miss", "cache-rebuild"].indexOf(step) >= 0 &&
+                    sampler.refillEvidence
             };
         }
         if (step.displayOnly) {
@@ -2310,6 +2483,14 @@
         stage.dataset.tracePhase = "request";
         if (step.kind) {
             renderTideCausalStep(step);
+        } else {
+            renderTideCacheGate(step);
+        }
+        if (step.refillOnly) {
+            sample.phase = "waiting-refill";
+            stage.dataset.tracePhase = "processing";
+            startTideCacheRefill(sample);
+            return;
         }
         sample.requestMotion = animateTideToken(
             request,
@@ -2374,19 +2555,26 @@
         var fallbacks = Math.max(sampler.fallbackHighWater,
             Number(metrics.mysqlFallbacks || 0));
         var rawPath = tideTraceRawPath(task) || {};
+        var cacheErrors = Math.max(sampler.cacheErrorHighWater,
+            Number(rawPath.cacheErrors || 0));
         var coalesced = Math.max(sampler.coalescedHighWater,
             Number(rawPath.coalesced || 0));
         var requestDelta = requests - sampler.requestHighWater;
         var hitDelta = hits - sampler.hitHighWater;
         var fallbackDelta = fallbacks - sampler.fallbackHighWater;
+        var cacheErrorDelta = cacheErrors - sampler.cacheErrorHighWater;
+        // cacheErrors 没有携带失败阶段，出现错误的采样帧无法证明本次回源是否进过 Gate。
+        // 宁可少画该帧，也不把锁内二检/SET 失败伪装成首查错误 BYPASS。
+        var missFallbackDelta = cacheErrorDelta > 0 ? 0 : fallbackDelta;
         var coalescedDelta = coalesced - sampler.coalescedHighWater;
-        if (task.mode === "cached" && fallbackDelta > 0) {
+        if (task.mode === "cached" && missFallbackDelta > 0) {
             sampler.refillPending = true;
             sampler.refillHitFloor = sampler.hitHighWater;
         }
         sampler.requestHighWater = requests;
         sampler.hitHighWater = hits;
         sampler.fallbackHighWater = fallbacks;
+        sampler.cacheErrorHighWater = cacheErrors;
         sampler.coalescedHighWater = coalesced;
         if (task.mode === "cached" && sampler.refillPending &&
             (coalescedDelta > 0 || hits > sampler.refillHitFloor)) {
@@ -2401,7 +2589,7 @@
         var sampleLimit = observedQPS >= 700 ? 2 : 1;
         var routes = [];
         if (task.mode === "cached") {
-            if (fallbackDelta > 0) {
+            if (missFallbackDelta > 0) {
                 routes.push("cache-miss");
             }
             if (hitDelta > 0) {
@@ -2485,13 +2673,43 @@
                     requestLabel: "DEL →", noResponse: true
                 }));
             } else if (eventName === "cache_rebuilt") {
-                enqueueTideCausalMilestone("breakdown-rebuilt", Object.assign({}, base, {
-                    kind: "breakdown-rebuilt", route: "cache-rebuild",
-                    requestLabel: "MISS 波 →", responseLabel: "← DTO",
-                    refillProven: true
+                // 3A～3C 共享 cache_rebuilt 的冻结指标副本；followers 尚可能在返回途中，3D 留给恢复点闭合。
+                var rebuildMetrics = update && update.metrics ?
+                    Object.assign({}, update.metrics) : metrics;
+                var rebuildBase = Object.assign({}, base, { metrics: rebuildMetrics });
+                var leaderCount = Number(rebuildMetrics.mysqlFallbacks || 0);
+                enqueueTideCausalMilestone("breakdown-rebuild-wave", Object.assign({}, rebuildBase, {
+                    kind: "breakdown-rebuild-wave", route: "cache-rebuild-wave",
+                    gatePhase: "wave",
+                    semanticDecomposition: true,
+                    requestLabel: "MISS×" + formatNumber(rebuildMetrics.redisMisses) + " →", noResponse: true
+                }));
+                enqueueTideCausalMilestone("breakdown-rebuild-leader", Object.assign({}, rebuildBase, {
+                    kind: "breakdown-rebuild-leader", route: "cache-rebuild-leader",
+                    gatePhase: "leader", semanticDecomposition: true,
+                    requestLabel: "LEADER×" + formatNumber(leaderCount) + " →", noResponse: true
+                }));
+                enqueueTideCausalMilestone("breakdown-rebuild-set", Object.assign({}, rebuildBase, {
+                    kind: "breakdown-rebuild-set", route: "cache-rebuild-set",
+                    gatePhase: "set", semanticDecomposition: true,
+                    refillOnly: true, refillProven: true, noResponse: true
                 }));
             } else if (eventName === "cache_recovered") {
-                enqueueTideCausalMilestone("breakdown-recovered", Object.assign({}, base, {
+                // followers 要等 leader SET 后才可能二检 HIT；只用恢复点的冻结帧闭合，普通 metric 不授权 3D。
+                var recoveredMetrics = update && update.metrics ?
+                    Object.assign({}, update.metrics) : metrics;
+                var recoveredBase = Object.assign({}, base, { metrics: recoveredMetrics });
+                var recoveredFollowers = Number(recoveredMetrics.coalescedAfterMiss || 0);
+                if (recoveredFollowers > 0) {
+                    enqueueTideCausalMilestone("breakdown-rebuild-followers", Object.assign({}, recoveredBase, {
+                        kind: "breakdown-rebuild-followers", route: "cache-rebuild-followers",
+                        gatePhase: "followers",
+                        semanticDecomposition: true,
+                        requestLabel: "FOLLOW×" + formatNumber(recoveredFollowers) + " →",
+                        responseLabel: "← DTO HIT"
+                    }));
+                }
+                enqueueTideCausalMilestone("breakdown-recovered", Object.assign({}, recoveredBase, {
                     kind: "breakdown-recovered", route: "cache-hit",
                     requestLabel: "DTO GET →", responseLabel: "← DTO HIT"
                 }));
@@ -2643,6 +2861,10 @@
                 "-c " + planConnections.toLocaleString("zh-CN") :
                 "自动 -c 待锁定") + " · " + (cached ? "CACHE" : "DIRECT");
         stage.dataset.backendMode = cached ? "cached" : "direct";
+        var cacheBridge = document.querySelector(".tide-cache-bridge");
+        if (cached && cacheBridge && !cacheBridge.hasAttribute("data-gate-mode")) {
+            resetTideCacheBridge();
+        }
         stage.dataset.cacheFallbackObserved =
             cached && Number(metrics.mysqlFallbacks || 0) > 0 ? "true" : "false";
         byId("tide-kitchen-title").textContent = taskScenario(task) === "penetration" ?
@@ -3847,6 +4069,9 @@
             loadtestIsActive(state.loadtestTask)) {
             return;
         }
+        if (state.scenario !== scenario) {
+            clearTideScenarioMotion();
+        }
         state.scenario = scenario;
         state.loadtestStartRequested = false;
         if (scenario !== "steady") {
@@ -3871,6 +4096,7 @@
             (protection !== "none" && protection !== "negative-cache")) {
             return;
         }
+        clearTideScenarioMotion();
         state.protection = protection;
         updateScenarioURL();
         renderScenarioControls(state.loadtestTask);
