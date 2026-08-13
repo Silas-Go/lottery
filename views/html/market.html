@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/material-shop.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260805-planner-workbench-v1" />
+    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260813-query-plan-hierarchy-v3" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -87,15 +87,33 @@
                                 <section class="task-intent-panel" aria-labelledby="task-intent-heading">
                                     <header>
                                         <span>TRAFFIC INTENT</span>
-                                        <strong id="task-intent-heading">选择请求路径与发送速率</strong>
+                                        <strong id="task-intent-heading">配置读取路径与压测流量</strong>
                                     </header>
+                                    <aside class="query-target-brief" aria-label="本轮查询对象与数据分布">
+                                        <div class="query-target-identity">
+                                            <small>本轮查询对象</small>
+                                            <strong>星髓详情</strong>
+                                            <span>MaterialDetailDTO</span>
+                                        </div>
+                                        <div class="query-target-details">
+                                            <p><b>数据来源</b><span><code>materials</code> 基础资料 · <code>material_components</code> 组成关系 · <code>trades</code> 交易统计 · <code>reviews</code> 评分聚合</span></p>
+                                        </div>
+                                    </aside>
+                                    <div class="planner-field-heading">
+                                        <span><i>01</i><strong>选择读取路径</strong></span>
+                                        <small>查询对象不变，只切换数据读取策略</small>
+                                    </div>
                                     <div class="query-path-options" role="group" aria-label="查询请求路径">
                                         <button class="is-active" type="button" data-query-path="direct" aria-pressed="true">
-                                            <small>PATH A</small><strong>MySQL Direct</strong><span>Go API → MySQL</span>
+                                            <small>PATH A</small><strong>MySQL Direct</strong><span>每次查询 MySQL，并现场组装 DTO</span>
                                         </button>
                                         <button type="button" data-query-path="cached" aria-pressed="false">
-                                            <small>PATH B</small><strong>Redis Cache-Aside</strong><span>Go API → Redis → MySQL on MISS</span>
+                                            <small>PATH B</small><strong>Redis Cache-Aside</strong><span>Redis HIT 直接返回，MISS 才回源 MySQL</span>
                                         </button>
+                                    </div>
+                                    <div class="planner-field-heading is-qps">
+                                        <span><i>02</i><strong>设置目标 QPS</strong></span>
+                                        <small><b>每秒计划发起的 HTTP 请求数</b>，不是在线用户数，也不是并发请求数</small>
                                     </div>
                                     <div class="crowd-tier-options" role="group" aria-label="目标请求速率">
                                         <button type="button" data-crowd-tier="qps_100" aria-pressed="false">
@@ -114,10 +132,11 @@
                                 </section>
 
                                 <section class="runner-plan-panel" aria-labelledby="runner-plan-heading">
-                                    <header>
-                                        <span>RUNNER CONFIG</span>
-                                        <strong id="runner-plan-heading">确定 wrk2 连接配置</strong>
+                                    <header class="planner-field-heading is-runner">
+                                        <span><i>03</i><strong id="runner-plan-heading">设置 HTTP 连接承载</strong></span>
+                                        <small>wrk2 connections</small>
                                     </header>
+                                    <p class="runner-parameter-note"><code>-c N</code><span>表示 wrk2 维护 N 条 HTTP/1.1 持久连接。请求会复用当前可用连接，不保证平均分配；响应越慢，连接占用越久。</span></p>
                                     <div class="conduit-mode-control">
                                         <div>
                                             <small>连接策略</small>
@@ -159,7 +178,7 @@
                                     <div><dt>连接计划</dt><dd id="query-preview-connections">计算中</dd></div>
                                     <div><dt>持续时间</dt><dd>30 秒</dd></div>
                                 </dl>
-                                <p class="query-plan-boundary">这里只保存计划；进入实验室且观测就绪后，Runner 才会创建真实任务。</p>
+                                <p class="query-plan-boundary"><b>对比约束</b><span>Direct 与 Cache-Aside 使用相同的查询对象、目标 QPS、连接数和运行时间，两轮只切换读取路径。这里仅保存计划；进入实验室且观测就绪后，Runner 才会创建真实任务。</span></p>
                             </aside>
 
                             <div class="crowd-confirmation-bar">
