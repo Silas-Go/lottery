@@ -517,7 +517,9 @@
             byId("lab-loadtest-copy").textContent = waitingForObservation ?
                 (state.loadtestCreateInFlight ?
                     "页面和指标观测均已就绪，正在锁定最终 Runner 配置。" :
-                    "Runner 尚未创建，当前没有连接启用，也没有真实请求发送。") :
+                    (state.labSceneReady && state.metricsObservationReady ?
+                        "观测已经就绪；点击开始按钮后才会创建 Runner 任务并发送真实请求。" :
+                        "Runner 尚未创建，当前没有连接启用，也没有真实请求发送。")) :
                 (pendingTask ? "正在通过任务快照恢复 Runner 状态；此时不会播放请求动画。" :
                 "创建后，Runner " + (plannedConnections > 0 ?
                     "按 -c " + plannedConnections.toLocaleString("zh-CN") + " 启用连接配置" :
@@ -828,12 +830,17 @@
 
     function updateControlState() {
         var loadtestLocked = loadtestIsActive(state.loadtestTask);
-        var readinessLocked = state.loadtestStartRequested || state.loadtestCreateInFlight;
+        var pendingConfiguredPlan = Boolean(state.entry === "crowd" && state.pendingRun &&
+            !state.loadtestTaskId);
+        var observationPending = Boolean(isCrowdEntry() && !state.loadtestTaskId &&
+            (!state.labSceneReady || !state.metricsObservationReady));
+        var readinessLocked = state.loadtestStartRequested || state.loadtestCreateInFlight ||
+            pendingConfiguredPlan;
         var legacyTask = Boolean(state.loadtestTask && state.loadtestTask.tier &&
             !crowdTierForRate(state.loadtestTask.tier.rate));
         var locked = state.isRequesting || state.isReplaying || loadtestLocked ||
             state.loadtestCreateInFlight;
-        byId("query-archive").disabled = locked;
+        byId("query-archive").disabled = locked || observationPending;
         ["mode-direct", "mode-cached"].forEach(function (id) {
             byId(id).disabled = locked || readinessLocked || state.scenario !== "steady";
         });
@@ -846,25 +853,22 @@
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
             radio.disabled = locked;
         });
-        if (isCrowdEntry() && state.loadtestStartRequested &&
-            (!state.labSceneReady || !state.metricsObservationReady)) {
-            byId("query-archive").disabled = true;
-        }
         var queryButtonCopy = "启动读取实验";
         if (!isCrowdEntry()) {
             queryButtonCopy = state.isRequesting ? "正在等待真实响应" :
                 (state.lastResponse ? "再次启动读取实验" : "启动读取实验");
         } else if (state.loadtestCreateInFlight) {
             queryButtonCopy = "正在创建 Runner 任务";
-        } else if (state.loadtestStartRequested &&
-            (!state.labSceneReady || !state.metricsObservationReady)) {
-            queryButtonCopy = "等待店内观测就绪";
+        } else if (observationPending) {
+            queryButtonCopy = "正在准备观测环境";
         } else if (loadtestLocked) {
             queryButtonCopy = "查询潮汐进行中";
         } else if (legacyTask) {
             queryButtonCopy = "返回门口配置新查询潮汐";
         } else {
-            queryButtonCopy = state.loadtestTask ? "再次启动查询潮汐" : "启动查询潮汐";
+            queryButtonCopy = state.loadtestTask ? "再次启动查询潮汐" :
+                (currentExperiment().mode === "cached" ?
+                    "开始 Redis Cache-Aside 压测" : "开始 MySQL Direct 压测");
             if (state.scenario === "breakdown") {
                 queryButtonCopy = state.loadtestTask ? "再次验证热点击穿" : "启动热点击穿实验";
             } else if (state.scenario === "penetration") {
@@ -3242,6 +3246,10 @@
     }
 
     function requestCrowdTestStart() {
+        if (!state.labSceneReady || !state.metricsObservationReady) {
+            renderLoadtestReadiness();
+            return;
+        }
         if (state.loadtestTask &&
             ["completed", "failed", "stopped"].indexOf(state.loadtestTask.status) >= 0) {
             stopLoadtestConnections();
@@ -3259,7 +3267,7 @@
             return;
         }
         if (state.labSceneReady) {
-            maybeStartCrowdTest();
+            renderLoadtestReadiness();
             return;
         }
         // requestAnimationFrame 只确认当前 DOM 已获得一次可见绘制机会，不参与压测计时。
@@ -3268,14 +3276,14 @@
                 return;
             }
             state.labSceneReady = true;
-            maybeStartCrowdTest();
+            renderLoadtestReadiness();
         });
     }
 
     function markMetricsObservationReady() {
         if (!state.metricsObservationReady) {
             state.metricsObservationReady = true;
-            maybeStartCrowdTest();
+            renderLoadtestReadiness();
         }
     }
 
@@ -4183,7 +4191,7 @@
             pendingRun = {
                 taskId: "",
                 entry: "crowd",
-                launchWhenObserved: true,
+                launchWhenObserved: false,
                 materialName: state.profile.name,
                 mode: incomingMode || currentExperiment().mode,
                 cacheTemperature: "cold",
@@ -4211,10 +4219,9 @@
         }
         state.loadtestTaskId = entry === "crowd" ? (incomingLoadtestTaskID() ||
             (state.pendingRun && state.pendingRun.taskId) || "") : "";
-        state.loadtestStartRequested = Boolean(entry === "crowd" &&
-            !state.loadtestTaskId &&
-            state.pendingRun &&
-            (state.pendingRun.launchWhenObserved || incomingLaunchWhenObserved()));
+        // 配置页只把计划带入实验室；即使旧链接仍含 launch=when-observed，
+        // 也必须等待用户在实验室明确点击开始按钮，不能自动创建 Runner 任务。
+        state.loadtestStartRequested = false;
         document.body.dataset.entryMode = state.entry;
         renderExperimentState(currentExperiment());
         experimentState.subscribe(renderExperimentState);
@@ -4230,7 +4237,7 @@
         if (state.entry === "crowd") {
             byId("request-status").textContent = "正在连接查询潮汐实验";
             byId("replay-status").textContent = state.loadtestTaskId ?
-                "正在恢复任务观测" : "正在建立店内指标观测";
+                "正在恢复任务观测" : "正在建立店内指标观测 · 就绪后等待手动开始";
             if (state.loadtestTaskId) {
                 connectLoadtestTask(state.loadtestTaskId);
             } else {

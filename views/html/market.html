@@ -178,17 +178,17 @@
                                     <div><dt>连接计划</dt><dd id="query-preview-connections">计算中</dd></div>
                                     <div><dt>持续时间</dt><dd>30 秒</dd></div>
                                 </dl>
-                                <p class="query-plan-boundary"><b>对比约束</b><span>Direct 与 Cache-Aside 使用相同的查询对象、目标 QPS、连接数和运行时间，两轮只切换读取路径。这里仅保存计划；进入实验室且观测就绪后，Runner 才会创建真实任务。</span></p>
+                                <p class="query-plan-boundary"><b>对比约束</b><span>Direct 与 Cache-Aside 使用相同的查询对象、目标 QPS、连接数和运行时间，两轮只切换读取路径。这里仅保存计划；进入实验室后，由你明确点击开始按钮才会创建 Runner 任务。</span></p>
                             </aside>
 
                             <div class="crowd-confirmation-bar">
                                 <div class="crowd-status" role="status" aria-live="polite">
                                     <i></i>
-                                    <span><strong id="crowd-status-title">计划等待确认</strong><small id="crowd-status-copy">进入实验室且观测就绪后，Runner 才会启动。</small></span>
+                                    <span><strong id="crowd-status-title">计划等待确认</strong><small id="crowd-status-copy">确认后只进入实验室，不会自动发送压测请求。</small></span>
                                     <time id="crowd-clock" hidden>00:00 / 00:30</time>
                                 </div>
                                 <div class="crowd-run-actions">
-                                    <button id="start-crowd-test" class="event-primary" type="button">确认计划并进入实验室</button>
+                                    <button id="start-crowd-test" class="event-primary" type="button">确认配置并进入实验室</button>
                                     <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入实验室查看</button>
                                 </div>
                             </div>
@@ -381,7 +381,7 @@ Connection: keep-alive</code></pre>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260804-star-only"></script>
+    <script src="/js/market.js?v=20260813-explicit-lab-start-v1"></script>
 </body>
 
 </html>

@@ -466,8 +466,8 @@
         byId("crowd-size-value").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("query-preview-rate").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("crowd-size-note").textContent = connectionMode === "auto" ?
-            "固定运行 " + tier.duration + " 秒；实验室观测就绪后创建任务并锁定自动配置。" :
-            "固定运行 " + tier.duration + " 秒；实验室观测就绪后创建任务并锁定手动配置。";
+            "固定运行 " + tier.duration + " 秒；进入实验室后，由开始按钮创建任务并锁定自动配置。" :
+            "固定运行 " + tier.duration + " 秒；进入实验室后，由开始按钮创建任务并锁定手动配置。";
         byId("market-source-rate").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("market-flow-target").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("market-flow-actual-label").textContent = "运行事实";
@@ -487,7 +487,7 @@
 
         if (state === "crowd_preparing" && !activeTask) {
             byId("crowd-status-title").textContent = "计划等待确认";
-            byId("crowd-status-copy").textContent = "进入实验室且观测就绪后，Runner 才会启动。";
+            byId("crowd-status-copy").textContent = "确认后只进入实验室，不会自动发送压测请求。";
             byId("crowd-clock").hidden = true;
         }
     }
@@ -849,9 +849,9 @@
     }
 
     async function enterCrowdLabView(handoff) {
-        // 新保存的计划必须优先于页面里残留的已完成任务，否则“创建新任务”
-        // 会重新打开旧结果，Runner 不会启动，也就永远看不到请求/响应卷轴。
-        var plan = handoff && handoff.launchWhenObserved ? handoff : null;
+        // 新保存的计划必须优先于页面里残留的已完成任务；它只负责转场，
+        // 是否创建 Runner 任务必须由实验室内的显式开始按钮决定。
+        var plan = handoff && !handoff.taskId ? handoff : null;
         var task = !plan && activeTask && activeTask.taskId ? activeTask : null;
         if (!selectedCode || (!task && !plan) || enteringCrowdLab) {
             return;
@@ -887,8 +887,6 @@
                 "&connectionMode=" + encodeURIComponent(finalMode);
             if (task) {
                 query += "&task=" + encodeURIComponent(task.taskId);
-            } else {
-                query += "&launch=when-observed";
             }
             if (finalMode === "manual") {
                 query += "&connections=" + encodeURIComponent(
@@ -908,7 +906,7 @@
         byId("start-crowd-test").disabled = true;
         byId("start-crowd-test").textContent = "正在交接计划";
         byId("crowd-status-title").textContent = "正在交接实验计划";
-        byId("crowd-status-copy").textContent = "进入实验室并接通指标观测前，Runner 不会创建任务。";
+        byId("crowd-status-copy").textContent = "本次操作只保存配置并进入实验室，Runner 不会自动创建任务。";
         byId("crowd-connection-current").textContent = "尚未创建";
         byId("market-flow-status").textContent = "计划交接中";
         byId("market-mechanism").dataset.flowState = "planned";
@@ -923,7 +921,7 @@
             var handoff = {
                 taskId: "",
                 entry: "crowd",
-                launchWhenObserved: true,
+                launchWhenObserved: false,
                 materialName: materials[selectedCode].name,
                 mode: experiment.mode,
                 cacheTemperature: "cold",
@@ -1046,11 +1044,11 @@
         setState("crowd_preparing");
         setExperimentControlsLocked(false);
         byId("start-crowd-test").disabled = false;
-        byId("start-crowd-test").textContent = "确认计划并进入实验室";
+        byId("start-crowd-test").textContent = "确认配置并进入实验室";
         byId("enter-crowd-lab").hidden = true;
         byId("crowd-connection-current").textContent = "尚未创建";
         byId("crowd-status-title").textContent = "计划等待确认";
-        byId("crowd-status-copy").textContent = "进入实验室且观测就绪后，Runner 才会启动。";
+        byId("crowd-status-copy").textContent = "确认后只进入实验室，不会自动发送压测请求。";
         byId("crowd-clock").textContent = "00:00 / 00:30";
         byId("crowd-clock").hidden = true;
         byId("market-mechanism").dataset.faultLayer = "none";
