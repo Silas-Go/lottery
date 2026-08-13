@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/material-shop.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260813-query-plan-hierarchy-v3" />
+    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260813-query-explainer-v1" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -63,7 +63,7 @@
                             <div>
                                 <small>QUERY LOAD TEST · 星髓</small>
                                 <strong>配置查询压测计划</strong>
-                                <p>先确定读取路径和流量模型，再进入实验室观察真实服务端指标。</p>
+                                <p>先了解两条对比路径并定义共同流量条件，再进入实验室选择本轮路径、手动开始并观察真实服务端指标。</p>
                             </div>
                             <button id="leave-crowd-mode" type="button">返回实验总览</button>
                         </header>
@@ -75,7 +75,7 @@
                         </ol>
 
                         <div class="task-contract-strip task-plan-summary" role="status" aria-live="polite" aria-label="本轮查询压测计划">
-                            <div class="is-path"><small>实验路径</small><strong id="crowd-summary-path">MySQL Direct</strong></div>
+                            <div class="is-path"><small>对比对象</small><strong id="crowd-summary-path">Direct vs Cache-Aside</strong></div>
                             <div class="is-intent"><small>目标速率</small><output id="crowd-size-value">1,500 req/s</output></div>
                             <div class="is-config"><small>Runner 计划</small><strong id="crowd-connection-plan">计算中</strong></div>
                             <div class="is-fact"><small>任务状态</small><strong id="crowd-connection-current">尚未创建</strong></div>
@@ -87,7 +87,7 @@
                                 <section class="task-intent-panel" aria-labelledby="task-intent-heading">
                                     <header>
                                         <span>TRAFFIC INTENT</span>
-                                        <strong id="task-intent-heading">配置读取路径与压测流量</strong>
+                                        <strong id="task-intent-heading">了解查询成本并配置共同流量</strong>
                                     </header>
                                     <aside class="query-target-brief" aria-label="本轮查询对象与数据分布">
                                         <div class="query-target-identity">
@@ -99,20 +99,24 @@
                                             <p><b>数据来源</b><span><code>materials</code> 基础资料 · <code>material_components</code> 组成关系 · <code>trades</code> 交易统计 · <code>reviews</code> 评分聚合</span></p>
                                         </div>
                                     </aside>
-                                    <div class="planner-field-heading">
-                                        <span><i>01</i><strong>选择读取路径</strong></span>
-                                        <small>查询对象不变，只切换数据读取策略</small>
+                                    <div class="planner-field-heading is-comparison">
+                                        <span><strong>本次实验的两条对比路径</strong></span>
+                                        <small>点击方案查看右侧解说，不决定本轮运行路径</small>
                                     </div>
-                                    <div class="query-path-options" role="group" aria-label="查询请求路径">
-                                        <button class="is-active" type="button" data-query-path="direct" aria-pressed="true">
+                                    <div class="query-path-comparison" role="group" aria-label="切换方案解说">
+                                        <button class="is-active" type="button" data-query-explainer="direct" aria-pressed="true">
                                             <small>PATH A</small><strong>MySQL Direct</strong><span>每次查询 MySQL，并现场组装 DTO</span>
+                                            <em>HTTP → Go API → 4 条 SQL → DTO</em>
+                                            <span class="query-path-card-action">正在解说</span>
                                         </button>
-                                        <button type="button" data-query-path="cached" aria-pressed="false">
+                                        <button type="button" data-query-explainer="cached" aria-pressed="false">
                                             <small>PATH B</small><strong>Redis Cache-Aside</strong><span>Redis HIT 直接返回，MISS 才回源 MySQL</span>
+                                            <em>HTTP → Go API → Redis → MySQL on MISS</em>
+                                            <span class="query-path-card-action">查看方案解说 →</span>
                                         </button>
                                     </div>
                                     <div class="planner-field-heading is-qps">
-                                        <span><i>02</i><strong>设置目标 QPS</strong></span>
+                                        <span><i>01</i><strong>设置共同目标 QPS</strong></span>
                                         <small><b>每秒计划发起的 HTTP 请求数</b>，不是在线用户数，也不是并发请求数</small>
                                     </div>
                                     <div class="crowd-tier-options" role="group" aria-label="目标请求速率">
@@ -133,7 +137,7 @@
 
                                 <section class="runner-plan-panel" aria-labelledby="runner-plan-heading">
                                     <header class="planner-field-heading is-runner">
-                                        <span><i>03</i><strong id="runner-plan-heading">设置 HTTP 连接承载</strong></span>
+                                        <span><i>02</i><strong id="runner-plan-heading">设置共同连接承载</strong></span>
                                         <small>wrk2 connections</small>
                                     </header>
                                     <p class="runner-parameter-note"><code>-c N</code><span>表示 wrk2 维护 N 条 HTTP/1.1 持久连接。请求会复用当前可用连接，不保证平均分配；响应越慢，连接占用越久。</span></p>
@@ -164,21 +168,26 @@
                             </div>
 
                             <aside class="query-plan-preview" aria-labelledby="query-plan-preview-heading">
-                                <small>RUN PLAN PREVIEW</small>
-                                <strong id="query-plan-preview-heading">本轮计划摘要</strong>
+                                <small id="query-plan-preview-eyebrow">PATH EXPLAINER · PATH A</small>
+                                <strong id="query-plan-preview-heading">方案解说 · MySQL Direct</strong>
                                 <div class="query-plan-material">
                                     <img src="/img/star-marrow-relic.png" alt="" />
                                     <span><small>实验材料</small><b>星髓</b></span>
                                 </div>
                                 <code id="query-preview-route">GET /api/archives/4/direct</code>
-                                <p id="query-preview-copy">请求直接进入 MySQL，每次现场组装同一份 MaterialDetailDTO。</p>
+                                <p id="query-preview-copy">每个 HTTP 请求都进入 MySQL，完成 4 条查询后现场组装同一份 MaterialDetailDTO。</p>
+                                <div class="query-path-explanation" aria-live="polite">
+                                    <p><b id="query-explainer-chain-label">请求链</b><span id="query-explainer-chain">Go API → MySQL → 4 条 SQL → DTO</span></p>
+                                    <p><b id="query-explainer-trait-label">性能特征</b><span id="query-explainer-trait">没有缓存命中收益，每次请求都会重复查询和组装。</span></p>
+                                    <p><b id="query-explainer-proof-label">重点观察</b><span id="query-explainer-proof">MySQL 回源、SQL 查询数，以及 P95 / P99 延迟。</span></p>
+                                </div>
+                                <div class="query-plan-shared-heading"><strong>共同运行条件</strong><span>两轮保持一致</span></div>
                                 <dl>
-                                    <div><dt>读取路径</dt><dd id="query-preview-path">MySQL Direct</dd></div>
+                                    <div><dt>查询对象</dt><dd id="query-preview-path">星髓详情</dd></div>
                                     <div><dt>目标速率</dt><dd id="query-preview-rate">1,500 req/s</dd></div>
                                     <div><dt>连接计划</dt><dd id="query-preview-connections">计算中</dd></div>
                                     <div><dt>持续时间</dt><dd>30 秒</dd></div>
                                 </dl>
-                                <p class="query-plan-boundary"><b>对比约束</b><span>Direct 与 Cache-Aside 使用相同的查询对象、目标 QPS、连接数和运行时间，两轮只切换读取路径。这里仅保存计划；进入实验室后，由你明确点击开始按钮才会创建 Runner 任务。</span></p>
                             </aside>
 
                             <div class="crowd-confirmation-bar">
@@ -188,7 +197,7 @@
                                     <time id="crowd-clock" hidden>00:00 / 00:30</time>
                                 </div>
                                 <div class="crowd-run-actions">
-                                    <button id="start-crowd-test" class="event-primary" type="button">确认配置并进入实验室</button>
+                                    <button id="start-crowd-test" class="event-primary" type="button">确认共同条件并进入实验室</button>
                                     <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入实验室查看</button>
                                 </div>
                             </div>
@@ -381,7 +390,7 @@ Connection: keep-alive</code></pre>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260813-explicit-lab-start-v1"></script>
+    <script src="/js/market.js?v=20260813-query-explainer-v1"></script>
 </body>
 
 </html>

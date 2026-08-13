@@ -39,6 +39,10 @@
     var crowdShell = "powershell";
     var connectionPlan = null;
     var connectionPlanRequest = 0;
+    var queryExplainerMode = "direct";
+    // 配置页只给两轮建立共同条件；Direct 用作自动连接数的预估样本，
+    // 进入实验室选择真实路径后会按该路径重新估算，任务创建时再由 Runner 锁定。
+    var CONFIG_PREVIEW_MODE = "direct";
     var marketPreviewTimer = null;
     var marketPreviewSignature = "";
     // 购买实验没有 wrk2 或目标 QPS；计划工作台只配置后端真实支持的缓存失效路径。
@@ -125,32 +129,35 @@
     }
 
     function crowdCommand() {
-        var experiment = experimentState.get();
         var tier = crowdTiers[crowdTierID];
-        var path = experiment.mode === "cached" ? "cached" : "direct";
         if (connectionMode === "auto") {
             var planned = matchingConnectionPlan();
-            return "# Runner 当前预估 CONNECTIONS=" + (planned ? planned.connections : "PENDING") + "。\n" +
-                "# 任务创建时会再次确认，并在实验室显示最终 wrk2 -c N。";
+            return "# 两条读取路径共享 RATE=" + tier.rate + "、DURATION=" + tier.duration + "s。\n" +
+                "# 配置页当前预估 CONNECTIONS=" + (planned ? planned.connections : "PENDING") + "；" +
+                "进入实验室选择路径后会重新计算，任务创建时锁定最终值。";
         }
-        var loadCommand = "docker compose --profile loadtest run --rm --no-deps " +
+        function loadCommand(path) {
+            return "docker compose --profile loadtest run --rm --no-deps " +
             "-e RATE=" + tier.rate + " -e DURATION=" + tier.duration + "s -e THREADS=1 -e CONNECTIONS=" + manualConnections + " " +
             "-e TARGET_URL=http://app:5678/api/archives/" + materialNumericId() + "/" + path + " " +
             "-e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
+        }
         if (crowdShell === "powershell") {
             return "$ErrorActionPreference = \"Stop\"\n" +
                 "Invoke-WebRequest -UseBasicParsing -Method Post " +
                 "-Uri \"http://localhost:5678/api/chapters/cache-aside/reset\" | Out-Null\n" +
-                loadCommand;
+                "# Path A · MySQL Direct\n" + loadCommand("direct") + "\n\n" +
+                "# Path B · Redis Cache-Aside（保持相同 QPS、-c 与时长）\n" + loadCommand("cached");
         }
-        return "curl -fsS -X POST http://localhost:5678/api/chapters/cache-aside/reset >/dev/null && " + loadCommand;
+        return "curl -fsS -X POST http://localhost:5678/api/chapters/cache-aside/reset >/dev/null\n" +
+            "# Path A · MySQL Direct\n" + loadCommand("direct") + "\n\n" +
+            "# Path B · Redis Cache-Aside（保持相同 QPS、-c 与时长）\n" + loadCommand("cached");
     }
 
     function matchingConnectionPlan() {
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
-        var mode = experimentState.get().mode;
         if (!connectionPlan || connectionPlan.rate !== tier.rate ||
-            connectionPlan.requestMode !== mode || connectionPlan.connectionMode !== connectionMode) {
+            connectionPlan.requestMode !== CONFIG_PREVIEW_MODE || connectionPlan.connectionMode !== connectionMode) {
             return null;
         }
         if (connectionMode === "manual" && connectionPlan.connections !== manualConnections) {
@@ -160,14 +167,12 @@
     }
 
     function marketRequestPath() {
-        var mode = experimentState.get().mode === "cached" ? "cached" : "direct";
-        return "/api/archives/" + materialNumericId() + "/" + mode;
+        return "/api/archives/" + materialNumericId() + "/{direct|cached}";
     }
 
     function renderMarketRequestPreview() {
         var path = marketRequestPath();
         byId("market-request-line").textContent = "GET " + path;
-        byId("query-preview-route").textContent = "GET " + path;
         byId("market-request-preview").textContent =
             "GET " + path + " HTTP/1.1\n" +
             "Host: app:5678\n" +
@@ -219,7 +224,8 @@
             var connectionCopy = connections > 0 ?
                 "-c " + connections.toLocaleString("zh-CN") :
                 "自动 -c 待锁定";
-            var pathCopy = handoff.mode === "cached" ? "CACHE-ASIDE" : "MYSQL DIRECT";
+            var pathCopy = handoff.sharedConditions ? "DIRECT / CACHE-ASIDE" :
+                (handoff.mode === "cached" ? "CACHE-ASIDE" : "MYSQL DIRECT");
             token.querySelector("small").textContent =
                 Number(handoff.expectedRate || 0).toLocaleString("zh-CN") +
                 " req/s · " + connectionCopy + " · " + pathCopy;
@@ -363,12 +369,15 @@
             (connectionMode === "auto" ? "预估 · 自动 · -c " : "计划 · 手动 · -c ") +
                 connections.toLocaleString("zh-CN") : "计算中";
         byId("crowd-connection-plan").textContent = planValue;
+        byId("query-preview-connections").textContent = connections > 0 ?
+            (connectionMode === "auto" ? "预估 · -c " : "共同 · -c ") +
+                connections.toLocaleString("zh-CN") : "计算中";
         byId("crowd-connection-current").textContent = "尚未创建";
         byId("crowd-connection-copy").textContent = plan && plan.reason ?
-            plan.reason :
+            "共同条件预估（Direct 样本） · " + plan.reason + "；进入实验室选定路径后会重新计算。" :
             (connectionMode === "manual" ?
-                "任务创建时使用所选 wrk2 -c。" :
-                "正在读取 Runner 历史；自动模式会从 70 / 140 / 300 / 500 中选择。");
+                "两条路径共享所选 wrk2 -c；任务创建时锁定。" :
+                "正在读取共同条件预估；进入实验室选定路径后会从 70 / 140 / 300 / 500 中重新计算。");
         renderMarketConduits(connections, "planned");
         return connections;
     }
@@ -378,7 +387,7 @@
             return;
         }
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
-        var mode = experimentState.get().mode;
+        var mode = CONFIG_PREVIEW_MODE;
         var requestID = ++connectionPlanRequest;
         connectionPlan = null;
         renderCrowdTier();
@@ -418,26 +427,44 @@
     }
 
     function renderExperimentState(next) {
-        Array.prototype.forEach.call(document.querySelectorAll("[data-query-path]"), function (button) {
-            var active = button.dataset.queryPath === next.mode;
+        byId("crowd-summary-path").textContent = "Direct vs Cache-Aside";
+        byId("market-backend-icon").textContent = "A/B";
+        byId("market-backend-name").textContent = "Direct vs Cache-Aside";
+        byId("market-mechanism").dataset.path = "comparison";
+        renderMarketRequestPreview();
+    }
+
+    function renderQueryExplainer() {
+        var cached = queryExplainerMode === "cached";
+        Array.prototype.forEach.call(document.querySelectorAll("[data-query-explainer]"), function (button) {
+            var active = button.dataset.queryExplainer === queryExplainerMode;
             button.classList.toggle("is-active", active);
             button.setAttribute("aria-pressed", active ? "true" : "false");
+            var action = button.querySelector(".query-path-card-action");
+            if (action) {
+                action.textContent = active ? "正在解说" : "查看方案解说 →";
+            }
         });
-        byId("crowd-summary-path").textContent =
-            next.mode === "cached" ? "Redis Cache-Aside" : "MySQL Direct";
-        byId("query-preview-path").textContent =
-            next.mode === "cached" ? "Redis Cache-Aside" : "MySQL Direct";
-        byId("query-preview-copy").textContent = next.mode === "cached" ?
-            "请求先查询 Redis；命中直接返回，MISS 时回源 MySQL 并回填同一份 MaterialDetailDTO。" :
-            "请求直接进入 MySQL，每次现场组装同一份 MaterialDetailDTO。";
-        byId("market-backend-icon").textContent = next.mode === "cached" ? "REDIS" : "SQL";
-        byId("market-backend-name").textContent = next.mode === "cached" ?
-            "Go API → Redis；MISS → MySQL" : "Go API → MySQL";
-        byId("market-mechanism").dataset.path = next.mode;
-        renderMarketRequestPreview();
-        if (selectedCode && state === "crowd_preparing" && !isTaskActive()) {
-            renderCrowdTier();
-        }
+        byId("query-plan-preview-eyebrow").textContent =
+            "PATH EXPLAINER · " + (cached ? "PATH B" : "PATH A");
+        byId("query-plan-preview-heading").textContent =
+            "方案解说 · " + (cached ? "Redis Cache-Aside" : "MySQL Direct");
+        byId("query-preview-route").textContent =
+            "GET /api/archives/4/" + (cached ? "cached" : "direct");
+        byId("query-preview-copy").textContent = cached ?
+            "请求先查询 Redis；HIT 直接返回，只有 MISS 才进入回源保护、查询 MySQL 并回填完整 DTO。" :
+            "每个 HTTP 请求都进入 MySQL，完成 4 条查询后现场组装同一份 MaterialDetailDTO。";
+        byId("query-explainer-chain").textContent = cached ?
+            "Go API → Redis；MISS → 按 Key Mutex + 双检 → MySQL → SET Redis。" :
+            "Go API → MySQL → 4 条 SQL → DTO。";
+        byId("query-explainer-trait-label").textContent = cached ? "工程价值" : "性能特征";
+        byId("query-explainer-trait").textContent = cached ?
+            "HIT 避开数据库查询与 DTO 组装，用少量等待换取 MySQL 稳定。" :
+            "没有缓存命中收益，每次请求都会重复查询和组装。";
+        byId("query-explainer-proof-label").textContent = cached ? "潜在问题" : "重点观察";
+        byId("query-explainer-proof").textContent = cached ?
+            "热点 Key 失效可能引发缓存击穿；不存在 ID 反复回源会形成缓存穿透，后续阶段分别验证。" :
+            "MySQL 回源、SQL 查询数，以及 P95 / P99 延迟。";
     }
 
     function renderCrowdTier() {
@@ -466,8 +493,8 @@
         byId("crowd-size-value").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("query-preview-rate").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("crowd-size-note").textContent = connectionMode === "auto" ?
-            "固定运行 " + tier.duration + " 秒；进入实验室后，由开始按钮创建任务并锁定自动配置。" :
-            "固定运行 " + tier.duration + " 秒；进入实验室后，由开始按钮创建任务并锁定手动配置。";
+            "两条路径固定运行 " + tier.duration + " 秒；当前 -c 是共同条件预估，进入实验室选定路径后重新计算并在启动时锁定。" :
+            "两条路径固定运行 " + tier.duration + " 秒，并共享手动指定的 -c；进入实验室后由开始按钮创建任务。";
         byId("market-source-rate").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("market-flow-target").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("market-flow-actual-label").textContent = "运行事实";
@@ -553,7 +580,7 @@
             byId(id).disabled = locked;
         });
         Array.prototype.forEach.call(document.querySelectorAll(
-            "[data-query-path], [data-crowd-tier], [data-connection-mode], [data-connection-count]"), function (control) {
+            "[data-query-explainer], [data-crowd-tier], [data-connection-mode], [data-connection-count]"), function (control) {
             control.disabled = locked;
         });
     }
@@ -878,11 +905,10 @@
         }
         document.body.classList.add("is-crowd-lab-departing");
         window.setTimeout(function () {
-            var selectedMode = experimentState.get().mode;
             var tier = task && task.tier || crowdTiers[crowdTierID];
             var finalMode = task && task.connectionMode || connectionMode;
             var query = "/lab?entry=crowd" +
-                "&mode=" + encodeURIComponent(task && task.mode || selectedMode) +
+                "&mode=" + encodeURIComponent(task && task.mode || "direct") +
                 "&rate=" + encodeURIComponent(tier.rate) +
                 "&connectionMode=" + encodeURIComponent(finalMode);
             if (task) {
@@ -901,7 +927,6 @@
             return;
         }
         stopMarketPreview();
-        var experiment = experimentState.get();
         setExperimentControlsLocked(true);
         byId("start-crowd-test").disabled = true;
         byId("start-crowd-test").textContent = "正在交接计划";
@@ -922,8 +947,10 @@
                 taskId: "",
                 entry: "crowd",
                 launchWhenObserved: false,
+                sharedConditions: true,
                 materialName: materials[selectedCode].name,
-                mode: experiment.mode,
+                // 配置页不替用户选择路径；Direct 只是实验室打开时的默认选项。
+                mode: "direct",
                 cacheTemperature: "cold",
                 tier: crowdTierID,
                 expectedRate: tier.rate,
@@ -938,6 +965,7 @@
                 taskId: handoff.taskId,
                 entry: handoff.entry,
                 launchWhenObserved: handoff.launchWhenObserved,
+                sharedConditions: handoff.sharedConditions,
                 materialName: handoff.materialName,
                 mode: handoff.mode,
                 cacheTemperature: handoff.cacheTemperature,
@@ -1044,7 +1072,7 @@
         setState("crowd_preparing");
         setExperimentControlsLocked(false);
         byId("start-crowd-test").disabled = false;
-        byId("start-crowd-test").textContent = "确认配置并进入实验室";
+        byId("start-crowd-test").textContent = "确认共同条件并进入实验室";
         byId("enter-crowd-lab").hidden = true;
         byId("crowd-connection-current").textContent = "尚未创建";
         byId("crowd-status-title").textContent = "计划等待确认";
@@ -1114,16 +1142,14 @@
         byId("enter-crowd-lab").addEventListener("click", function () {
             enterCrowdLabView();
         });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-query-path]"), function (button) {
+        Array.prototype.forEach.call(document.querySelectorAll("[data-query-explainer]"), function (button) {
             button.addEventListener("click", function () {
-                var mode = button.dataset.queryPath;
-                if (isTaskActive() || (mode !== "direct" && mode !== "cached") ||
-                    experimentState.get().mode === mode) {
+                var mode = button.dataset.queryExplainer;
+                if ((mode !== "direct" && mode !== "cached") || mode === queryExplainerMode) {
                     return;
                 }
-                beginNextMarketDraft();
-                experimentState.set({ mode: mode, cacheTemperature: "cold" });
-                refreshConnectionPlan();
+                queryExplainerMode = mode;
+                renderQueryExplainer();
             });
         });
         Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (button) {
@@ -1188,6 +1214,7 @@
         startWorldEntrance();
         bindEvents();
         renderExperimentState(experimentState.get());
+        renderQueryExplainer();
         experimentState.subscribe(renderExperimentState);
         var requestedExperiment = incomingFoyerExperiment();
         restoreActiveTask().then(function () {

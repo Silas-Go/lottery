@@ -437,7 +437,8 @@
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
         var taskMatchesMode = taskMatchesSelection(state.loadtestTask);
         var pendingPlanMatchesMode = Boolean(!state.loadtestTask &&
-            state.pendingRun && state.pendingRun.mode === currentExperiment().mode &&
+            state.pendingRun && (state.pendingRun.sharedConditions ||
+                state.pendingRun.mode === currentExperiment().mode) &&
             (state.pendingRun.experiment || "cache-aside-read") === selectedLoadtestExperiment() &&
             (state.scenario !== "penetration" || state.pendingRun.protection === state.protection));
         var recoveringTask = Boolean(!state.loadtestTask && state.loadtestTaskId);
@@ -448,7 +449,8 @@
             status: state.loadtestTaskId && state.pendingRun ? "starting" : "waiting",
             experiment: pending.experiment || "cache-aside-read",
             protection: pending.protection || "",
-            mode: pending.mode || currentExperiment().mode,
+            mode: pending.sharedConditions ? currentExperiment().mode :
+                (pending.mode || currentExperiment().mode),
             connectionMode: pending.connectionMode || connectionMode,
             connectionReason: pending.connectionReason || "",
             plannedConnections: Number(pending.plannedConnections || 0),
@@ -459,10 +461,12 @@
                     Number(pending.connections || 0) : 0
             }
         } : null;
-        var taskAttached = taskMatchesMode || pendingMatchesMode;
+        // 共同条件计划还不是任务，保留“先选路径、再开始”的配置视角；
+        // 只有真实任务或恢复中的 task id 才切换到任务观测布局。
+        var taskAttached = taskMatchesMode || recoveringTask;
         document.body.dataset.taskAttached = taskAttached ? "true" : "false";
         byId("query-title").textContent = taskAttached ?
-            "观察本轮查询压测任务" : "确定本轮读取路径";
+            "观察本轮查询压测任务" : "选择本轮读取路径并开始";
         var taskTier = taskMatchesMode && state.loadtestTask.tier ||
             pendingTask && pendingTask.tier || null;
         var taskMode = taskMatchesMode && state.loadtestTask.connectionMode ||
@@ -471,6 +475,7 @@
         var displayDuration = Number(taskTier && taskTier.durationSeconds || tier.duration);
         var plan = matchingLabConnectionPlan();
         var handoffConnections = Number(pendingMatchesMode &&
+            (!pending.sharedConditions || pending.connectionMode === "manual") &&
             pending.plannedConnections || 0);
         var effectiveConnectionMode = selectedConnectionMode();
         var plannedConnections = effectiveConnectionMode === "manual" ? manualConnections :
@@ -518,7 +523,9 @@
                 (state.loadtestCreateInFlight ?
                     "页面和指标观测均已就绪，正在锁定最终 Runner 配置。" :
                     (state.labSceneReady && state.metricsObservationReady ?
-                        "观测已经就绪；点击开始按钮后才会创建 Runner 任务并发送真实请求。" :
+                        (pending.sharedConditions ?
+                            "共同 QPS、连接策略与时长已载入；选择 Direct 或 Cache-Aside，再点击开始创建任务。" :
+                            "观测已经就绪；点击开始按钮后才会创建 Runner 任务并发送真实请求。") :
                         "Runner 尚未创建，当前没有连接启用，也没有真实请求发送。")) :
                 (pendingTask ? "正在通过任务快照恢复 Runner 状态；此时不会播放请求动画。" :
                 "创建后，Runner " + (plannedConnections > 0 ?
@@ -587,6 +594,7 @@
         renderActiveMetrics();
         renderCrowdSetup();
         renderScenarioControls(state.loadtestTask);
+        updateControlState();
     }
 
     function scenarioPhaseLabel(phase) {
@@ -832,9 +840,12 @@
         var loadtestLocked = loadtestIsActive(state.loadtestTask);
         var pendingConfiguredPlan = Boolean(state.entry === "crowd" && state.pendingRun &&
             !state.loadtestTaskId);
+        var pendingSharedPlan = Boolean(pendingConfiguredPlan && state.pendingRun.sharedConditions);
         var observationPending = Boolean(isCrowdEntry() && !state.loadtestTaskId &&
             (!state.labSceneReady || !state.metricsObservationReady));
-        var readinessLocked = state.loadtestStartRequested || state.loadtestCreateInFlight ||
+        var pathReadinessLocked = state.loadtestStartRequested || state.loadtestCreateInFlight ||
+            (pendingConfiguredPlan && !pendingSharedPlan);
+        var scenarioReadinessLocked = state.loadtestStartRequested || state.loadtestCreateInFlight ||
             pendingConfiguredPlan;
         var legacyTask = Boolean(state.loadtestTask && state.loadtestTask.tier &&
             !crowdTierForRate(state.loadtestTask.tier.rate));
@@ -842,13 +853,13 @@
             state.loadtestCreateInFlight;
         byId("query-archive").disabled = locked || observationPending;
         ["mode-direct", "mode-cached"].forEach(function (id) {
-            byId(id).disabled = locked || readinessLocked || state.scenario !== "steady";
+            byId(id).disabled = locked || pathReadinessLocked || state.scenario !== "steady";
         });
         ["steady", "breakdown", "penetration"].forEach(function (scenario) {
-            byId("scenario-" + scenario).disabled = locked || readinessLocked;
+            byId("scenario-" + scenario).disabled = locked || scenarioReadinessLocked;
         });
         ["protection-none", "protection-negative"].forEach(function (id) {
-            byId(id).disabled = locked || readinessLocked;
+            byId(id).disabled = locked || scenarioReadinessLocked;
         });
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
             radio.disabled = locked;
@@ -4120,10 +4131,16 @@
         byId("protection-negative").addEventListener("click", function () { selectPenetrationProtection("negative-cache"); });
         byId("mode-direct").addEventListener("click", function () {
             experimentState.set({ mode: "direct" });
+            var nextURL = new URL(window.location.href);
+            nextURL.searchParams.set("mode", "direct");
+            window.history.replaceState(null, "", nextURL.toString());
             refreshLabConnectionPlan();
         });
         byId("mode-cached").addEventListener("click", function () {
             experimentState.set({ mode: "cached" });
+            var nextURL = new URL(window.location.href);
+            nextURL.searchParams.set("mode", "cached");
+            window.history.replaceState(null, "", nextURL.toString());
             refreshLabConnectionPlan();
         });
         Array.prototype.forEach.call(document.querySelectorAll("[name='lab-cache-temperature']"), function (radio) {
@@ -4212,7 +4229,8 @@
                 connectionMode: state.pendingRun.connectionMode || connectionMode,
                 connections: Number(state.pendingRun.plannedConnections || 0),
                 reason: state.pendingRun.connectionReason || "",
-                requestMode: state.pendingRun.mode,
+                // 配置页的自动值只是共同条件预估；共享计划必须在实验室按所选路径重算。
+                requestMode: state.pendingRun.sharedConditions ? "shared-preview" : state.pendingRun.mode,
                 requestExperiment: state.pendingRun.experiment || "cache-aside-read",
                 requestProtection: state.pendingRun.protection || ""
             };
