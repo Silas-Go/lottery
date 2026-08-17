@@ -44,15 +44,6 @@ func NewArchiveService(store *database.Store) *ArchiveService {
 	return &ArchiveService{store: store}
 }
 
-// List 返回市场基础列表。它不参与聚合详情压力实验，避免初始化请求污染对比数据。
-func (s *ArchiveService) List() ([]database.MaterialSummaryDTO, *AppError) {
-	archives, err := s.store.ListMaterialSummaries()
-	if err != nil {
-		return nil, NewAppError(CodeArchiveDBReadFailed, "材料档案目录暂时无法打开", err)
-	}
-	return archives, nil
-}
-
 // ReadDirect 代表旧规矩：每次都重新 JOIN 基础资料并聚合组成、交易和评分事实。
 func (s *ArchiveService) ReadDirect(id int) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError) {
 	if appErr := validateArchiveMaterialID(id); appErr != nil {

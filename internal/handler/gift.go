@@ -17,16 +17,15 @@ import (
 // GiftHandler 处理限量材料展示和高并发抽取 HTTP 请求。
 // 它只负责 HTTP 适配和 cookie 写入，抽奖准入、库存、MQ 补偿等业务规则都交给 service。
 type GiftHandler struct {
-	lottery      *service.LotteryService
-	cacheLottery *service.CacheAsideLotteryService
+	lottery *service.LotteryService
 }
 
 var autoLotteryUID int64 = time.Now().UnixNano() % 1000000000
 
 // NewGiftHandler 创建奖品相关的 HTTP handler。
-// handler 通过依赖注入拿到 Redis 异步模式和 MySQL 同步模式，保持路由层和业务层解耦。
-func NewGiftHandler(lottery *service.LotteryService, cacheLottery *service.CacheAsideLotteryService) *GiftHandler {
-	return &GiftHandler{lottery: lottery, cacheLottery: cacheLottery}
+// handler 通过依赖注入拿到 Redis 异步模式，保持路由层和业务层解耦。
+func NewGiftHandler(lottery *service.LotteryService) *GiftHandler {
+	return &GiftHandler{lottery: lottery}
 }
 
 func lotteryUID(ctx *gin.Context) int {
@@ -111,38 +110,5 @@ func (h *GiftHandler) Lottery(ctx *gin.Context) {
 	ctx.SetCookie("inventory_mode", string(result.InventoryMode), result.Delay, "/", cookieDomain, false, false)
 
 	slog.Info("lottery request response", "uid", result.UID, "gid", result.GiftID, "duration_ms", time.Since(start).Milliseconds())
-	ctx.String(http.StatusOK, strconv.Itoa(result.GiftID))
-}
-
-// LotteryCacheAside 处理历史路径 /lucky/cacheaside，对应 MySQL 权威库存同步准入。
-// 它和 Redis 模式使用相同 HTTP 协议与订单生命周期，Redis 读缓存不参与库存正确性。
-func (h *GiftHandler) LotteryCacheAside(ctx *gin.Context) {
-	start := time.Now()
-	defer func() {
-		metrics.RecordCacheAsideLatency(time.Since(start))
-	}()
-
-	uid := lotteryUID(ctx)
-	slog.Info("cache-aside lottery http request accepted", "uid", uid, "client", ctx.ClientIP(), "path", ctx.Request.URL.Path)
-	result, appErr := h.cacheLottery.Draw(uid)
-	if appErr != nil {
-		writeServiceError(ctx, appErr)
-		return
-	}
-	if result.GiftID == 0 {
-		slog.Info("cache-aside lottery response no stock", "uid", uid, "duration_ms", time.Since(start).Milliseconds())
-		ctx.String(http.StatusOK, "0")
-		return
-	}
-
-	cookieDomain := util.EnvString("LOTTERY_COOKIE_DOMAIN", "localhost")
-	ctx.SetCookie("name", result.GiftName, result.Delay, "/", cookieDomain, false, false)
-	ctx.SetCookie("price", strconv.Itoa(result.Price), result.Delay, "/", cookieDomain, false, false)
-	ctx.SetCookie("uid", strconv.Itoa(result.UID), result.Delay, "/", cookieDomain, false, false)
-	ctx.SetCookie("gid", strconv.Itoa(result.GiftID), result.Delay, "/", cookieDomain, false, false)
-	ctx.SetCookie("order_status", string(result.Status), result.Delay, "/", cookieDomain, false, false)
-	ctx.SetCookie("inventory_mode", string(result.InventoryMode), result.Delay, "/", cookieDomain, false, false)
-
-	slog.Info("cache-aside lottery response", "uid", result.UID, "gid", result.GiftID, "duration_ms", time.Since(start).Milliseconds())
 	ctx.String(http.StatusOK, strconv.Itoa(result.GiftID))
 }

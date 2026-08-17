@@ -7,10 +7,10 @@
 Go 秒杀/抽奖系统演示项目。核心链路：
 
 - Go Web 接收抽奖、支付、放弃支付请求
-- 两个模式共用 `stock_acquired -> pending_payment -> paid/cancelled` 生命周期
+- 对外秒杀入口使用 `stock_acquired -> pending_payment -> paid/cancelled` 生命周期
 - Redis 模式由 Lua 原子准入，RocketMQ 普通消息异步落单，延迟消息检查支付超时
-- MySQL 模式在同一事务内扣库存并建立 `pending_payment`
-- MySQL 是订单最终账本；Redis admission 是 Redis 模式的实时并发裁决状态
+- 旧数据卷中的 MySQL 模式订单仍可完成支付或取消，但不再开放新的 HTTP 准入入口
+- MySQL 是订单最终账本；Redis admission 是实时并发裁决状态
 - 前端通过 SSE 展示服务端真实指标
 
 默认结构支持完整 Docker Compose；开发时也可只用 Docker 跑依赖、Go app 本机跑。
@@ -48,9 +48,7 @@ docs/                   # 设计和可靠性说明
 
 **Redis 抽奖：** `GET /lucky` → Redis Lua `stock_acquired` → `CREATE_ORDER` 普通消息 → MySQL `pending_payment`
 
-**MySQL 抽奖：** `GET /lucky/cacheaside` → MySQL 事务扣库存并建立 `pending_payment`
-
-**支付：** `POST /pay` → `pending_payment -> paid`；两个模式使用各自权威状态做条件迁移
+**支付：** `POST /pay` → `pending_payment -> paid`；历史 MySQL 订单按账本状态迁移，新订单按 Redis admission 裁决
 
 **放弃/超时：** `POST /giveup` 或 `CANCEL_ORDER` → 非终态 `-> cancelled` → 按库存模式回补一次
 

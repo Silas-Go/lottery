@@ -109,18 +109,6 @@ type MaterialReview struct {
 
 func (MaterialReview) TableName() string { return "reviews" }
 
-// MaterialSummaryDTO 是市场列表使用的轻量视图，不参与 Direct/Cache-Aside 压测。
-type MaterialSummaryDTO struct {
-	ID      int    `json:"id"`
-	Name    string `json:"name"`
-	Sigil   string `json:"sigil"`
-	Accent  string `json:"accent"`
-	Summary string `json:"summary"`
-	Price   int    `json:"price"`
-	Stock   int    `json:"stock"`
-	Rarity  string `json:"rarity"`
-}
-
 type MaterialRarityDTO struct {
 	Code  string `json:"code"`
 	Label string `json:"label"`
@@ -338,22 +326,6 @@ func (s *Store) ensureMaterialFactFixtures() error {
 		}
 	}
 	return nil
-}
-
-// ListMaterialSummaries 只读取市场目录需要的轻量字段，不计入详情压力实验。
-func (s *Store) ListMaterialSummaries() ([]MaterialSummaryDTO, error) {
-	var summaries []MaterialSummaryDTO
-	err := s.db.Raw(`
-		SELECT m.id, m.name, m.sigil, m.accent, m.summary, m.price, m.stock,
-		       r.label AS rarity
-		FROM materials m
-		JOIN material_rarities r ON r.id = m.rarity_id
-		WHERE m.id = ? AND m.is_primary = TRUE
-		ORDER BY m.id`, StarMarrowMaterialID).Scan(&summaries).Error
-	if err != nil {
-		return nil, fmt.Errorf("list material summaries: %w", err)
-	}
-	return summaries, nil
 }
 
 // GetMaterialDetail 从 MySQL 组装最终详情 DTO，并返回实际执行的 SQL 条数。

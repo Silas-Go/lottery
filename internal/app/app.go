@@ -220,12 +220,10 @@ func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService, *servi
 		RateLimitQPS: rateLimitQPS,
 	})
 	orderService := service.NewOrderService(store)
-	cacheAsideService := service.NewCacheAsideLotteryService(store)
 	archiveService := service.NewArchiveService(store)
 	purchaseLabService := service.NewPurchaseLabService(store, archiveService)
 	loadtestService := service.NewLoadtestService(loadtest.NewClient(util.EnvString("LOTTERY_LOADTEST_RUNNER_URL", "http://loadtest-runner:8090")))
 	resetLabRuntime := func() {
-		cacheAsideService.ResetCircuitBreaker()
 		lotteryService.ResetRateLimiter()
 	}
 	slog.Info("http dependencies initialized", "rate_limit_qps", rateLimitQPS)
@@ -233,7 +231,7 @@ func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService, *servi
 	engine := router.New(router.Handlers{
 		Archive:     handler.NewArchiveHandler(archiveService),
 		PurchaseLab: handler.NewPurchaseLabHandler(purchaseLabService),
-		Gift:        handler.NewGiftHandler(lotteryService, cacheAsideService),
+		Gift:        handler.NewGiftHandler(lotteryService),
 		Order:       handler.NewOrderHandler(orderService),
 		Lab:         handler.NewLabHandler(store, resetLabRuntime),
 		Loadtest:    handler.NewLoadtestHandler(loadtestService),

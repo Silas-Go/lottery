@@ -79,7 +79,6 @@ func registerPages(engine *gin.Engine) {
 }
 
 func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
-	engine.GET("/api/archives", handlers.Archive.List)
 	engine.GET("/api/archives/:id/direct", handlers.Archive.ReadDirect)
 	engine.GET("/api/archives/:id/cached", handlers.Archive.ReadCached)
 	engine.POST("/api/chapters/cache-aside/reset", handlers.Archive.ResetChapter)
@@ -94,9 +93,7 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/api/purchase-lab/runs/:requestId", handlers.PurchaseLab.GetRun)
 	engine.GET("/api/seckill/materials", handlers.Gift.GetAllMaterials)
 	engine.GET("/api/seckill/rate-limit-probe", handlers.Gift.ProbeRateLimit)
-	engine.GET("/gifts", handlers.Gift.GetAllMaterials) // 兼容旧转盘页面与压测脚本。
 	engine.GET("/lucky", handlers.Gift.Lottery)
-	engine.GET("/lucky/cacheaside", handlers.Gift.LotteryCacheAside)
 	engine.POST("/giveup", handlers.Order.GiveUp)
 	engine.POST("/pay", handlers.Order.Pay)
 	engine.GET("/api/order/status", handlers.Order.Status)

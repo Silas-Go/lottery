@@ -168,7 +168,6 @@ Browser / wrk2 -> Go API -> Redis
 
 | 路径 | 方法 | 说明 |
 |---|---|---|
-| `/api/archives` | GET | 材料基础列表；不计入对比指标 |
 | `/api/archives/:id/direct` | GET | 每次执行 4 条 SQL 组装聚合详情 |
 | `/api/archives/:id/cached` | GET | Redis Cache-Aside 读取最终 DTO |
 | `/api/chapters/cache-aside/reset` | POST | 清缓存并重置本章指标 |
@@ -209,10 +208,9 @@ TTL: 300s
 
 ## 书页背后的完整项目
 
-第一章之外，后端仍保留两套统一订单生命周期的秒杀写路径，供后续章节逐步揭示：
-
-- **方案 A：MySQL 权威库存同步准入**；
-- **方案 B：Redis 原子准入 + RocketMQ 普通消息异步落单 + MySQL 最终账本**。
+第一章之外，当前对外秒杀写入口只保留 **Redis 原子准入 + RocketMQ 普通消息异步落单 + MySQL 最终账本**。
+订单终态处理仍识别旧数据卷中的 MySQL 模式订单，确保历史 `pending_payment` 可以继续支付或取消，
+但不会再通过 HTTP 创建新的 MySQL 模式订单。
 
 统一生命周期：
 
@@ -227,19 +225,19 @@ stateDiagram-v2
     cancelled --> [*]
 ```
 
-两个写模式的当前 API：
+当前秒杀 API：
 
 | 路径 | 方案 |
 |---|---|
 | `GET /api/seckill/materials` | 当前唯一限量材料“星髓”；不返回实时库存 |
-| `GET /lucky/cacheaside` | 历史路径名；实际是 MySQL 权威库存同步扣减 |
 | `GET /lucky` | Redis Lua 准入 + RocketMQ 异步落单 |
 | `GET /api/order/status` | 查询统一订单状态 |
 | `POST /pay` | `pending_payment -> paid` |
 | `POST /giveup` | 非终态 `-> cancelled` |
 | `POST /api/lab/reset` | 重置完整秒杀实验 |
 
-`/lucky/cacheaside` 会在后续章节改成语义清楚的新路径；当前保留它是为了不破坏已有调用。它不再出现在第一章页面，也不再被解释成“缓存库存方案”。
+旧目录入口 `GET /api/archives`、旧转盘别名 `GET /gifts` 和 MySQL 同步准入入口
+`GET /lucky/cacheaside` 已取消注册；当前仓库内没有调用方，访问这些路径会返回 404。
 
 ## RocketMQ Topics
 

@@ -1,6 +1,7 @@
 # 秒杀订单状态机与可靠性边界
 
-本文描述当前代码实际实现的可靠性语义。两个库存模式共享同一套订单生命周期，差别仅在库存准入和 `pending_payment` 建立方式。
+本文描述当前代码实际实现的可靠性语义。对外秒杀准入只保留 Redis + MQ 路径；订单终态处理仍兼容
+旧数据卷中的 MySQL 模式订单，避免历史 `pending_payment` 因入口退役而无法支付或取消。
 
 首页 `/` 的左侧入口会进入真实秒杀实验室 `/seckill-lab`，页面调用 `/lucky`、`/pay`、`/giveup`
 与指标接口；首页本身只负责转场，不展示或裁决实时库存。
@@ -165,29 +166,20 @@ Runner 的全局单任务锁、任务状态持久化、停止语义和 SSE 转�
 非星髓商品、关系与事实数据；购买实验同时清理其他材料的订单和 Outbox。正常重启不能重置星髓库存。
 旧消息到达时因找不到匹配 admission 被幂等忽略，不能把已删除商品重新落单。
 
-## 模式 A：MySQL 权威库存同步准入
+## 历史 MySQL 模式订单的兼容边界
 
-入口：`GET /lucky/cacheaside`
+`GET /lucky/cacheaside` 已取消注册，应用不再通过 HTTP 创建新的 MySQL 模式订单。为避免旧数据卷中的
+`inventory_mode=mysql` 订单失去收敛路径，支付和取消仍保留以下终态规则：
 
-```text
-请求
--> MySQL 条件扣减 cache_stock
--> 同一事务创建 pending_payment 订单
--> 发送 CANCEL_ORDER 延迟检查
--> 支付或取消
-```
-
-关键边界：
-
-- 库存条件扣减和待支付订单创建处于同一个显式数据库事务。
 - 支付通过 `WHERE status = pending_payment` 条件更新竞争 `paid`。
 - 取消通过同一前置状态竞争 `cancelled`，并在同一事务回补 `cache_stock`。
 - 支付与取消只有一个操作能更新成功。
 - `cancelled` 重试不会再次回补库存。
 
-Redis 的 `gift_cache_all_stock` 在该模式中只是读快照，不参与库存正确性。真正防超卖的是 MySQL 条件更新。
+底层 MySQL 同步准入实现暂时保留为历史兼容代码，但未装配到 HTTP handler；删除它之前必须先确认
+所有旧订单都已进入 `paid/cancelled` 终态，并完成旧库存字段和指标的迁移。
 
-## 模式 B：Redis 准入、MQ 异步落单
+## 当前模式：Redis 准入、MQ 异步落单
 
 入口：`GET /lucky`
 

@@ -13,22 +13,13 @@ import (
 
 const maxArchiveExperimentBody = 4 << 10
 
-// ArchiveHandler 暴露第一章的职业目录、直读、缓存读和重置接口。
+// ArchiveHandler 暴露第一章的直读、缓存读、重置和受控 Runner 接口。
 type ArchiveHandler struct {
 	archive *service.ArchiveService
 }
 
 func NewArchiveHandler(archive *service.ArchiveService) *ArchiveHandler {
 	return &ArchiveHandler{archive: archive}
-}
-
-func (h *ArchiveHandler) List(ctx *gin.Context) {
-	archives, appErr := h.archive.List()
-	if appErr != nil {
-		writeServiceError(ctx, appErr)
-		return
-	}
-	ctx.JSON(http.StatusOK, archives)
 }
 
 func (h *ArchiveHandler) ReadDirect(ctx *gin.Context) {

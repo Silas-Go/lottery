@@ -37,11 +37,8 @@ docker compose logs -f app
 .\scripts\run-local-loadtest.ps1 -Rate 500 -Duration 30s -Connections 128
 ```
 
-默认目标是 `http://host.docker.internal:5678/lucky`。测试 MySQL 同步模式时传入：
-
-```powershell
-.\scripts\run-local-loadtest.ps1 -TargetUrl "http://host.docker.internal:5678/lucky/cacheaside"
-```
+默认且当前受支持的秒杀目标是 `http://host.docker.internal:5678/lucky`。历史 MySQL 同步准入入口
+`/lucky/cacheaside` 已取消注册，不再作为本地压测目标。
 
 ## 停止依赖
 
