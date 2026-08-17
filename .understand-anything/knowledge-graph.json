@@ -15511,6 +15511,46 @@
       "description": "Handlers 的 Order 字段持有 *handler.OrderHandler，路由注册通过该字段调用 Pay/GiveUp/Status。"
     },
     {
+      "source": "class:internal/router/router.go:Handlers",
+      "target": "class:internal/handler/archive.go:ArchiveHandler",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "Handlers 的 Archive 字段持有 *handler.ArchiveHandler，路由注册通过该字段调用档案读取与 Cache-Aside 实验接口。"
+    },
+    {
+      "source": "class:internal/router/router.go:Handlers",
+      "target": "class:internal/handler/purchase_lab.go:PurchaseLabHandler",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "Handlers 的 PurchaseLab 字段持有 *handler.PurchaseLabHandler，路由注册通过该字段调用购买实验状态、重置、执行、查询与结果接口。"
+    },
+    {
+      "source": "class:internal/router/router.go:Handlers",
+      "target": "class:internal/handler/gift.go:GiftHandler",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "Handlers 的 Gift 字段持有 *handler.GiftHandler，路由注册通过该字段调用材料列表、限流探针与高并发抽取接口。"
+    },
+    {
+      "source": "class:internal/router/router.go:Handlers",
+      "target": "class:internal/handler/lab.go:LabHandler",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "Handlers 的 Lab 字段持有 *handler.LabHandler，路由注册通过该字段调用实验室重置接口。"
+    },
+    {
+      "source": "class:internal/router/router.go:Handlers",
+      "target": "class:internal/handler/loadtest.go:LoadtestHandler",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "Handlers 的 Loadtest 字段持有 *handler.LoadtestHandler，路由注册通过该字段调用受控压测的创建、连接规划、查询、事件流与停止接口。"
+    },
+    {
       "source": "file:internal/database/admission.go",
       "target": "function:internal/database/admission.go:TryAcquireLotteryAdmission",
       "type": "contains",
