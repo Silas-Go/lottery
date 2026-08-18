@@ -888,7 +888,9 @@
         }
         byId("query-archive").querySelector("span").textContent = queryButtonCopy;
         byId("reset-lab").disabled = loadtestLocked;
-        byId("clear-comparison").disabled = loadtestLocked;
+        Array.prototype.forEach.call(document.querySelectorAll("[data-clear-comparison]"), function (button) {
+            button.disabled = loadtestLocked;
+        });
     }
 
     function clearRouteTimers() {
@@ -4019,8 +4021,9 @@
             showToast("查询潮汐实验进行中，结束或停止后再清空对比。", "danger");
             return;
         }
-        var button = byId("clear-comparison");
-        button.disabled = true;
+        Array.prototype.forEach.call(document.querySelectorAll("[data-clear-comparison]"), function (button) {
+            button.disabled = true;
+        });
         experimentResults.clear();
         state.pendingRun = null;
         state.crowdRun = null;
@@ -4038,7 +4041,6 @@
         } catch (error) {
             showToast("本地对比已清空；服务端缓存与指标重置失败：" + error.message, "danger");
         } finally {
-            button.disabled = false;
             updateControlState();
         }
     }
@@ -4158,7 +4160,9 @@
             }
         });
         byId("reset-lab").addEventListener("click", resetLab);
-        byId("clear-comparison").addEventListener("click", clearComparison);
+        Array.prototype.forEach.call(document.querySelectorAll("[data-clear-comparison]"), function (button) {
+            button.addEventListener("click", clearComparison);
+        });
         byId("lab-stop-loadtest").addEventListener("click", stopLoadtest);
         byId("show-data-composition").addEventListener("click", showDataComposition);
         byId("close-data-composition").addEventListener("click", closeDataComposition);

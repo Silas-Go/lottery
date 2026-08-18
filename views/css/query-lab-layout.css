@@ -778,7 +778,7 @@
 
 .result-heading-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 
-#clear-comparison {
+.clear-comparison-button {
     min-height: 30px;
     padding: 0 10px;
     cursor: pointer;
@@ -789,9 +789,9 @@
     font: 900 9px/1 "SFMono-Regular", Consolas, monospace;
 }
 
-#clear-comparison:hover:not(:disabled) { border-color: rgba(102, 211, 208, .52); background: rgba(102, 211, 208, .1); }
+.clear-comparison-button:hover:not(:disabled) { border-color: rgba(102, 211, 208, .52); background: rgba(102, 211, 208, .1); }
 
-#clear-comparison:disabled { cursor: wait; opacity: .5; }
+.clear-comparison-button:disabled { cursor: wait; opacity: .5; }
 
 .frozen-result-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 
@@ -937,7 +937,7 @@
     .connection-state { justify-content: center; }
     .panel-heading { align-items: stretch; flex-direction: column; gap: 9px; }
     .result-heading-actions { align-items: stretch; flex-direction: column; }
-    #clear-comparison { align-self: flex-start; }
+    .clear-comparison-button { align-self: flex-start; }
     .endpoint-label,
     .metrics-timestamp,
     .readonly-badge { align-self: flex-start; }

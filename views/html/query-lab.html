@@ -506,7 +506,10 @@
                             <span>04 / WRK2 FINAL RESULTS</span>
                             <h2 id="metrics-heading">两条路径的 wrk2 最终指标</h2>
                         </div>
-                        <span id="wrk2-final-status" class="metrics-timestamp" role="status" aria-live="polite">等待 wrk2 完成</span>
+                        <div class="result-heading-actions">
+                            <span id="wrk2-final-status" class="metrics-timestamp" role="status" aria-live="polite">等待 wrk2 完成</span>
+                            <button class="clear-comparison-button" data-clear-comparison type="button">清空结果</button>
+                        </div>
                     </div>
 
                     <div class="metrics-table" role="table" aria-label="MySQL Direct 与 Redis Cache-Aside 的 wrk2 最终指标">
@@ -552,7 +555,7 @@
                     </div>
                     <div class="result-heading-actions">
                         <span id="freeze-status" class="freeze-status" role="status" aria-live="polite">等待一轮测试结束</span>
-                        <button id="clear-comparison" type="button">清空对比</button>
+                        <button id="clear-comparison" class="clear-comparison-button" data-clear-comparison type="button">清空对比</button>
                     </div>
                 </div>
 
