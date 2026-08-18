@@ -1,36 +1,30 @@
-# Silas · 高并发架构故事书
+# Silas · 星髓高并发架构实验场
 
-这不是把 Redis、MySQL、RocketMQ 全部堆在一张图上的“技术陈列柜”。项目会像一本故事书一样，一章只提出一个问题，再用可重复的真实实验让架构自己回答。
+Silas 是一个 Go 高并发实验项目。它不按“章节”顺序解锁功能，而是围绕唯一业务材料“星髓”，平级提供三个可以独立进入的真实实验：
 
-当前街区包含三条彼此独立、但共享同一炼金材料世界观的实验链路：
+| 实验 | 核心问题 | 主要对比或结论 | 入口 |
+|---|---|---|---|
+| 旁路缓存查询 | 高频重复读如何离开 MySQL 热路径 | MySQL Direct vs Redis Cache-Aside；热点击穿；缓存穿透与负缓存 | `/material-shop?experiment=query` |
+| 库存一致性购买 | MySQL 库存提交后，Redis 副本如何失效 | 同步 `DEL` vs Transactional Outbox + RocketMQ | `/material-shop?experiment=purchase` |
+| 秒杀交易 | 高并发下如何裁决资格、削峰落单并收敛订单状态 | 令牌桶、Redis Lua、普通/延迟消息、支付与取消互斥 | `/seckill-lab` |
 
-- 左侧限量材料申领所：星髓抢购、入口限流、Redis Lua 原子准入、RocketMQ 异步落单与支付/取消状态机；
-- 右侧材料查询实验：对比 MySQL Direct 与 Redis Cache-Aside；
-- 右侧材料购买实验：对比同步缓存失效与 Outbox + MQ 异步失效。
+三项实验没有前置关系，也不需要按编号完成。编号只用于页面排列。
 
-首页不再按街道建筑划分功能，而以唯一材料“星髓”为视觉中心，平级展示三个技术问题：
-旁路缓存查询、库存一致性购买和秒杀交易。桌面端悬停或键盘聚焦方片可预览实验，点击名称可锁定展开；
-触屏设备点击展开，再通过独立按钮进入。查询与购买仍进入 `/material-shop` 完成各自计划配置，
-秒杀直接进入 `/seckill-lab`。三项实验共享业务语境，但各自拥有独立、可重置的数据边界。
-秒杀页的材料目录不返回实时库存，避免展示数据被误当成 Redis 准入的权威结果。
+它们共享同一套 Go、MySQL、Redis、RocketMQ 和指标基础设施，但数据边界不同：
 
-左侧把三个问题明确隔离：单次请求只解释 `HTTP -> 限流 -> Redis Lua -> RocketMQ -> MySQL`；
-库存主实验由 Runner 精确生成 600 个唯一用户同时争抢 300 份星髓，批次小于默认 800 的满桶容量，
-因此正常结果应是 0 个限流、300 个准入、300 个售罄且不超卖；限流辅助实验则使用与 `/lucky`
-共享的令牌桶探针持续运行 10 秒，探针通过后立即返回，不访问库存、MQ 或 MySQL。
+- 查询与购买实验共享 `materials.stock` 和 `archive:material-detail:v2:4`，用于真实展示写后缓存一致性，因此不应并行运行。
+- 秒杀实验使用独立的 `inventory.count` 活动库存和 Redis admission，不与普通购买库存混用。
+- 所有页面动画都由真实 HTTP 响应、Runner 事件或服务端 SSE 指标驱动，不生成假流量和假指标。
 
-室外街道、店铺轮廓和远景统一由 `views/img/market-street-bg.svg` 提供；热区、槽口、
-剪影和粒子坐标集中在 `views/js/market-scene-config.js`。替换背景时只需重新标定这一份配置，
-不要重新使用 CSS 几何块拼接街道。
+## 快速开始
 
-## 第一章怎么玩
+### 完整 Docker Compose
 
-页面采用逐幕推进：后续章节入口默认锁定，必须先真正翻阅一页档案、让旧路径承受请求、再让缓存路径交出数据，故事才会继续。原生长滚动条被隐藏，页首进度与桌面端章节罗盘只负责标记已经走过的路，不能提前跳过实验。
-
-启动完整环境：
+推荐使用完整 Compose，它会同时启动应用、受控压测 Runner 和全部依赖：
 
 ```bash
 docker compose up -d --build
+docker compose ps
 ```
 
 打开：
@@ -39,152 +33,107 @@ docker compose up -d --build
 http://localhost:5678/
 ```
 
-### Windows / macOS / Linux 压测兼容
+主要服务：
 
-`docker/wrk2/Dockerfile` 会读取 Docker BuildKit 提供的 `TARGETARCH`，不需要手动指定 `--platform`：
+| 服务 | 用途 | 宿主机端口 |
+|---|---|---:|
+| `app` | Go Web、三个实验 API、SSE | `5678` |
+| `loadtest-runner` | 管理白名单压测任务并启动 wrk2 | 不暴露 |
+| `mysql` | 权威数据、订单账本、Outbox | `3306` |
+| `redis` | DTO 缓存、秒杀库存和 admission | `6379` |
+| `rocketmq-namesrv` | RocketMQ NameServer | `9876` |
+| `rocketmq-broker` | Broker + Proxy | `8080/8081/10909/10911/10912` |
+| `rocketmq-init` | 创建 Topic 和 Consumer Group，成功后退出 | — |
 
-- `amd64`（常见 Windows、Intel Mac）构建 wrk2 主线版本；
-- `arm64`（Apple Silicon Mac、Windows on ARM）构建 AArch64 兼容版本。
+停止容器但保留数据卷：
 
-仓库通过 `.gitattributes` 强制 Shell 和 Lua 脚本使用 LF，避免 Windows 的 CRLF 让 Linux 容器入口启动失败。首次构建 wrk2 需要下载编译工具链；Dockerfile 会按 CPU 架构隔离 apt 缓存，并对镜像源的临时 5xx 和中断下载自动重试。
-
-两个架构的锁定源码都会应用仓库内的延迟安全补丁：计时使用单调时钟，异常的 corrected
-latency 回退为本次请求的实际延迟，HDR Histogram 也会在桶索引计算前拒绝非法值。Runner
-把回退数和丢弃数分别记录为 `latencyScheduleFallbacks`、`latencySamplesDropped`，只要保护
-介入就写入任务警告日志，避免偶发计时异常再次以 `counts_index` 断言结束整轮实验。
-
-`docker compose up -d --build` 会同时启动不暴露宿主机端口的常驻
-`loadtest-runner`。页面通过主应用创建受控任务，Runner 在 Compose 网络内启动 wrk2；
-Windows、macOS 和 Linux 都只需配置“查询潮汐”并开始实验，不依赖宿主机终端语法。
-
-然后按页面顺序完成四件事：
-
-1. 首页的查询与购买方片分别进入 `/material-shop?experiment=query` 和 `/material-shop?experiment=purchase`。这个二级页是“星髓实验计划工作台”，材料店前厅已经删除；无实验参数或参数非法的 `/material-shop` 会返回实验总览。两项实验共享材料语境，但互不构成启动前置条件。由于共用库存与缓存，不应并行运行。组成材料只参与详情 JOIN，不作为独立商品开放。
-2. 查询计划工作台直接选择 Direct / Cache-Aside、目标速率、连接策略和固定时长，右侧只展示本轮计划摘要与路径预览。配置页只显示 Runner 的启动前 `wrk2 -c` 预估并保存实验计划，不创建任务。进入 `/lab` 后，页面先完成可见场景渲染并收到指标 SSE 的首个权威快照，随后才调用 `/api/loadtests`；任务创建响应会立即显示本轮最终锁定的 `-c`。实验期间通过 SSE 观察服务端 SQL、连接池与缓存状态，最终对比表分别冻结目标/实际速率、目标完成率、`-c` 配置、实际请求延迟、需求侧延迟、Socket Errors 和 Error Rate。购买计划工作台选择同步失效或 Outbox + MQ，并明确展示固定的 150 个唯一请求、12 个服务端并发槽和 20 QPS 观察探针；确认后进入 `/purchase-lab`，仍由用户明确点击才开始真实执行。购买页在 POST 返回前轮询真实批次进度，始终保留完整流程骨架，只高亮当前真实节点；事务提交后才激活 `Outbox Publisher -> MQ(PURCHASE_CACHE_INVALIDATE) -> 缓存失效 Consumer -> Redis DEL` 支线。当前步骤用“发生 / 原因 / 证据 / 接下来”四块稳定讲解，实时计数不会反复换掉正文；真实执行结束后默认停在回放第 1 步，自动播放时 1x 每步停留 6 秒。Publisher 每 1 秒真实扫描一次，页面直接显示后端提供的扫描次数与上/下次扫描时间。
-3. 唤醒 Redis 记忆水晶。第一次查询真实发生 `MISS -> 4 SQL -> SET DTO`，后续直接命中最终 JSON。
-4. 切换 Cached 并使用相同查询潮汐与通路配置再次点击，查看缓存命中和 MySQL 回源差异。
-
-查询潮汐表示 wrk2 每秒计划产生多少个 HTTP 请求，不表示同时在线的人数。页面提供四个
-目标速率：
-
-| Rate ID | 页面名称 | 目标速率 | 时长 |
-|---|---|---:|---:|
-| `qps_100` | 100 卷轴/秒 | 100 req/s | 30s |
-| `qps_300` | 300 卷轴/秒 | 300 req/s | 30s |
-| `qps_800` | 800 卷轴/秒 | 800 req/s | 30s |
-| `qps_1500` | 1500 卷轴/秒 | 1500 req/s | 30s |
-
-“魔法通路”对应 wrk2 的 HTTP 持久连接。自动模式会依据同一材料的历史实际请求 P95
-估算所需在途请求数、增加周转余量，并从 70 / 140 / 300 / 500 条通路中选择；同一材料、
-同一目标速率的另一读取路径会沿用已经选定的自动配置，避免 Direct 与 Cache-Aside 使用
-不同并发条件。手动模式允许直接选择 70 / 140 / 300 / 500 条通路，用于观察固定通路数下
-响应时间如何影响周转和入口积压。配置阶段的只读预估由
-`POST /api/loadtests/connection-plan` 使用与任务创建相同的 Runner 算法给出；它不创建任务。
-真正创建任务时 Runner 会再次计算并在响应中返回最终锁定的 `connections`。
-
-计划工作台到实验室的视觉转场不承担启动语义。工作台只把路径、目标速率、连接模式和固定时长
-保存到同标签页的待运行计划并写入 URL；实验室确认页面可见且全局指标 SSE 已收到首帧后，
-才创建 Runner 任务。任务创建到任务 SSE 建立之间的少量事件由 Runner 事件历史回放，
-完整状态仍由任务 GET 快照和轮询恢复，因此无需新增 prepared 状态或另一套启动接口。
-
-页面中的 `wrk2 -c N` 表示传给 wrk2 的配置连接数，不是另行测得的“成功建立 N 个 TCP
-Socket”。配置页尚未启动时，当前压测进程明确显示 0 条；任务创建后显示最终 `-c`，建连
-异常仍需结合同一轮的 Socket Errors 判断。
-
-一条 HTTP/1.1 持久连接可以连续复用，但当前 wrk2 链路通常要等上一张卷轴返回后才会在
-同一连接上发送下一张。连接不足或响应过慢时，wrk2 无法按目标节奏及时投递的请求会形成
-需求侧欠账；页面只在魔法通路入口表现这种积压，不能把它画成请求已经进入 MySQL 后等待。
-场景中的少量法师或“法师公会”只代表请求来源，不与 QPS、连接数或请求数一一对应。
-
-最终指标区明确区分两类延迟：`requestP50Ms` / `requestP90Ms` / `requestP95Ms` /
-`requestP99Ms` 来自 wrk2 uncorrected histogram，表示请求真正发出到收到响应的时间；
-`p50Ms` / `p90Ms` / `p95Ms` / `p99Ms` 来自 coordinated-omission corrected
-histogram，表示从计划投递时刻到收到响应的需求侧延迟，包含未能及时发送形成的容量欠账。
-后者不能标记为“客户真实等待时间”。若 `latencyScheduleFallbacks` 大于 0，本轮曾有 corrected
-时序矛盾，相关样本已保守回退为实际请求延迟；若 `latencySamplesDropped` 大于 0，则仍有超出
-直方图边界的非法样本被明确丢弃，这两个计数不参与两条路径的性能胜负。购买实验的 150 个唯一购买请求是另一轮独立负载，
-与查询潮汐、通路数量和 `actualRequests` 均无人数换算关系。
-
-终端命令仍保留在“查看等价命令”折叠区，只用于学习和调试，不是正常操作路径。
-
-重新讲述本章时，点击页脚的“合拢书本，重新讲述”。它只会清空：
-
-- `archive:material-detail:v2:*` Redis 最终 DTO 缓存；
-- 第一章的直读与缓存读指标。
-
-它不会删除秒杀订单，也不会改动任何库存。
-
-## 这次对比为什么成立
-
-两轮实验固定：
-
-| 不变量 | 内容 |
-|---|---|
-| 业务语义 | 读取同一份材料聚合详情 |
-| 权威数据 | MySQL 材料基础、组成、交易与评分表 |
-| HTTP 响应体 | 完全相同的 JSON |
-| 压测工具 | wrk2 固定 QPS |
-| 目标速率、时长、通路数 | 两条路径使用同一组配置；自动模式会为同组实验复用通路数 |
-
-唯一变量是读取路径：
-
-```text
-旧规矩
-Browser / wrk2 -> Go API -> MySQL
-
-记忆水晶
-Browser / wrk2 -> Go API -> Redis
-                            ├─ HIT  -> 返回
-                            └─ MISS -> MySQL -> 回填 Redis -> 返回
+```bash
+docker compose down
 ```
 
-因此第一章没有再把 Cache-Aside 塞进秒杀库存方案里。缓存优化的是“它是什么”这类可重复读取；它不负责裁决“最后一件库存属于谁”。
+### Windows 本机运行 Go
 
-## 真实指标与故事隐喻
+适合频繁修改 Go 代码：
 
-页面没有伪造流量。故事中的每个变化都由服务端指标触发：
+```powershell
+.\scripts\run-local-app.ps1
+```
 
-| 故事语言 | 技术指标 |
-|---|---|
-| 法师公会 | 请求来源或用户群体的场景角色，不映射具体数值 |
-| 查询卷轴 | 一次 HTTP 请求 |
-| 查询潮汐 | 目标速率，即每秒计划生成的查询卷轴数 |
-| 魔法通路 | wrk2 `connections` / `-c` 配置，即计划保持的 HTTP 持久连接数；是否建连异常结合 Socket Errors |
-| 通路占用时间 | `requestP*Ms`，请求发出到收到响应的实际请求延迟 |
-| 实际处理速率 | wrk2 `actualQps`，即每秒完成的请求数 |
-| 入口卷轴积压 | corrected 需求侧延迟和目标完成率共同揭示的投递欠账 |
-| 真本查询次数 | MySQL `sqlQueries`（兼容字段 `dbReads` 同值） |
-| 每秒问询 | 最近请求桶计算的 `qps` |
-| 实际请求 P99 | wrk2 uncorrected `requestP99Ms` |
-| 需求侧 P99 | wrk2 corrected `p99Ms`，包含未及时投递的容量欠账 |
-| 长廊最高占用 | MySQL pool peak / capacity |
-| 水晶回答 | Redis cache hit |
-| 水晶遗忘 | Redis cache miss |
-| 真本磨损、书脊裂开 | 由真实 MySQL 读取次数跨过阈值后触发的叙事表现 |
+脚本会先启动 MySQL、Redis、RocketMQ 和初始化任务，再在宿主机运行应用：
 
-指标只保留有界延迟样本，不逐请求写日志。GORM 默认只记录慢查询和错误，避免压测再次制造 GB 级 SQL 日志。
+```text
+http://localhost:5678/
+```
 
-## 第一章 API
+停止依赖：
 
-| 路径 | 方法 | 说明 |
+```powershell
+.\scripts\stop-infra.ps1
+```
+
+该模式默认不启动常驻 `loadtest-runner`。需要直接压测本机 `/lucky` 时可运行：
+
+```powershell
+.\scripts\run-local-loadtest.ps1 -Rate 500 -Duration 30s -Connections 128
+```
+
+页面内创建受控 Runner 任务的完整体验请使用完整 Compose。
+
+## 实验一：旁路缓存查询
+
+配置入口：`/material-shop?experiment=query`
+
+实验室：`/lab`
+
+同一份星髓聚合详情分别走两条路径：
+
+```text
+MySQL Direct
+Browser / wrk2 -> Go API -> MySQL -> MaterialDetailDTO
+
+Redis Cache-Aside
+Browser / wrk2 -> Go API -> Redis
+                            ├─ HIT  -> MaterialDetailDTO
+                            └─ MISS -> MySQL -> SET DTO -> MaterialDetailDTO
+```
+
+聚合详情的 MySQL 权威数据来自：
+
+- `materials`：材料基础信息和普通购买库存；
+- `material_components JOIN materials`：组成材料；
+- `trades`：交易次数、均价和最高价；
+- `reviews`：评分和评价数。
+
+Direct 每次通过 4 条 SQL 组装 DTO；Cache-Aside 直接缓存最终 DTO：
+
+```text
+key: archive:material-detail:v2:{id}
+TTL: 5m
+当前公开材料 ID: 4
+```
+
+查询实验包含三个阶段：
+
+| 阶段 | 实际动作 | 观察重点 |
 |---|---|---|
-| `/api/archives/:id/direct` | GET | 每次执行 4 条 SQL 组装聚合详情 |
-| `/api/archives/:id/cached` | GET | Redis Cache-Aside 读取最终 DTO |
-| `/api/chapters/cache-aside/reset` | POST | 清缓存并重置本章指标 |
-| `/api/metrics/snapshot` | GET | 全部服务端指标快照，含 `archiveRead` |
-| `/api/metrics/stream` | GET | SSE 实时指标流 |
-| `/api/loadtests` | POST | 创建白名单压测任务；已有活动任务时返回 `409 LOADTEST_ALREADY_RUNNING` |
-| `/api/loadtests/:id` | GET | 查询任务状态、时间、日志和最终指标 |
-| `/api/loadtests/:id/events` | GET | 任务 SSE：进度、指标、日志和终态 |
-| `/api/loadtests/:id/stop` | POST | 停止任务并回收 wrk2 子进程 |
-| `/api/seckill/rate-limit-probe` | GET | 共享 `/lucky` 令牌桶的隔离探针；204 放行，429 限流，不进入业务链路 |
-| `/api/purchase-lab/:id/state` | GET | 读取购买实验共享的 MySQL / Redis 库存 |
-| `/api/purchase-lab/:id/reset` | POST | 重置 `materials.stock` 并重新预热材料 DTO |
-| `/api/purchase-lab/:id/run` | POST | 执行同步失效或 Outbox + MQ 购买实验，最多 150 个唯一请求 |
-| `/api/purchase-lab/:id/query` | POST | 执行 1～20 次真实 Cached 查询采样 |
-| `/api/purchase-lab/runs/:requestId` | GET | 查询订单、Outbox、MQ 和缓存失效状态 |
+| 稳态性能 | 分别运行 Direct 和 Cache-Aside | 实际 QPS、SQL 次数、缓存命中、连接池、两类延迟 |
+| 热点击穿 | 热 Key 稳态运行后执行真实 Redis `DEL`，继续观察重建与恢复 | MISS 波、MySQL 回源、同进程互斥合并、重建和稳定窗口 |
+| 缓存穿透 | 持续请求固定不存在 ID `900004` | 无保护 vs 60 秒负缓存、无效 MySQL 查询和负缓存命中 |
 
-两条详情接口的响应体相同，只通过响应头解释数据来源：
+稳态阶段公开的 Runner 参数：
+
+| 目标速率 | 固定时长 |
+|---:|---:|
+| 100 req/s | 30s |
+| 300 req/s | 30s |
+| 800 req/s | 30s |
+| 1500 req/s | 30s |
+
+连接模式可以自动估算，也可以手动选择 `70 / 140 / 300 / 500`。自动模式根据同一材料的历史实际请求 P95 估算在途请求数，并让 Direct 与 Cache-Aside 在相同目标速率下复用同一配置。热点击穿和缓存穿透使用 Runner 控制的自动连接配置。
+
+`wrk2 -c N` 是配置的 HTTP 持久连接数，不表示已经成功建立 N 个 Socket；建连情况需要结合 Socket Errors 判断。
+
+详情接口通过响应头暴露真实路径证据：
 
 ```text
 X-Read-Path: mysql-direct | cache-aside
@@ -192,97 +141,253 @@ X-Archive-Source: mysql | redis-miss | redis-hit | redis-fallback
 X-SQL-Queries: 0 | 1..4
 ```
 
-缓存 key 与边界：
+缓存穿透的内部 Runner 接口还会返回 `redis-negative-hit`，用于证明请求命中了负缓存而没有再次查询 MySQL。
+
+同进程冷缓存并发使用双检互斥合并回源。它只约束当前进程，不等价于多实例分布式锁。Redis 故障时查询降级到 MySQL，因为缓存是性能层，不是正确性依赖。
+
+## 实验二：库存一致性购买
+
+配置入口：`/material-shop?experiment=purchase`
+
+实验室：`/purchase-lab`
+
+每轮实验固定：
+
+- 将星髓 `materials.stock` 重置为 `100`；
+- 发送 `150` 个唯一 `request_id`，每个购买 1 件；
+- 最多 `12` 个购买并发槽持续推进事务；
+- 页面以 `20 QPS` 调用真实 Cached 查询，观察旧库存读取窗口；
+- 正常结果为 100 次成功、50 次售罄，且最终 MySQL 库存为 0。
+
+### 方案 A：同步删除缓存
 
 ```text
-key: archive:material-detail:v2:{id}
-TTL: 300s
-权威源: MySQL materials / material_components / trades / reviews
+HTTP request
+-> MySQL transaction
+   -> UPDATE materials SET stock = stock - 1 WHERE stock >= 1
+   -> INSERT purchase_lab_orders(request_id UNIQUE)
+-> COMMIT
+-> Redis DEL archive:material-detail:v2:{materialId}
+-> response
 ```
 
-同进程冷启动并发通过双检互斥合并回源，避免第一波 MISS 放大成缓存击穿。Redis 故障时请求降级回源 MySQL：缓存可以失去，真本不能失去。
+缓存删除位于请求链内，结构简单、旧读窗口短，但 Redis 延迟或失败会直接延长或影响购买响应。订单和库存已经提交时，相同 `request_id` 的重试不会再次扣库存，只会重试失效缓存。
 
-实验页的弱入口“查看数据构成”只展开一张整体映射：`materials` 提供基础信息，
-`material_components + materials` JOIN 组成材料，`trades` 执行 `COUNT / AVG / MAX`，
-`reviews` 执行 `AVG / COUNT`，最后组装为 Redis 直接缓存的 `MaterialDetailDTO`。
+### 方案 B：Transactional Outbox + MQ
 
-## 书页背后的完整项目
+```text
+HTTP request
+-> MySQL transaction
+   -> 条件扣减 materials.stock
+   -> INSERT purchase_lab_orders
+   -> INSERT purchase_lab_outbox
+-> COMMIT / response
 
-第一章之外，当前对外秒杀写入口只保留 **Redis 原子准入 + RocketMQ 普通消息异步落单 + MySQL 最终账本**。
-订单终态处理仍识别旧数据卷中的 MySQL 模式订单，确保历史 `pending_payment` 可以继续支付或取消，
-但不会再通过 HTTP 创建新的 MySQL 模式订单。
+Outbox Worker（每 1 秒扫描）
+-> claim event
+-> publish PURCHASE_CACHE_INVALIDATE
+-> mark published
 
-统一生命周期：
+缓存失效 Consumer
+-> validate event_id + material_id
+-> Redis DEL
+-> mark completed
+-> Ack
+```
+
+订单、库存和 Outbox 在同一事务提交，避免“数据库已提交但事件尚未记录”。异步方案缩短购买响应路径，但会产生可观测的最终一致性窗口，并引入 Worker、MQ、幂等消费和重试复杂度。
+
+`request_id`、`event_id` 都有唯一约束。重复消息再次执行 `DEL` 是幂等操作；Redis 删除或状态写回失败时 Consumer 不 Ack，依赖 RocketMQ 重投。
+
+页面保存本轮 trace、Outbox 时间、Publisher 扫描时钟和一致性探针样本，用于纯前端回放。回放不会重新购买、重置库存或发送 MQ。
+
+## 实验三：秒杀交易
+
+入口：`/seckill-lab`
+
+秒杀页把不同结论拆成三个独立场景，避免用一轮混合流量同时证明所有事情：
+
+| 场景 | 负载 | 验证目标 |
+|---|---|---|
+| 单次链路 | 浏览器发起一次真实 `/lucky` | 看清限流、Lua、MQ、MySQL 和订单状态的先后关系 |
+| 库存争抢 | 600 个唯一用户同时争抢 300 份星髓 | 300 准入、300 售罄、0 超卖；默认满桶 800 内不应触发限流 |
+| 入口限流 | 300 / 800 / 1500 req/s，各运行 10 秒 | 单独观察共享令牌桶的 204 放行和 429 拒绝，不访问库存、MQ 或 MySQL |
+
+当前公开写入口只保留 Redis 准入模式：
+
+```text
+GET /lucky
+-> 本进程令牌桶
+-> Redis Lua：防重 + 检查库存 + 扣库存 + 写 stock_acquired
+-> CANCEL_ORDER 延迟消息：支付窗口到期检查
+-> CREATE_ORDER 普通消息：异步建立 MySQL pending_payment 账本
+-> POST /pay 或 POST /giveup
+```
+
+订单生命周期：
 
 ```mermaid
 stateDiagram-v2
-    [*] --> stock_acquired: 获取库存成功
-    stock_acquired --> pending_payment: 订单账本建立
-    stock_acquired --> cancelled: 落单失败或超时
+    [*] --> stock_acquired: Redis 准入成功
+    stock_acquired --> pending_payment: CREATE_ORDER 落账
+    stock_acquired --> cancelled: 落单失败或取消
     pending_payment --> paid: 支付成功
-    pending_payment --> cancelled: 主动取消或支付超时
+    pending_payment --> cancelled: 主动放弃或支付超时
     paid --> [*]
     cancelled --> [*]
 ```
 
-当前秒杀 API：
+`paid` 和 `cancelled` 是互斥终态。支付与取消竞争同一个 Redis admission 状态，只有第一次合法迁移生效；取消路径只回补一次库存，重复消息和重复请求只能做幂等读取。
 
-| 路径 | 方案 |
-|---|---|
-| `GET /api/seckill/materials` | 当前唯一限量材料“星髓”；不返回实时库存 |
-| `GET /lucky` | Redis Lua 准入 + RocketMQ 异步落单 |
-| `GET /api/order/status` | 查询统一订单状态 |
-| `POST /pay` | `pending_payment -> paid` |
-| `POST /giveup` | 非终态 `-> cancelled` |
-| `POST /api/lab/reset` | 重置完整秒杀实验 |
+Redis Lua 原子边界：
 
-旧目录入口 `GET /api/archives`、旧转盘别名 `GET /gifts` 和 MySQL 同步准入入口
-`GET /lucky/cacheaside` 已取消注册；当前仓库内没有调用方，访问这些路径会返回 404。
+| 动作 | 合法状态变化 | 关键保证 |
+|---|---|---|
+| `TryAcquire` | 无状态 → `stock_acquired` | 防重、查库存、扣库存和写 admission 原子完成 |
+| `MarkPending` | `stock_acquired` → `pending_payment` | 重复落单幂等，终态不可倒退 |
+| `ClaimLottery` | `pending_payment` → `paid` | 重复支付幂等，取消后不可复活 |
+| `ReleaseLottery` | 非终态 → `cancelled` | 只回补一次，支付后不可取消 |
 
-## RocketMQ Topics
+支付窗口为 600 秒；admission TTL 比支付窗口额外保留 3600 秒。TTL 只清理残留状态，不会自动回补库存，真正释放必须经过取消 Lua。
 
-| Topic | 类型 | 职责 | 处理者 |
-|---|---|---|---|
-| `CREATE_ORDER` | 普通消息 | Redis 准入后异步创建 MySQL 待支付订单，缓冲数据库写峰值 | 订单 Consumer（group `lottery`） |
-| `CANCEL_ORDER` | 延迟消息 | 支付窗口到期后触发状态检查和库存释放 | 订单 Consumer（group `lottery`） |
-| `PURCHASE_CACHE_INVALIDATE` | 普通消息 | 发布购买实验的材料 DTO 缓存失效事件；幂等执行 DEL | 缓存失效 Consumer（group `lottery-purchase-cache`） |
+历史数据卷中已经存在的 MySQL 模式订单仍可支付或取消，但 `GET /lucky/cacheaside` 已取消注册，不再创建新的 MySQL 同步准入订单。旧 `/api/archives` 和 `/gifts` 入口同样已移除。
 
-Topic 是消息类别，像信箱，不等于 Consumer，也不等于一条物理队列。当前三个 Topic 由两个独立“办事员”处理：订单 Consumer 负责创建和取消订单，缓存失效 Consumer 只负责删缓存；一个 Topic 内部还可以有多个 MessageQueue 分区。
+## Runner 与真实指标
 
-普通消息使用的是主流 MQ 共有的异步解耦、缓冲削峰和至少一次投递语义；延迟取消才使用 RocketMQ 的延迟消息能力。
+`loadtest-runner` 是 Compose 网络内的常驻 HTTP 服务。浏览器只提交有限白名单参数，不能传入任意目标 URL、Lua 路径、线程、时长或命令。
 
-## 章节路线
+Runner 当前支持：
+
+- `cache-aside-read`
+- `cache-breakdown`
+- `cache-penetration`
+- `seckill-stock-burst`
+- `seckill-rate-limit`
+
+全局同时只允许一个 Runner 任务。任务状态机：
 
 ```text
-第一章  被查询卷轴翻热的材料档案
-        Cache-Aside：重复读如何离开 MySQL 热路径
-
-第二章  当一千只手伸向最后一枚星印
-        MySQL 条件扣减：权威库存如何同步裁决
-
-第三章  城门只发放资格，不再当场誊写订单
-        Redis Lua + MQ：准入、削峰、异步落单
-
-第四章  两封迟到的信与一份不能复活的订单
-        至少一次投递、幂等、超时取消与状态机
+starting -> resetting -> running -> collecting -> completed
+                   \-> stopped
+任意活动状态 -------> failed
 ```
+
+任务创建、GET 快照、轮询和任务 SSE 采用单调状态合并；浏览器关闭或 SSE 断线不会停止任务，只有显式调用 stop API 才会回收 wrk2 子进程。任务快照和有限事件历史保存在 `loadtest-runner-data` 卷中，Runner 重启会把遗留活动任务标记为失败并释放全局锁。
+
+指标区分两类延迟：
+
+- `requestP*Ms`：uncorrected histogram，请求真正发出到收到响应的实际请求延迟；
+- `p*Ms`：coordinated-omission corrected histogram，从计划投递时刻开始，包含连接不足或响应过慢形成的需求侧欠账。
+
+corrected 延迟不能称为“客户真实等待时间”。仓库内的 wrk2 补丁使用单调时钟，并记录 `latencyScheduleFallbacks` 与 `latencySamplesDropped`，避免非法样本触发 HDR Histogram 断言。
+
+全局指标由：
+
+```text
+GET /api/metrics/snapshot
+GET /api/metrics/stream
+```
+
+提供。SSE 是页面实时展示的权威数据源；指标使用有界样本，GORM 默认只记录慢查询和错误，避免压测日志本身成为瓶颈。
+
+## RocketMQ 消息
+
+| Topic | 类型 | 职责 | Consumer Group |
+|---|---|---|---|
+| `CREATE_ORDER` | 普通消息 | Redis 准入后异步建立 MySQL 待支付订单 | `lottery` |
+| `CANCEL_ORDER` | 延迟消息 | 支付窗口到期后检查并取消非终态订单 | `lottery` |
+| `PURCHASE_CACHE_INVALIDATE` | 普通消息 | 购买实验异步失效材料 DTO 缓存 | `lottery-purchase-cache` |
+
+订单 Consumer 与缓存失效 Consumer 的订阅集合不同，因此必须使用不同 Consumer Group。Topic 是消息分类，不等于 Consumer，也不等于单条物理队列。
+
+消费原则：解析、数据库、Redis 或状态机处理失败时不 Ack；幂等处理成功后才 Ack。RocketMQ 可能重复投递，正确性依赖唯一键、条件更新、Lua 状态机和幂等 `DEL`，不能依赖“消息只来一次”。
+
+## 页面与 API
+
+页面路由：
+
+| 路径 | 用途 |
+|---|---|
+| `/` | 三个平级实验的总览 |
+| `/material-shop?experiment=query` | 查询实验计划工作台 |
+| `/lab` | 查询实验室 |
+| `/material-shop?experiment=purchase` | 购买实验计划工作台 |
+| `/purchase-lab` | 购买实验室 |
+| `/seckill-lab` | 秒杀实验室 |
+| `/result` | 秒杀订单支付/取消页 |
+
+`/material-shop` 只接受 `experiment=query` 或 `experiment=purchase`；缺少参数或参数非法时会重定向到 `/`，不会进入额外的“章节”或前厅页面。
+
+公开 API：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/api/archives/:id/direct` | MySQL Direct 聚合详情 |
+| GET | `/api/archives/:id/cached` | Redis Cache-Aside 聚合详情 |
+| POST | `/api/chapters/cache-aside/reset` | 清理查询缓存和指标；路径名为历史兼容保留 |
+| GET | `/api/purchase-lab/:id/state` | 读取购买实验 MySQL/Redis 库存 |
+| POST | `/api/purchase-lab/:id/reset` | 重置购买基线并预热 DTO |
+| POST | `/api/purchase-lab/:id/run` | 运行同步失效或 Outbox + MQ 购买实验 |
+| POST | `/api/purchase-lab/:id/query` | 读取 1～20 个真实 Cached 查询样本 |
+| GET | `/api/purchase-lab/runs/:requestId` | 查询批次、订单和 Outbox 状态 |
+| GET | `/api/seckill/materials` | 读取秒杀材料目录，不返回实时库存 |
+| GET | `/api/seckill/rate-limit-probe` | 只经过秒杀令牌桶的隔离探针 |
+| GET | `/lucky` | 秒杀准入 |
+| GET | `/api/order/status` | 查询订单或 admission 状态 |
+| POST | `/pay` | 支付订单 |
+| POST | `/giveup` | 主动放弃支付 |
+| POST | `/api/lab/reset` | 重置完整秒杀实验 |
+| GET | `/api/metrics/snapshot` | 获取指标快照 |
+| GET | `/api/metrics/stream` | 订阅指标 SSE |
+| POST | `/api/loadtests/connection-plan` | 只读预估 wrk2 连接配置 |
+| POST | `/api/loadtests` | 创建白名单 Runner 任务 |
+| GET | `/api/loadtests/:id` | 获取任务权威快照 |
+| GET | `/api/loadtests/:id/events` | 订阅任务 SSE 和历史回放 |
+| POST | `/api/loadtests/:id/stop` | 停止任务并回收子进程 |
+
+`/internal/cache-experiments/*` 只供 Runner 控制热点击穿和缓存穿透场景，使用任务令牌校验，不是浏览器通用业务 API。
 
 ## 代码结构
 
 ```text
-internal/app            依赖装配、启动和优雅退出
-internal/router         页面与 API 路由
-internal/handler        HTTP 协议适配
-internal/service        读取编排、抽奖、支付和取消业务流程
-internal/database       MySQL / Redis 数据访问与 Lua 原子脚本
-internal/mq             RocketMQ producer / consumer
-internal/metrics        有界内存指标、快照与 SSE 数据源
-internal/loadtest       Runner 状态机、白名单、进程控制、解析器与内部客户端
-cmd/loadtest-runner     常驻 Runner HTTP 进程入口
-views/                  故事书页面与支付页
-docker/wrk2             跨架构 wrk2、Runner 镜像目标和 Lua 请求脚本
-docs/                   状态机与可靠性边界
+main.go                     极薄进程入口
+internal/app                依赖装配、后台任务、HTTP 启动与优雅退出
+internal/router             页面、静态资源和 API 路由
+internal/handler            HTTP 入参、响应、Cookie、错误码和状态码
+internal/service            查询、购买、秒杀、支付、取消和实验编排
+internal/database           MySQL / Redis 访问、事务、缓存和 Redis Lua
+internal/mq                 Producer、两个 Consumer、Topic 与 Group 配置
+internal/metrics            有界指标、快照和 SSE 数据源
+internal/loadtest           Runner 状态机、白名单、进程控制和结果解析
+internal/util               环境变量、日志和通用工具
+cmd/loadtest-runner         常驻 Runner 进程入口
+views/html                  三个实验及支付页面
+views/css                   页面样式
+views/js                    页面状态、真实请求、SSE 和结果回放
+docker/wrk2                 跨架构 wrk2、补丁、Runner 镜像和 Lua 脚本
+docker/rocketmq             RocketMQ Broker 配置
+scripts                     Windows 本地启动、停止和直接压测脚本
+docs                        本地开发、可靠性边界和演示资料
 ```
+
+## 配置
+
+常用环境变量：
+
+| 变量 | 默认值或 Compose 值 | 说明 |
+|---|---|---|
+| `LOTTERY_HTTP_ADDR` | `localhost:5678` | Web 监听地址 |
+| `LOTTERY_MYSQL_*` | 见 `docker-compose.yml` | MySQL 连接信息 |
+| `LOTTERY_REDIS_ADDR` | `redis:6379` | Redis 地址 |
+| `LOTTERY_REDIS_DB` | `2` | Redis DB |
+| `LOTTERY_MQ_ENABLED` | `true` | 是否启用 RocketMQ |
+| `LOTTERY_MQ_ENDPOINT` | `rocketmq-broker:8081` | RocketMQ Proxy gRPC 地址 |
+| `LOTTERY_RATE_LIMIT_QPS` | `800` | 本进程秒杀令牌桶速率，`0` 表示关闭 |
+| `LOTTERY_CACHEASIDE_DB_CONCURRENCY` | `10` | 查询实验 MySQL 并发闸门 |
+| `LOTTERY_LOADTEST_RUNNER_URL` | `http://loadtest-runner:8090` | 主应用访问 Runner 的内部地址 |
+| `LOTTERY_LOG_LEVEL` | `info` | `slog` 日志级别 |
+
+本地脚本设置 `COMPUTERNAME=itcheer`，用于规避 RocketMQ/gRPC 在中文主机名环境下的兼容问题，不要移除。
 
 ## 验证
 
@@ -292,4 +397,24 @@ go vet ./...
 docker compose config --quiet
 ```
 
-订单和消息可靠性边界详见 [docs/reliability.md](docs/reliability.md)。
+只做 Go 包编译检查：
+
+```bash
+go test ./... -run '^$'
+```
+
+更多说明：
+
+- `docs/local-dev.md`：本地开发方式；
+- `docs/reliability.md`：状态机、一致性、MQ 和故障边界；
+- `AGENTS.md`：维护约束和关键链路修改规则。
+
+## 仍未达到生产级的边界
+
+当前项目已经覆盖真实的原子准入、条件扣减、幂等消费、Outbox、延迟取消、状态机和 SSE 指标，但仍是单机演示架构：
+
+1. 秒杀 Redis 准入成功后、第一条 MQ 消息发送前崩溃，仍需要可靠事件或扫描补偿。
+2. Redis 终态推进成功但 MySQL 账本更新失败时依赖重试，尚缺自动对账和告警。
+3. 支付接口没有接入外部支付流水、回调、退款和资金对账。
+4. 令牌桶和查询回源互斥都是进程内机制，多实例需要全局限流和分布式协调。
+5. MySQL、Redis、RocketMQ 均为本地单节点 Compose，没有生产级高可用和灾备。
