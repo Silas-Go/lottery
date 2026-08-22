@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5edda" />
-    <meta name="description" content="围绕唯一材料星髓，进入旁路缓存查询、库存一致性购买与秒杀交易三个平级架构实验。" />
+    <meta name="description" content="同一个业务对象，在不同增长阶段，面对查询压力、交易一致性与流量洪峰三类典型系统挑战。" />
     <title>星髓架构实验场 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/market-street.css?v=20260805-three-experiments-v1" />
@@ -45,7 +45,7 @@
             <div class="material-hero__copy">
                 <small>ONE MATERIAL · THREE SYSTEM PROBLEMS</small>
                 <h1 id="material-title">星髓</h1>
-                <p>同一份材料，分别面对高频读取、写后缓存一致性与高并发库存争抢。</p>
+                <p>同一个业务对象，在不同增长阶段，面对三类典型系统挑战。</p>
             </div>
         </section>
 
@@ -53,9 +53,9 @@
             <header class="experiment-section__heading">
                 <div>
                     <small>ARCHITECTURE EXPERIMENTS</small>
-                    <h2 id="experiment-heading">选择一个技术问题</h2>
+                    <h2 id="experiment-heading">业务增长中的三个挑战</h2>
                 </div>
-                <p><span class="desktop-instruction">悬停预览，点击名称可锁定展开。</span><span class="touch-instruction">点击方片展开。</span> 三项实验互不构成前置条件。</p>
+                <p><span class="desktop-instruction">这是一个模拟高并发业务演进的实验项目。</span><span class="touch-instruction">这是一个模拟高并发业务演进的实验项目。</span> 从基础查询、交易一致性，到流量洪峰处理，展示后端系统如何逐步演进。</p>
             </header>
 
             <div id="experiment-deck" class="experiment-deck">
@@ -64,8 +64,8 @@
                         <span class="experiment-number">01</span>
                         <span class="experiment-title">
                             <small>READ PATH</small>
-                            <strong>旁路缓存查询</strong>
-                            <em>缓存如何提升读取性能？</em>
+                            <strong>查询压力：数据库还能撑多久？</strong>
+                            <em>从 MySQL 直读到 Cache Aside，探索高频读取场景下如何降低数据库压力。</em>
                         </span>
                         <span class="experiment-toggle" aria-hidden="true">＋</span>
                     </button>
@@ -93,8 +93,8 @@
                         <span class="experiment-number">02</span>
                         <span class="experiment-title">
                             <small>WRITE CONSISTENCY</small>
-                            <strong>库存一致性购买</strong>
-                            <em>数据库与缓存如何最终收敛？</em>
+                            <strong>交易一致性：缓存和数据库如何保持正确？</strong>
+                            <em>进入购买流程后，探索缓存更新、数据库写入和最终一致性问题。</em>
                         </span>
                         <span class="experiment-toggle" aria-hidden="true">＋</span>
                     </button>
@@ -122,8 +122,8 @@
                         <span class="experiment-number">03</span>
                         <span class="experiment-title">
                             <small>CONCURRENT ADMISSION</small>
-                            <strong>秒杀交易</strong>
-                            <em>大量请求如何安全争抢有限库存？</em>
+                            <strong>流量洪峰：大量请求如何安全进入系统？</strong>
+                            <em>面对突发高并发，通过限流、Redis 原子操作和消息队列保护系统。</em>
                         </span>
                         <span class="experiment-toggle" aria-hidden="true">＋</span>
                     </button>
