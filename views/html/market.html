@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/material-shop.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260813-query-explainer-v1" />
+    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260825-query-path-cn-v4" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -75,7 +75,7 @@
                         </ol>
 
                         <div class="task-contract-strip task-plan-summary" role="status" aria-live="polite" aria-label="查询实验条件概览">
-                            <div class="is-path"><small>对比对象</small><strong id="crowd-summary-path">Direct vs Cache-Aside</strong></div>
+                            <div class="is-path"><small>对比对象</small><strong id="crowd-summary-path">直接查询 vs 旁路缓存</strong></div>
                             <div class="is-intent"><small>目标速率</small><output id="crowd-size-value">1,500 req/s</output></div>
                             <div class="is-config"><small>Runner 计划</small><strong id="crowd-connection-plan">计算中</strong></div>
                             <div class="is-fact"><small>任务状态</small><strong id="crowd-connection-current">尚未创建</strong></div>
@@ -105,16 +105,34 @@
                                     </div>
                                     <div class="query-path-comparison" role="group" aria-label="切换方案解说">
                                         <button class="is-active" type="button" data-query-explainer="direct" aria-pressed="true">
-                                            <small>PATH A</small><strong>MySQL Direct</strong><span>每次查询 MySQL，并现场组装 DTO</span>
+                                            <small>方案 A</small><strong>MySQL 直接查询</strong><span>每次查询 MySQL，并现场组装 DTO</span>
                                             <em>HTTP → Go API → 4 条 SQL → DTO</em>
                                             <span class="query-path-card-action">正在解说</span>
                                         </button>
                                         <button type="button" data-query-explainer="cached" aria-pressed="false">
-                                            <small>PATH B</small><strong>Redis Cache-Aside</strong><span>Redis HIT 直接返回，MISS 才回源 MySQL</span>
-                                            <em>HTTP → Go API → Redis → MySQL on MISS</em>
+                                            <small>方案 B</small><strong>Redis 旁路缓存</strong><span>Redis 命中直接返回，未命中才回源 MySQL</span>
+                                            <em>HTTP → Go API → Redis → 未命中后查询 MySQL</em>
                                             <span class="query-path-card-action">查看方案解说 →</span>
                                         </button>
                                     </div>
+                                    <aside id="query-risk-map" class="query-risk-map" aria-labelledby="query-risk-map-heading" hidden>
+                                        <header>
+                                            <span><small>后续问题 02–03</small><strong id="query-risk-map-heading">引入缓存以后，还会遇到什么？</strong></span>
+                                            <em>实验室继续验证</em>
+                                        </header>
+                                        <div>
+                                            <article>
+                                                <span>02</span>
+                                                <div><strong>缓存击穿</strong><p>热点缓存键突然失效，并发未命中会同时放大 MySQL 回源。</p></div>
+                                                <em>无保护 vs 按缓存键互斥 + 双检</em>
+                                            </article>
+                                            <article>
+                                                <span>03</span>
+                                                <div><strong>缓存穿透</strong><p>不存在的材料每次都未命中，请求会反复落到 MySQL。</p></div>
+                                                <em>无保护 vs 60 秒负缓存</em>
+                                            </article>
+                                        </div>
+                                    </aside>
                                     <div class="planner-field-heading is-qps">
                                         <span><i>01</i><strong>设置共同目标 QPS</strong></span>
                                         <small><b>每秒计划发起的 HTTP 请求数</b>，不是在线用户数，也不是并发请求数</small>
@@ -168,8 +186,8 @@
                             </div>
 
                             <aside class="query-plan-preview" aria-labelledby="query-plan-preview-heading">
-                                <small id="query-plan-preview-eyebrow">PATH EXPLAINER · PATH A</small>
-                                <strong id="query-plan-preview-heading">方案解说 · MySQL Direct</strong>
+                                <small id="query-plan-preview-eyebrow">方案解说 · 方案 A</small>
+                                <strong id="query-plan-preview-heading">方案解说 · MySQL 直接查询</strong>
                                 <div class="query-plan-material">
                                     <img src="/img/star-marrow-relic.png" alt="" />
                                     <span><small>实验材料</small><b>星髓</b></span>
@@ -312,7 +330,7 @@ Connection: keep-alive</code></pre>
                         </ol>
 
                         <div class="task-contract-strip purchase-plan-summary" role="status" aria-live="polite" aria-label="购买实验条件概览">
-                            <div class="is-path"><small>失效路径</small><strong id="purchase-plan-summary-strategy">同步删除缓存</strong></div>
+                            <div class="is-path"><small>对比对象</small><strong>同步删除缓存 vs Outbox + MQ</strong></div>
                             <div class="is-intent"><small>购买批次</small><strong>150 个唯一请求</strong></div>
                             <div class="is-config"><small>服务端并发</small><strong>12 个事务槽</strong></div>
                             <div class="is-fact"><small>任务状态</small><strong>尚未执行</strong></div>
@@ -322,15 +340,16 @@ Connection: keep-alive</code></pre>
                             <section class="purchase-plan-config-sheet task-intent-panel" aria-labelledby="purchase-plan-strategy-heading">
                                 <header>
                                     <span>INVALIDATION PATH</span>
-                                    <strong id="purchase-plan-strategy-heading">选择缓存失效路径</strong>
+                                    <strong id="purchase-plan-strategy-heading">对比两种缓存失效路径</strong>
                                 </header>
-                                <div class="query-path-options purchase-path-options" role="radiogroup" aria-label="购买缓存失效方案">
-                                    <button class="is-active" type="button" role="radio" aria-checked="true" data-purchase-plan-strategy="sync-invalidate">
+                                <p class="purchase-path-helper">点击路径查看右侧解说，不决定本轮运行方案。</p>
+                                <div class="query-path-options purchase-path-options" role="group" aria-label="查看缓存失效路径解说">
+                                    <button class="is-active" type="button" aria-pressed="true" data-purchase-explainer="sync-invalidate">
                                         <small>PATH A</small>
                                         <strong>同步删除缓存</strong>
                                         <span>COMMIT → Redis DEL → Response</span>
                                     </button>
-                                    <button type="button" role="radio" aria-checked="false" data-purchase-plan-strategy="outbox-mq-invalidate">
+                                    <button type="button" aria-pressed="false" data-purchase-explainer="outbox-mq-invalidate">
                                         <small>PATH B</small>
                                         <strong>Outbox + MQ</strong>
                                         <span>TX + Outbox → Response · MQ → DEL</span>
@@ -348,9 +367,9 @@ Connection: keep-alive</code></pre>
                                 <p class="purchase-plan-fixed-copy">购买批次固定为 150 个唯一 request_id；这里对比失效路径，不把批次数伪装成 req/s。</p>
                             </section>
 
-                            <aside id="purchase-plan-preview" class="purchase-plan-preview" data-strategy="sync-invalidate" aria-labelledby="purchase-plan-preview-heading">
-                                <small>EXECUTION PREVIEW</small>
-                                <strong id="purchase-plan-preview-heading">本轮采购路径</strong>
+                            <aside id="purchase-plan-preview" class="purchase-plan-preview" aria-labelledby="purchase-plan-preview-heading">
+                                <small>PATH EXPLAINER</small>
+                                <strong id="purchase-plan-preview-heading">方案解说 · 同步删除缓存</strong>
                                 <code id="purchase-plan-route-code">MySQL COMMIT → Redis DEL → Response</code>
                                 <p id="purchase-plan-route-copy">顾客响应会等待库存牌删除完成，路径更直接，但 Redis 位于购买请求链路中。</p>
                                 <dl>
@@ -365,8 +384,8 @@ Connection: keep-alive</code></pre>
                             <div class="crowd-status" role="status" aria-live="polite">
                                 <i></i>
                                 <span>
-                                    <strong id="purchase-plan-status-title">实验方案待确认</strong>
-                                    <small id="purchase-plan-status-copy">进入采购实验室后，由你点击开始，才会真实重置并修改库存。</small>
+                                    <strong id="purchase-plan-status-title">准备进入实验室</strong>
+                                    <small id="purchase-plan-status-copy">进入实验室后，再选择本轮运行方案并手动开始。</small>
                                 </span>
                             </div>
                             <div class="crowd-run-actions">
@@ -390,7 +409,7 @@ Connection: keep-alive</code></pre>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260825-experiment-detail-v2"></script>
+    <script src="/js/market.js?v=20260825-query-path-cn-v4"></script>
 </body>
 
 </html>

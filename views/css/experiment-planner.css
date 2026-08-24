@@ -173,8 +173,8 @@ html[data-planner] .record-copy { width: 100%; }
 
 html[data-planner] .task-draft-header {
     align-items: end !important;
-    margin-bottom: 10px;
-    padding: 0 0 11px;
+    margin-bottom: 7px;
+    padding: 0 0 8px;
     border-bottom: 1px solid rgba(118, 91, 56, .22);
 }
 
@@ -184,18 +184,18 @@ html[data-planner] .task-draft-header > div strong { color: var(--planner-ink); 
 html[data-planner] .task-draft-header p { margin: 0; color: var(--planner-muted); font-size: 9px; line-height: 1.5; }
 html[data-planner] .task-draft-header > button { display: none; }
 
-html[data-planner] .task-lifecycle { max-width: 620px; margin: 8px auto 13px; }
+html[data-planner] .task-lifecycle { max-width: 620px; margin: 5px auto 9px; }
 html[data-planner] .task-lifecycle li.is-current { color: var(--planner-teal-dark); box-shadow: inset 0 -2px var(--planner-teal); }
 html[data-planner] .task-lifecycle li.is-current i { border-color: var(--planner-teal-dark); background: var(--planner-teal); }
 
 html[data-planner="query"] .task-contract-strip { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-html[data-planner] .task-contract-strip { margin-bottom: 14px; border-color: var(--planner-frame); }
+html[data-planner] .task-contract-strip { margin-bottom: 10px; border-color: var(--planner-frame); }
 html[data-planner] .task-contract-strip > .is-duration { box-shadow: inset 0 3px #7869a3; }
 
 html[data-planner="query"] .crowd-workbench {
     grid-template-columns: minmax(500px, 1.28fr) minmax(310px, .72fr);
-    align-items: stretch;
-    gap: 14px;
+    align-items: start;
+    gap: 12px;
 }
 
 html[data-planner] .crowd-config-column,
@@ -216,9 +216,9 @@ html[data-planner="query"] .query-target-brief {
     display: grid;
     grid-template-columns: minmax(155px, .48fr) minmax(0, 1.52fr);
     align-items: center;
-    gap: 18px;
-    margin: 0 0 16px;
-    padding: 3px 0 13px;
+    gap: 14px;
+    margin: 0 0 11px;
+    padding: 2px 0 9px;
     border: 0;
     border-bottom: 1px solid rgba(118, 91, 56, .2);
     background: transparent;
@@ -294,9 +294,9 @@ html[data-planner="query"] .query-path-comparison button {
     position: relative;
     align-content: start;
     width: 100%;
-    gap: 5px;
+    gap: 4px;
     min-width: 0;
-    padding: 13px 14px;
+    padding: 10px 11px;
     border: 1px solid rgba(118, 91, 56, .26);
     border-left: 4px solid #9b744e;
     background: rgba(255, 253, 244, .68);
@@ -327,12 +327,12 @@ html[data-planner="query"] .query-path-comparison small {
 
 html[data-planner="query"] .query-path-comparison strong {
     color: var(--planner-ink);
-    font: 900 15px/1.3 "SFMono-Regular", Consolas, monospace;
+    font: 900 14px/1.3 "SFMono-Regular", Consolas, monospace;
 }
 
 html[data-planner="query"] .query-path-comparison > button > span:not(.query-path-card-action) {
     color: #42544f;
-    font-size: 13px;
+    font-size: 11px;
     line-height: 1.5;
 }
 
@@ -344,8 +344,8 @@ html[data-planner="query"] .query-path-comparison em {
 
 html[data-planner="query"] .query-path-card-action {
     justify-self: start;
-    margin-top: 5px;
-    padding-top: 7px;
+    margin-top: 3px;
+    padding-top: 5px;
     border-top: 1px dashed rgba(118, 91, 56, .28);
     color: #52635d;
     font-size: 10px;
@@ -356,6 +356,45 @@ html[data-planner="query"] .query-path-card-action {
 html[data-planner="query"] .query-path-comparison button.is-active .query-path-card-action {
     color: var(--planner-teal-dark);
 }
+
+html[data-planner="query"] .query-risk-map {
+    display: grid;
+    gap: 8px;
+    margin-top: 11px;
+    padding: 9px 10px;
+    border: 1px solid rgba(118, 91, 56, .24);
+    background: rgba(244, 237, 211, .62);
+}
+
+html[data-planner="query"] .query-risk-map[hidden] { display: none; }
+
+html[data-planner="query"] .query-risk-map > header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+html[data-planner="query"] .query-risk-map > header span { display: grid; gap: 2px; }
+html[data-planner="query"] .query-risk-map > header small { color: #8b6948; font: 900 8px/1.2 "SFMono-Regular", Consolas, monospace; letter-spacing: .12em; }
+html[data-planner="query"] .query-risk-map > header strong { color: var(--planner-ink); font-size: 12px; }
+html[data-planner="query"] .query-risk-map > header em { color: var(--planner-teal-dark); font-size: 9px; font-style: normal; font-weight: 800; }
+html[data-planner="query"] .query-risk-map > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+html[data-planner="query"] .query-risk-map article {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 3px 8px;
+    min-width: 0;
+    padding: 7px 10px 6px 0;
+}
+
+html[data-planner="query"] .query-risk-map article + article { padding-left: 10px; border-left: 1px solid rgba(118, 91, 56, .22); }
+html[data-planner="query"] .query-risk-map article > span { display: grid; width: 22px; height: 22px; place-items: center; color: #fffaf0; background: var(--planner-teal-dark); font: 900 8px/1 "SFMono-Regular", Consolas, monospace; }
+html[data-planner="query"] .query-risk-map article div { min-width: 0; }
+html[data-planner="query"] .query-risk-map article strong { color: #315f59; font-size: 11px; }
+html[data-planner="query"] .query-risk-map article p { margin: 2px 0 0; color: #52635d; font-size: 9px; line-height: 1.4; }
+html[data-planner="query"] .query-risk-map article > em { grid-column: 2; color: #715039; font: 800 8px/1.3 "SFMono-Regular", Consolas, monospace; font-style: normal; }
 
 html[data-planner="query"] .query-path-explanation {
     display: grid;
@@ -408,7 +447,7 @@ html[data-planner="query"] .planner-field-heading {
     border-bottom: 1px solid rgba(118, 91, 56, .2);
 }
 
-html[data-planner="query"] .planner-field-heading.is-qps { margin-top: 17px; }
+html[data-planner="query"] .planner-field-heading.is-qps { margin-top: 12px; }
 html[data-planner="query"] .planner-field-heading.is-comparison { margin-top: 0; }
 
 html[data-planner="query"] .planner-field-heading > span {
@@ -436,7 +475,7 @@ html[data-planner="query"] .planner-field-heading strong {
 
 html[data-planner="query"] .planner-field-heading > small {
     color: #52635d;
-    font-size: 13px;
+    font-size: 11px;
     line-height: 1.45;
     text-align: right;
 }
@@ -450,7 +489,7 @@ html[data-planner="query"] .runner-parameter-note {
     gap: 10px;
     margin: 0 0 10px;
     color: #475750;
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1.55;
 }
 
@@ -465,9 +504,10 @@ html[data-planner="query"] .runner-parameter-note code {
 html[data-planner] .query-plan-preview {
     display: grid;
     min-width: 0;
+    align-self: start;
     align-content: start;
-    gap: 12px;
-    padding: 17px;
+    gap: 9px;
+    padding: 14px;
     border: 2px solid var(--planner-frame);
     background:
         linear-gradient(rgba(66, 125, 117, .055) 1px, transparent 1px),
@@ -556,26 +596,26 @@ html[data-planner="purchase"] .purchase-plan-confirmation .crowd-run-actions { m
 
 html[data-planner] .market-toast { z-index: 100; }
 
-/* 配置页以讲清参数为第一目标；字号统一按可持续阅读而不是装饰标签来定。 */
+/* 详情页以讲清实验问题为第一目标；运行条件保持可读，但不抢占叙事重心。 */
 html[data-planner] .planner-context__copy small { font-size: 10px; }
 html[data-planner] .planner-context__copy p { font-size: 13px; }
 
 html[data-planner] .task-draft-header > div small { font-size: 10px; }
-html[data-planner] .task-draft-header > div strong { font-size: 24px; }
-html[data-planner] .task-draft-header p { font-size: 12px; }
+html[data-planner] .task-draft-header > div strong { font-size: 22px; }
+html[data-planner] .task-draft-header p { font-size: 11px; }
 
 html[data-planner] .task-lifecycle li { font-size: 11px; }
 html[data-planner] .task-lifecycle li i { width: 22px; height: 22px; font-size: 8px; }
 
-html[data-planner] .task-contract-strip > div { gap: 6px; padding: 11px 12px; }
-html[data-planner] .task-contract-strip small { font-size: 10px; }
+html[data-planner] .task-contract-strip > div { gap: 4px; padding: 8px 10px; }
+html[data-planner] .task-contract-strip small { font-size: 9px; }
 html[data-planner] .task-contract-strip output,
-html[data-planner] .task-contract-strip strong { font-size: 13px !important; }
+html[data-planner] .task-contract-strip strong { font-size: 12px !important; }
 
 html[data-planner] .task-intent-panel > header > span,
 html[data-planner] .runner-plan-panel > header > span { font-size: 10px; }
 html[data-planner] .task-intent-panel > header > strong,
-html[data-planner] .runner-plan-panel > header > strong { font-size: 15px; }
+html[data-planner] .runner-plan-panel > header > strong { font-size: 14px; }
 
 html[data-planner] .query-path-options button { gap: 5px; padding: 13px 14px; }
 html[data-planner] .query-path-options button.is-active { padding: 13px 14px; }
@@ -584,14 +624,14 @@ html[data-planner] .query-path-options strong { font-size: 14px !important; }
 html[data-planner] .query-path-options span { font-size: 12px; }
 
 html[data-planner="query"] .query-target-identity small { font-size: 10px; }
-html[data-planner="query"] .query-target-identity strong { font-size: 18px; }
+html[data-planner="query"] .query-target-identity strong { font-size: 16px; }
 html[data-planner="query"] .query-target-details p,
-html[data-planner="query"] .runner-parameter-note { font-size: 13px; }
+html[data-planner="query"] .runner-parameter-note { font-size: 11px; }
 
-html[data-planner] .task-intent-panel .crowd-tier-options button { min-height: 62px; padding: 9px 10px; }
-html[data-planner] .task-intent-panel .crowd-tier-options span { font-size: 14px; }
-html[data-planner] .task-intent-panel .crowd-tier-options strong { font-size: 13px; }
-html[data-planner] .task-intent-panel .crowd-tier-options small { font-size: 11px; }
+html[data-planner] .task-intent-panel .crowd-tier-options button { min-height: 54px; padding: 7px 9px; }
+html[data-planner] .task-intent-panel .crowd-tier-options span { font-size: 12px; }
+html[data-planner] .task-intent-panel .crowd-tier-options strong { font-size: 12px; }
+html[data-planner] .task-intent-panel .crowd-tier-options small { font-size: 9px; }
 
 html[data-planner] .conduit-mode-control small,
 html[data-planner] .conduit-mode-options button,
@@ -600,15 +640,15 @@ html[data-planner] .runner-plan-detail summary { font-size: 11px; }
 html[data-planner] .runner-plan-detail p { font-size: 11px; }
 html[data-planner] .runner-plan-detail > small { font-size: 10px !important; }
 
-html[data-planner] .query-plan-preview > small { font-size: 10px; }
-html[data-planner] .query-plan-preview > strong { font-size: 20px; }
+html[data-planner] .query-plan-preview > small { font-size: 9px; }
+html[data-planner] .query-plan-preview > strong { font-size: 18px; }
 html[data-planner] .query-plan-material small { font-size: 9px; }
 html[data-planner] .query-plan-material b { font-size: 16px; }
-html[data-planner] .query-plan-preview > code { font-size: 12px; }
-html[data-planner] .query-plan-preview > p { font-size: 13px; }
-html[data-planner] .query-plan-preview dt { font-size: 10px; }
-html[data-planner] .query-plan-preview dd { font-size: 12px; }
-html[data-planner] .query-plan-preview .query-plan-boundary { font-size: 12px; }
+html[data-planner] .query-plan-preview > code { font-size: 11px; }
+html[data-planner] .query-plan-preview > p { font-size: 11px; }
+html[data-planner] .query-plan-preview dt { font-size: 9px; }
+html[data-planner] .query-plan-preview dd { font-size: 11px; }
+html[data-planner] .query-plan-preview .query-plan-boundary { font-size: 10px; }
 
 html[data-planner] .crowd-confirmation-bar .crowd-status strong { font-size: 13px; }
 html[data-planner] .crowd-confirmation-bar .crowd-status small { font-size: 10px; }
@@ -617,6 +657,11 @@ html[data-planner] .crowd-confirmation-bar .event-primary { font-size: 12px; }
 html[data-planner] .purchase-plan-panel > header small { font-size: 10px; }
 html[data-planner] .purchase-plan-config-sheet > header strong,
 html[data-planner] .purchase-plan-preview > strong { font-size: 16px; }
+html[data-planner] .purchase-path-helper {
+    margin: -0.2rem 0 0.75rem;
+    color: rgba(61, 79, 73, 0.76);
+    font-size: 0.82rem;
+}
 html[data-planner] .purchase-outbox-rationale header small { font-size: 9px; }
 html[data-planner] .purchase-outbox-rationale header strong { font-size: 14px; }
 html[data-planner] .purchase-outbox-rationale p,
@@ -680,6 +725,8 @@ html[data-planner] .purchase-plan-preview dd { font-size: 11px; }
 
     html[data-planner="query"] .query-target-brief { grid-template-columns: minmax(0, 1fr); }
     html[data-planner="query"] .query-path-comparison { grid-template-columns: minmax(0, 1fr); }
+    html[data-planner="query"] .query-risk-map > div { grid-template-columns: minmax(0, 1fr); }
+    html[data-planner="query"] .query-risk-map article + article { padding-left: 0; border-top: 1px solid rgba(118, 91, 56, .22); border-left: 0; }
     html[data-planner="query"] .planner-field-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
     html[data-planner="query"] .planner-field-heading > small { text-align: left; }
 

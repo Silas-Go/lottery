@@ -492,9 +492,9 @@
                         "自动 · -c " + plannedConnections.toLocaleString("zh-CN") + " · 计划" :
                         "自动 · 计划计算中")));
         var cached = currentExperiment().mode === "cached";
-        var pathLabel = cached ? "Redis Cache-Aside" : "MySQL Direct";
+        var pathLabel = cached ? "Redis 旁路缓存" : "MySQL 直接查询";
         if (state.scenario === "breakdown") {
-            pathLabel = "热点失效 · Cache-Aside";
+            pathLabel = "热点失效 · 旁路缓存";
         } else if (state.scenario === "penetration") {
             pathLabel = "不存在 ID · " + (state.protection === "negative-cache" ? "负缓存" : "无保护");
         }
@@ -524,7 +524,7 @@
                     "页面和指标观测均已就绪，正在锁定最终 Runner 配置。" :
                     (state.labSceneReady && state.metricsObservationReady ?
                         (pending.sharedConditions ?
-                            "共同 QPS、连接策略与时长已载入；选择 Direct 或 Cache-Aside，再点击开始创建任务。" :
+                            "共同 QPS、连接策略与时长已载入；选择直接查询或旁路缓存，再点击开始创建任务。" :
                             "观测已经就绪；点击开始按钮后才会创建 Runner 任务并发送真实请求。") :
                         "Runner 尚未创建，当前没有连接启用，也没有真实请求发送。")) :
                 (pendingTask ? "正在通过任务快照恢复 Runner 状态；此时不会播放请求动画。" :
@@ -575,12 +575,12 @@
         });
         byId("query-endpoint").textContent = cached ? "via /cached" : "via /direct";
         byId("lab-shared-strategy").textContent = cached ?
-            "Redis Cache-Aside · " + (next.cacheTemperature === "cold" ? "冷缓存" : "热缓存") :
-            "MySQL Direct";
+            "Redis 旁路缓存 · " + (next.cacheTemperature === "cold" ? "冷缓存" : "热缓存") :
+            "MySQL 直接查询";
         byId("lab-strategy-explanation").textContent = isCrowdEntry() ?
             (cached ?
-                "查询潮汐固定从冷缓存起跑；Runner 会先清空缓存与指标，再持续投递 Cache-Aside 查询卷轴。" :
-                "查询潮汐会持续投递 MySQL Direct 查询卷轴；Runner 启动前会清空本章指标。") :
+                "查询潮汐固定从冷缓存起跑；Runner 会先清空缓存与指标，再持续发送旁路缓存查询请求。" :
+                "查询潮汐会持续发送 MySQL 直接查询请求；Runner 启动前会清空本章指标。") :
             (cached ?
             (next.cacheTemperature === "cold" ?
                 "查询前先清空档案缓存与本章指标，首个真实响应应映射为 Cache Miss。" :
@@ -879,7 +879,7 @@
         } else {
             queryButtonCopy = state.loadtestTask ? "再次启动查询潮汐" :
                 (currentExperiment().mode === "cached" ?
-                    "开始 Redis Cache-Aside 压测" : "开始 MySQL Direct 压测");
+                    "开始 Redis 旁路缓存压测" : "开始 MySQL 直接查询压测");
             if (state.scenario === "breakdown") {
                 queryButtonCopy = state.loadtestTask ? "再次验证热点击穿" : "启动热点击穿实验";
             } else if (state.scenario === "penetration") {
@@ -1284,7 +1284,7 @@
         }
         var cachedWins = preference === "higher" ? cachedValue > directValue : cachedValue < directValue;
         row.classList.add(cachedWins ? "winner-cached" : "winner-direct");
-        byId("compare-" + name + "-winner").textContent = cachedWins ? "Cache-Aside 胜出" : "Direct 胜出";
+        byId("compare-" + name + "-winner").textContent = cachedWins ? "旁路缓存胜出" : "直接查询胜出";
         return cachedWins ? "cached" : "direct";
     }
 
@@ -1430,8 +1430,8 @@
         renderFrozenCard("cached", cached);
         renderFrozenComparison(direct, cached);
         byId("wrk2-final-status").textContent = direct && cached ? "两条 wrk2 结果已冻结" :
-            (direct ? "Direct 已冻结 · 等待 Cache-Aside" :
-                (cached ? "Cache-Aside 已冻结 · 等待 Direct" : "等待 wrk2 完成"));
+            (direct ? "直接查询已冻结 · 等待旁路缓存" :
+                (cached ? "旁路缓存已冻结 · 等待直接查询" : "等待 wrk2 完成"));
     }
 
     function completeResult(result) {
@@ -1440,7 +1440,7 @@
         state.pendingRun = null;
         state.crowdRun = null;
         renderFrozenResults();
-        byId("freeze-status").textContent = (result.mode === "cached" ? "Cache-Aside" : "MySQL Direct") + " 本轮结果已冻结";
+        byId("freeze-status").textContent = (result.mode === "cached" ? "旁路缓存" : "MySQL 直接查询") + " 本轮结果已冻结";
         showToast("本轮实验结果已冻结，可用于下一轮对比。", "success");
     }
 
@@ -3045,10 +3045,10 @@
             (Number(task.elapsedSeconds || 0) > 0 &&
                 ["running", "collecting", "failed", "stopped"].indexOf(task.status) >= 0);
         byId("lab-load-path").textContent = taskScenario(task) === "breakdown" ?
-            "热点失效 · Cache-Aside" :
+            "热点失效 · 旁路缓存" :
             (taskScenario(task) === "penetration" ?
                 "不存在 ID · " + (task.protection === "negative-cache" ? "负缓存" : "无保护") :
-                (task.mode === "cached" ? "Redis Cache-Aside" : "MySQL Direct"));
+                (task.mode === "cached" ? "Redis 旁路缓存" : "MySQL 直接查询"));
         byId("lab-load-target").textContent = taskTargetRate(task).toLocaleString("zh-CN") + " req/s";
         byId("lab-load-requests").textContent = hasObservedSample ?
             formatNumber(metrics.actualRequests) : "—";
@@ -3585,7 +3585,7 @@
             Number(task.metrics.actualQps || 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + " QPS";
         byId("purchase-entry").textContent = "查看购买实验详情";
         byId("purchase-entry-note").textContent =
-            "先回到店外选择缓存失效路径；购买实验固定发出 150 个唯一请求，不复用本轮 QPS 或连接配置。";
+            "先回到详情页了解两条失效路径，再进入实验室选择本轮方案；购买实验固定发出 150 个唯一请求。";
     }
 
     async function loadCrowdMaterialRecord(task) {

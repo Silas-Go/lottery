@@ -5,12 +5,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f6edcf" />
-    <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL Direct 和 Redis Cache-Aside。" />
-    <title>Cache-Aside 材料检索实验室 · Silas</title>
+    <meta name="description" content="用真实 HTTP、X-Archive-Source 与 SSE 指标比较 MySQL 直接查询和 Redis 旁路缓存。" />
+    <title>旁路缓存材料检索实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260819-wrk2-clear-v1" />
+    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260825-query-path-cn-v4" />
     <link rel="stylesheet" href="/css/query-lab.css?v=20260806-scenario-comparison-v1" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
@@ -76,7 +76,7 @@
 
                     <nav class="query-scenario-nav" aria-label="选择缓存查询实验阶段">
                         <button id="scenario-steady" class="is-active" type="button" aria-pressed="true">
-                            <small>阶段 1</small><strong>稳态性能</strong><span>Direct vs Cache-Aside</span>
+                            <small>阶段 1</small><strong>稳态性能</strong><span>直接查询 vs 旁路缓存</span>
                         </button>
                         <button id="scenario-breakdown" type="button" aria-pressed="false">
                             <small>阶段 2</small><strong>热点击穿</strong><span>ARC-004 真实失效与恢复</span>
@@ -89,16 +89,16 @@
                     <div class="archive-reader-control">
                         <header class="archive-reader-heading">
                             <div><small>ARCHIVE READER</small><strong>读取路径</strong></div>
-                            <output id="lab-shared-strategy">MySQL Direct</output>
+                            <output id="lab-shared-strategy">MySQL 直接查询</output>
                         </header>
                         <div class="query-controls">
                             <div class="reader-route-settings">
                                 <div class="mode-switch" role="group" aria-label="选择实验读取路径">
                                     <button id="mode-direct" class="is-active" type="button" aria-pressed="true">
-                                        <small>PATH A</small><strong>MySQL 直查</strong><span>Go API → MySQL</span>
+                                        <small>方案 A</small><strong>MySQL 直接查询</strong><span>Go API → MySQL</span>
                                     </button>
                                     <button id="mode-cached" type="button" aria-pressed="false">
-                                        <small>PATH B</small><strong>Redis 旁路缓存</strong><span>Go API → Redis → MySQL on MISS</span>
+                                        <small>方案 B</small><strong>Redis 旁路缓存</strong><span>Go API → Redis → 未命中后查询 MySQL</span>
                                     </button>
                                 </div>
                                 <fieldset id="lab-cache-settings" class="lab-cache-settings" hidden>
@@ -166,7 +166,7 @@
                         <div class="query-task-facts" aria-label="本轮任务稳定事实">
                             <section class="query-fact-lane is-intent">
                                 <header><small>INTENT</small><strong>实验意图</strong></header>
-                                <span><small>请求路径</small><strong id="lab-load-path">MySQL Direct</strong></span>
+                                <span><small>请求路径</small><strong id="lab-load-path">MySQL 直接查询</strong></span>
                                 <span><small>目标速率</small><strong id="lab-load-target">—</strong></span>
                             </section>
                             <section class="query-fact-lane is-config">
@@ -491,7 +491,7 @@
                         </section>
                         <p>当前只读取材料资料，不会占用或扣减真实库存。</p>
                         <button id="purchase-entry" type="button">查看购买实验详情</button>
-                        <small id="purchase-entry-note">先回到店外选择失效路径，再进入采购实验室；不会复用本轮查询参数。</small>
+                        <small id="purchase-entry-note">先回到详情页了解两条失效路径，再进入实验室选择本轮方案；不会复用本轮查询参数。</small>
                     </article>
                 </section>
 
@@ -512,9 +512,9 @@
                         </div>
                     </div>
 
-                    <div class="metrics-table" role="table" aria-label="MySQL Direct 与 Redis Cache-Aside 的 wrk2 最终指标">
+                    <div class="metrics-table" role="table" aria-label="MySQL 直接查询与 Redis 旁路缓存的 wrk2 最终指标">
                         <div class="metrics-row metrics-head" role="row">
-                            <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong>
+                            <span role="columnheader">指标</span><strong role="columnheader">MySQL 直接查询</strong><strong role="columnheader">Redis 旁路缓存</strong>
                         </div>
                         <div class="metrics-row" role="row"><span>目标速率</span><strong id="direct-target-qps">—</strong><strong id="cached-target-qps">—</strong></div>
                         <div class="metrics-row" role="row"><span>实际速率</span><strong id="direct-actual-qps">—</strong><strong id="cached-actual-qps">—</strong></div>
@@ -561,7 +561,7 @@
 
                 <div class="frozen-result-cards">
                     <article id="frozen-direct" class="frozen-result-card is-empty">
-                        <header><div><small>CONTROL RESULT</small><strong>MySQL Direct</strong></div><span>待测试</span></header>
+                        <header><div><small>对照方案</small><strong>MySQL 直接查询</strong></div><span>待测试</span></header>
                         <p class="frozen-result-context" data-result-context>完成直查测试后自动冻结</p>
                         <dl>
                             <div><dt>目标 / 实际速率</dt><dd data-result="ratePair">—</dd></div>
@@ -579,7 +579,7 @@
                     </article>
 
                     <article id="frozen-cached" class="frozen-result-card is-empty">
-                        <header><div><small>OPTIMIZED RESULT</small><strong>Redis Cache-Aside</strong></div><span>待测试</span></header>
+                        <header><div><small>优化方案</small><strong>Redis 旁路缓存</strong></div><span>待测试</span></header>
                         <p class="frozen-result-context" data-result-context>完成旁路缓存测试后自动冻结</p>
                         <dl>
                             <div><dt>目标 / 实际速率</dt><dd data-result="ratePair">—</dd></div>
@@ -602,9 +602,9 @@
                         <div><small>FAIR COMPARISON</small><strong id="frozen-comparison-title">还需要两种路径各完成一轮测试</strong></div>
                         <span id="frozen-overall-winner">WAITING</span>
                     </header>
-                    <div class="frozen-comparison-table" role="table" aria-label="已冻结的 MySQL Direct 与 Redis Cache-Aside 结果比较">
+                    <div class="frozen-comparison-table" role="table" aria-label="已冻结的 MySQL 直接查询与 Redis 旁路缓存结果比较">
                         <div class="frozen-comparison-row is-head" role="row">
-                            <span role="columnheader">Metric</span><strong role="columnheader">MySQL Direct</strong><strong role="columnheader">Redis Cache-Aside</strong><em role="columnheader">判断</em>
+                            <span role="columnheader">指标</span><strong role="columnheader">MySQL 直接查询</strong><strong role="columnheader">Redis 旁路缓存</strong><em role="columnheader">判断</em>
                         </div>
                         <div id="compare-target-row" class="frozen-comparison-row" role="row"><span>目标速率</span><strong id="compare-target-direct">—</strong><strong id="compare-target-cached">—</strong><em id="compare-target-winner">等待</em></div>
                         <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>实际速率</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
@@ -634,7 +634,7 @@
                 </div>
                 <button id="close-data-composition" type="button" aria-label="关闭数据构成">×</button>
             </header>
-            <p class="data-composition-intro">这里只呈现一张整体映射。Direct 每次现场组装，Redis Cache-Aside 命中后直接返回同一份最终 DTO。</p>
+            <p class="data-composition-intro">这里只呈现一张整体映射。直接查询每次现场组装，Redis 旁路缓存命中后直接返回同一份最终 DTO。</p>
             <div class="data-composition-map" role="list" aria-label="材料详情数据构成映射">
                 <article role="listitem">
                     <span>基础信息</span>
@@ -668,7 +668,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260806-scenario-comparison-v1"></script>
-    <script src="/js/query-lab.js?v=20260825-experiment-detail-v2"></script>
+    <script src="/js/query-lab.js?v=20260825-query-path-cn-v4"></script>
 </body>
 
 </html>

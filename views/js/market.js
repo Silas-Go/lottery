@@ -40,13 +40,13 @@
     var connectionPlan = null;
     var connectionPlanRequest = 0;
     var queryExplainerMode = "direct";
-    // 详情页只给两轮建立共同条件；Direct 用作自动连接数的预估样本，
+    // 详情页只给两轮建立共同条件；直接查询用作自动连接数的预估样本，
     // 进入实验室选择真实路径后会按该路径重新估算，任务创建时再由 Runner 锁定。
     var CONFIG_PREVIEW_MODE = "direct";
     var marketPreviewTimer = null;
     var marketPreviewSignature = "";
-    // 购买实验没有 wrk2 或目标 QPS；详情页只展示并选择后端真实支持的缓存失效路径。
-    var purchasePlanStrategies = Object.freeze({
+    // 详情页只解释两条真实路径；本轮运行方案留到实验室内选择。
+    var purchasePathExplanations = Object.freeze({
         "sync-invalidate": Object.freeze({
             label: "同步删除缓存",
             route: "MySQL COMMIT → Redis DEL → Response",
@@ -58,7 +58,7 @@
             copy: "顾客先收到响应，再由信使异步更新库存牌；核心交易链路更短，但允许短暂旧读窗口。"
         })
     });
-    var purchasePlanStrategy = "sync-invalidate";
+    var purchaseExplainerMode = "sync-invalidate";
 
     function byId(id) {
         return document.getElementById(id);
@@ -146,12 +146,12 @@
             return "$ErrorActionPreference = \"Stop\"\n" +
                 "Invoke-WebRequest -UseBasicParsing -Method Post " +
                 "-Uri \"http://localhost:5678/api/chapters/cache-aside/reset\" | Out-Null\n" +
-                "# Path A · MySQL Direct\n" + loadCommand("direct") + "\n\n" +
-                "# Path B · Redis Cache-Aside（保持相同 QPS、-c 与时长）\n" + loadCommand("cached");
+                "# 方案 A · MySQL 直接查询\n" + loadCommand("direct") + "\n\n" +
+                "# 方案 B · Redis 旁路缓存（保持相同 QPS、-c 与时长）\n" + loadCommand("cached");
         }
         return "curl -fsS -X POST http://localhost:5678/api/chapters/cache-aside/reset >/dev/null\n" +
-            "# Path A · MySQL Direct\n" + loadCommand("direct") + "\n\n" +
-            "# Path B · Redis Cache-Aside（保持相同 QPS、-c 与时长）\n" + loadCommand("cached");
+            "# 方案 A · MySQL 直接查询\n" + loadCommand("direct") + "\n\n" +
+            "# 方案 B · Redis 旁路缓存（保持相同 QPS、-c 与时长）\n" + loadCommand("cached");
     }
 
     function matchingConnectionPlan() {
@@ -374,7 +374,7 @@
                 connections.toLocaleString("zh-CN") : "计算中";
         byId("crowd-connection-current").textContent = "尚未创建";
         byId("crowd-connection-copy").textContent = plan && plan.reason ?
-            "共同条件预估（Direct 样本） · " + plan.reason + "；进入实验室选定路径后会重新计算。" :
+            "共同条件预估（直接查询样本） · " + plan.reason + "；进入实验室选定路径后会重新计算。" :
             (connectionMode === "manual" ?
                 "两条路径共享所选 wrk2 -c；任务创建时锁定。" :
                 "正在读取共同条件预估；进入实验室选定路径后会从 70 / 140 / 300 / 500 中重新计算。");
@@ -427,9 +427,9 @@
     }
 
     function renderExperimentState(next) {
-        byId("crowd-summary-path").textContent = "Direct vs Cache-Aside";
+        byId("crowd-summary-path").textContent = "直接查询 vs 旁路缓存";
         byId("market-backend-icon").textContent = "A/B";
-        byId("market-backend-name").textContent = "Direct vs Cache-Aside";
+        byId("market-backend-name").textContent = "直接查询 vs 旁路缓存";
         byId("market-mechanism").dataset.path = "comparison";
         renderMarketRequestPreview();
     }
@@ -446,25 +446,26 @@
             }
         });
         byId("query-plan-preview-eyebrow").textContent =
-            "PATH EXPLAINER · " + (cached ? "PATH B" : "PATH A");
+            "方案解说 · " + (cached ? "方案 B" : "方案 A");
         byId("query-plan-preview-heading").textContent =
-            "方案解说 · " + (cached ? "Redis Cache-Aside" : "MySQL Direct");
+            "方案解说 · " + (cached ? "Redis 旁路缓存" : "MySQL 直接查询");
         byId("query-preview-route").textContent =
             "GET /api/archives/4/" + (cached ? "cached" : "direct");
         byId("query-preview-copy").textContent = cached ?
-            "请求先查询 Redis；HIT 直接返回，只有 MISS 才进入回源保护、查询 MySQL 并回填完整 DTO。" :
+            "请求先查询 Redis；命中后直接返回，只有未命中才进入回源保护、查询 MySQL 并回填完整 DTO。" :
             "每个 HTTP 请求都进入 MySQL，完成 4 条查询后现场组装同一份 MaterialDetailDTO。";
         byId("query-explainer-chain").textContent = cached ?
-            "Go API → Redis；MISS → 按 Key Mutex + 双检 → MySQL → SET Redis。" :
+            "Go API → Redis；未命中 → 按缓存键互斥并双检 → MySQL → 回填 Redis。" :
             "Go API → MySQL → 4 条 SQL → DTO。";
         byId("query-explainer-trait-label").textContent = cached ? "工程价值" : "性能特征";
         byId("query-explainer-trait").textContent = cached ?
-            "HIT 避开数据库查询与 DTO 组装，用少量等待换取 MySQL 稳定。" :
+            "缓存命中会避开数据库查询与 DTO 组装，用少量等待换取 MySQL 稳定。" :
             "没有缓存命中收益，每次请求都会重复查询和组装。";
         byId("query-explainer-proof-label").textContent = cached ? "潜在问题" : "重点观察";
         byId("query-explainer-proof").textContent = cached ?
-            "热点 Key 失效可能引发缓存击穿；不存在 ID 反复回源会形成缓存穿透，后续阶段分别验证。" :
+            "热点缓存键失效可能引发缓存击穿；不存在的材料反复回源会形成缓存穿透，后续阶段分别验证。" :
             "MySQL 回源、SQL 查询数，以及 P95 / P99 延迟。";
+        byId("query-risk-map").hidden = !cached;
     }
 
     function renderCrowdTier() {
@@ -949,7 +950,7 @@
                 launchWhenObserved: false,
                 sharedConditions: true,
                 materialName: materials[selectedCode].name,
-                // 详情页不替用户选择运行路径；Direct 只是实验室打开时的默认选项。
+                // 详情页不替用户选择运行路径；直接查询只是实验室打开时的默认选项。
                 mode: "direct",
                 cacheTemperature: "cold",
                 tier: crowdTierID,
@@ -1012,19 +1013,16 @@
         byId("start-crowd-test").focus({ preventScroll: true });
     }
 
-    function renderPurchasePlan() {
-        var plan = purchasePlanStrategies[purchasePlanStrategy];
-        document.querySelectorAll("[data-purchase-plan-strategy]").forEach(function (button) {
-            var active = button.dataset.purchasePlanStrategy === purchasePlanStrategy;
+    function renderPurchaseExplainer() {
+        var explanation = purchasePathExplanations[purchaseExplainerMode];
+        document.querySelectorAll("[data-purchase-explainer]").forEach(function (button) {
+            var active = button.dataset.purchaseExplainer === purchaseExplainerMode;
             button.classList.toggle("is-active", active);
-            button.setAttribute("aria-checked", String(active));
+            button.setAttribute("aria-pressed", String(active));
         });
-        byId("purchase-plan-summary-strategy").textContent = plan.label;
-        byId("purchase-plan-preview").dataset.strategy = purchasePlanStrategy;
-        byId("purchase-plan-route-code").textContent = plan.route;
-        byId("purchase-plan-route-copy").textContent = plan.copy;
-        byId("purchase-plan-status-copy").textContent =
-            "已选择“" + plan.label + "”；进入采购实验室后，由你点击开始才会真实修改库存。";
+        byId("purchase-plan-preview-heading").textContent = "方案解说 · " + explanation.label;
+        byId("purchase-plan-route-code").textContent = explanation.route;
+        byId("purchase-plan-route-copy").textContent = explanation.copy;
     }
 
     function openPurchaseMode() {
@@ -1043,16 +1041,16 @@
         }
         setState("purchase_preparing");
         updateFoyerExperimentQuery("purchase");
-        renderPurchasePlan();
+        renderPurchaseExplainer();
         byId("confirm-purchase-plan").focus({ preventScroll: true });
     }
 
-    function selectPurchasePlanStrategy(strategy) {
-        if (state !== "purchase_preparing" || !purchasePlanStrategies[strategy]) {
+    function selectPurchaseExplainer(mode) {
+        if (state !== "purchase_preparing" || !purchasePathExplanations[mode]) {
             return;
         }
-        purchasePlanStrategy = strategy;
-        renderPurchasePlan();
+        purchaseExplainerMode = mode;
+        renderPurchaseExplainer();
     }
 
     function leavePurchaseMode() {
@@ -1123,17 +1121,14 @@
     }
 
     function enterPurchaseLabFromMarket() {
-        if (!selectedCode || state !== "purchase_preparing" ||
-            !purchasePlanStrategies[purchasePlanStrategy]) {
+        if (!selectedCode || state !== "purchase_preparing") {
             return;
         }
         setState("entering_purchase_lab");
         byId("market-announcer").textContent =
-            materials[selectedCode].name + "的" + purchasePlanStrategies[purchasePlanStrategy].label +
-            "方案已选择，正在前往购买实验室";
+            "正在前往" + materials[selectedCode].name + "购买实验室";
         window.setTimeout(function () {
-            window.location.assign("/purchase-lab?strategy=" +
-                encodeURIComponent(purchasePlanStrategy) + "&intent=new");
+            window.location.assign("/purchase-lab?intent=new");
         }, reducedMotion ? 0 : 180);
     }
 
@@ -1201,9 +1196,9 @@
         });
         byId("copy-market-command").addEventListener("click", copyCrowdCommand);
         byId("leave-crowd-mode").addEventListener("click", leaveCrowdMode);
-        document.querySelectorAll("[data-purchase-plan-strategy]").forEach(function (button) {
+        document.querySelectorAll("[data-purchase-explainer]").forEach(function (button) {
             button.addEventListener("click", function () {
-                selectPurchasePlanStrategy(button.dataset.purchasePlanStrategy);
+                selectPurchaseExplainer(button.dataset.purchaseExplainer);
             });
         });
         byId("confirm-purchase-plan").addEventListener("click", enterPurchaseLabFromMarket);
