@@ -16,6 +16,10 @@ Silas 是一个 Go 高并发实验项目。它不按“章节”顺序解锁功�
 - 秒杀实验使用独立的 `inventory.count` 活动库存和 Redis admission，不与普通购买库存混用。
 - 所有页面动画都由真实 HTTP 响应、Runner 事件或服务端 SSE 指标驱动，不生成假流量和假指标。
 
+## 实验 × 知识点地图
+
+![星髓三个架构实验与后端知识点地图](docs/assets/experiment-knowledge-map.svg)
+
 ## 快速开始
 
 ### 完整 Docker Compose

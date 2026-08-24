@@ -10,8 +10,8 @@
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/purchase-lab-layout.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/purchase-lab-layout.css?v=20260824-inline-comparison-v2" />
+    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260824-stage-unify-v1" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
@@ -329,12 +329,12 @@
 
             <details class="purchase-evidence-drawer">
                 <summary>
-                    <span><b>真实事件日志</b><small>需要时再展开，不打断中心实验舞台</small></span>
+                    <span><b>本轮执行记录</b><small>需要时展开，查看真实事件与异常证据</small></span>
                     <i aria-hidden="true">查看</i>
                 </summary>
             <section class="purchase-running-log lab-panel" aria-labelledby="running-log-heading">
                 <div class="purchase-section-heading">
-                    <div><small>RECENT REAL EVENTS</small><h2 id="running-log-heading">最近关键日志</h2></div>
+                    <div><small>RECENT REAL EVENTS</small><h2 id="running-log-heading">本轮执行记录</h2></div>
                     <span id="control-status" class="purchase-log-status">等待真实事件</span>
                 </div>
                 <ol id="story-event-log" class="story-event-log" aria-label="真实事件记录">
@@ -345,13 +345,13 @@
 
             <details class="purchase-battle-report-drawer">
                 <summary>
-                    <span><b>详细实验报告</b><small>执行流已经给出主结论，需要证据时再展开</small></span>
+                    <span><b>本轮实验结果</b><small>实验完成后查看冻结指标与结论</small></span>
                     <i aria-hidden="true">查看</i>
                 </summary>
             <section id="purchase-main-results" class="purchase-main-results battle-report-shell lab-panel" aria-labelledby="results-heading" data-report-state="waiting">
                 <div id="battle-report-placeholder" class="battle-report-placeholder">
                     <span class="battle-placeholder-seal" aria-hidden="true">战</span>
-                    <div><small>EXECUTION REPORT</small><h2 id="results-heading">实验报告尚未生成</h2></div>
+                    <div><small>EXECUTION REPORT</small><h2 id="results-heading">本轮实验结果尚未生成</h2></div>
                     <p>真实实验结束后，页面会依据本轮 trace、Outbox 与一致性探针生成独立报告。</p>
                 </div>
 
@@ -477,103 +477,63 @@
 
             <details class="purchase-report-archive-drawer">
                 <summary>
-                    <span><b>历史实验报告</b><small>需要对照旧结果时再展开</small></span>
+                    <span><b>已完成实验与方案对比</b><small>查看最近结果，并对比两种失效方案</small></span>
                     <i aria-hidden="true">查看</i>
                 </summary>
-            <section id="purchase-saved-results" class="purchase-saved-results battle-archive lab-panel" aria-labelledby="saved-heading" hidden>
-                <div class="purchase-section-heading">
-                    <div><small>EXPERIMENT REPORT ARCHIVE</small><h2 id="saved-heading">实验报告列表</h2></div>
-                    <p>每次完成实验都会签发一份独立报告，并原样保存该轮结果、探针样本和完整 trace。</p>
-                </div>
-                <div id="purchase-saved-grid" class="purchase-saved-grid battle-saved-grid" role="list"></div>
-
-                <div class="battle-comparison-gate">
-                    <div>
-                        <small>ARCHITECTURE DUEL / 独立阶段</small>
-                        <strong>方案对比报告</strong>
-                        <p id="comparison-readiness" role="status" aria-live="polite">完成两个不同方案的实验报告后解锁。</p>
-                        <p id="comparison-selection-summary">对比结果不会自动生成，也不会重新执行购买。</p>
-                    </div>
-                    <button id="generate-comparison-report" type="button" aria-haspopup="dialog"
-                        aria-controls="comparison-report-dialog" disabled>生成方案对比报告</button>
-                </div>
-            </section>
-            </details>
-
-            <dialog id="comparison-report-dialog" class="battle-comparison-dialog"
-                aria-labelledby="duel-title" aria-describedby="duel-description">
-                <form method="dialog" class="battle-dialog-close">
-                    <button id="close-comparison-report" type="submit" aria-label="关闭方案对比报告">关闭对比报告 ×</button>
-                </form>
-                <section id="purchase-side-by-side" class="battle-duel" aria-labelledby="duel-title">
+            <section id="purchase-saved-results" class="purchase-saved-results battle-archive lab-panel" aria-labelledby="duel-title">
+                <section id="purchase-side-by-side" class="battle-duel" aria-labelledby="duel-title" aria-describedby="comparison-readiness">
                     <header class="battle-duel-header">
-                        <div><small>STRATEGY COMPARISON</small><h2 id="duel-title" tabindex="-1">购买方案对比</h2></div>
-                        <span class="battle-duel-mark" aria-hidden="true">VS</span>
-                        <p id="duel-description">来源：<span id="duel-sync-source">同步实验报告</span> vs
-                            <span id="duel-async-source">异步实验报告</span>。不设置总冠军；每个维度依据两份已保存记录独立裁决。</p>
+                        <div><small>STRATEGY COMPARISON</small><h2 id="duel-title">购买方案对比</h2></div>
+                        <p id="comparison-readiness" role="status" aria-live="polite">两种方案各完成一次实验后即可比较。</p>
+                        <p id="comparison-selection-summary">同步方案：等待结果 · 异步方案：等待结果</p>
                     </header>
 
-                    <div class="battle-medal-grid" aria-label="方案对比结论">
-                        <article><span aria-hidden="true">🏆</span><small>最快响应</small><strong id="medal-speed-owner">—</strong><p id="medal-speed-metric">—</p></article>
-                        <article><span aria-hidden="true">⚖️</span><small>最强一致性</small><strong id="medal-consistency-owner">—</strong><p id="medal-consistency-metric">—</p></article>
-                        <article><span aria-hidden="true">🛡️</span><small>最佳故障隔离</small><strong id="medal-isolation-owner">—</strong><p id="medal-isolation-metric">—</p></article>
-                        <article><span aria-hidden="true">📜</span><small>最简单方案</small><strong id="medal-simplicity-owner">同步删除缓存</strong><p>请求链内直接完成 Redis DEL</p></article>
+                    <div class="comparison-result-table" role="table" aria-label="同步删除缓存与 Outbox MQ 方案对比">
+                        <div class="comparison-result-row is-head" role="row">
+                            <span role="columnheader">观察维度</span>
+                            <strong role="columnheader">同步删除缓存</strong>
+                            <strong role="columnheader">Outbox + MQ</strong>
+                            <b role="columnheader">本轮结果</b>
+                        </div>
+                        <div class="comparison-result-row" role="row">
+                            <span role="rowheader">Response P99</span>
+                            <strong id="compare-sync-p99">—</strong>
+                            <strong id="compare-async-p99">—</strong>
+                            <b id="compare-speed-winner">待比较</b>
+                        </div>
+                        <div class="comparison-result-row" role="row">
+                            <span role="rowheader">缓存一致性<small>旧读次数 / 最大窗口</small></span>
+                            <strong><i id="compare-sync-old">—</i><small id="compare-sync-window">—</small></strong>
+                            <strong><i id="compare-async-old">—</i><small id="compare-async-window">—</small></strong>
+                            <b id="compare-consistency-winner">待比较</b>
+                        </div>
+                        <div class="comparison-result-row" role="row">
+                            <span role="rowheader">故障隔离</span>
+                            <strong id="compare-sync-isolation">—</strong>
+                            <strong id="compare-async-isolation">—</strong>
+                            <b id="compare-isolation-winner">待证据</b>
+                        </div>
+                        <div class="comparison-result-row" role="row">
+                            <span role="rowheader">实现复杂度</span>
+                            <strong>简单<small>事务 → Redis DEL → Response</small></strong>
+                            <strong>较复杂<small>Outbox → MQ → Consumer</small></strong>
+                            <b id="compare-complexity-winner">同步删除缓存</b>
+                        </div>
                     </div>
 
-                    <div class="battle-dimension-list">
-                        <article class="battle-dimension">
-                            <header><span aria-hidden="true">⚡</span><div><small>COMPARE 01</small><h3>Response 延迟</h3></div><b id="compare-speed-winner">待比较</b></header>
-                            <div class="battle-contenders">
-                                <section><small>同步删除缓存</small><strong id="compare-sync-p99">—</strong><p>购买请求等待缓存删除</p></section>
-                                <i aria-hidden="true">VS</i>
-                                <section><small>Outbox + MQ</small><strong id="compare-async-p99">—</strong><p>购买提交后即可响应</p></section>
-                            </div>
-                            <p id="compare-speed-note" class="battle-dimension-note">等待两份真实报告。</p>
-                        </article>
-
-                        <article class="battle-dimension">
-                            <header><span aria-hidden="true">⚖</span><div><small>DUEL 02</small><h3>缓存一致性</h3></div><b id="compare-consistency-winner">待比较</b></header>
-                            <div class="battle-contenders">
-                                <section><small>同步删除缓存</small><strong id="compare-sync-old">—</strong><p>旧读 · <span id="compare-sync-window">—</span></p></section>
-                                <i aria-hidden="true">VS</i>
-                                <section><small>Outbox + MQ</small><strong id="compare-async-old">—</strong><p>旧读 · <span id="compare-async-window">—</span></p></section>
-                            </div>
-                            <p id="compare-consistency-note" class="battle-dimension-note">旧读次数相同时，再比较最大不一致窗口。</p>
-                        </article>
-
-                        <article class="battle-dimension">
-                            <header><span aria-hidden="true">🛡</span><div><small>DUEL 03</small><h3>故障隔离</h3></div><b id="compare-isolation-winner">待证据</b></header>
-                            <div class="battle-contenders">
-                                <section><small>同步删除缓存</small><strong id="compare-sync-isolation">—</strong><p>Redis DEL 位于购买响应链内</p></section>
-                                <i aria-hidden="true">VS</i>
-                                <section><small>Outbox + MQ</small><strong id="compare-async-isolation">—</strong><p>失效失败由消息链路重试</p></section>
-                            </div>
-                            <p id="compare-isolation-note" class="battle-dimension-note">只有 trace 出现失败或重试证据时才给出本轮结论。</p>
-                        </article>
-
-                        <article class="battle-dimension">
-                            <header><span aria-hidden="true">📜</span><div><small>DUEL 04</small><h3>实现复杂度</h3></div><b id="compare-complexity-winner">同步删除缓存</b></header>
-                            <div class="battle-contenders">
-                                <section><small>同步删除缓存</small><strong>简单</strong><p>事务提交 → Redis DEL → Response</p></section>
-                                <i aria-hidden="true">VS</i>
-                                <section><small>Outbox + MQ</small><strong>较复杂</strong><p>Outbox、Worker、MQ、缓存失效 Consumer</p></section>
-                            </div>
-                            <p class="battle-dimension-note">胜出原因：同步方案链路更短、组件更少；复杂度属于工程结构判断，不伪装成运行时指标。</p>
-                        </article>
-                    </div>
-
-                    <blockquote class="chief-alchemist-verdict">
-                        <span class="alchemist-medallion" aria-hidden="true">炼</span>
-                        <div><small>CHIEF ALCHEMIST'S VERDICT</small><h3>首席炼金师结论</h3><p id="alchemist-conclusion">完成两个方案后，将依据速度、一致性和故障证据给出取舍。</p></div>
-                    </blockquote>
+                    <section class="comparison-conclusion" aria-labelledby="comparison-conclusion-title">
+                        <strong id="comparison-conclusion-title">工程结论</strong>
+                        <p id="comparison-conclusion">完成两种方案后，这里会根据本轮真实指标说明取舍。</p>
+                    </section>
                 </section>
-            </dialog>
+            </section>
+            </details>
         </div>
     </main>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
-    <script src="/js/purchase-lab.js?v=20260805-navigation-v2"></script>
+    <script src="/js/purchase-lab.js?v=20260824-inline-comparison-v2"></script>
 </body>
 
 </html>

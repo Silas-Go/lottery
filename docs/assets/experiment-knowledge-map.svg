@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">星髓实验与后端知识点地图</title>
+  <desc id="desc">围绕同一个星髓材料，从高频查询、购买一致性到流量洪峰，展示三个可运行实验及其真实工程知识点。</desc>
+
+  <defs>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#263244" stroke-width="1" opacity="0.32"/>
+    </pattern>
+    <style>
+      text { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+      .eyebrow { font-size: 19px; font-weight: 700; letter-spacing: 5px; }
+      .card-kicker { font-size: 18px; font-weight: 700; letter-spacing: 2.6px; }
+      .card-title { font-size: 42px; font-weight: 750; letter-spacing: 0.5px; fill: #f5f0e6; }
+      .card-subtitle { font-size: 25px; font-weight: 500; fill: #aeb9c8; }
+      .section-label { font-size: 16px; font-weight: 700; letter-spacing: 2px; fill: #7e8a9a; }
+      .core { font-size: 26px; font-weight: 750; fill: #f8f4eb; }
+      .tag { font-size: 20px; font-weight: 560; fill: #c8d0db; }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#090f18"/>
+  <rect width="1920" height="1080" fill="url(#grid)"/>
+  <rect x="0" y="0" width="1920" height="12" fill="#8e80db"/>
+
+  <!-- Header -->
+  <g>
+    <polygon points="84,74 104,54 124,74 104,94" fill="none" stroke="#9b8de7" stroke-width="3"/>
+    <polygon points="94,74 104,64 114,74 104,84" fill="#9b8de7"/>
+    <text x="148" y="68" class="eyebrow" fill="#9b8de7">ONE MATERIAL · THREE SYSTEM PROBLEMS</text>
+    <text x="148" y="118" font-size="35" font-weight="700" fill="#f5f0e6">一个业务对象，三类典型后端问题</text>
+    <text x="1836" y="74" text-anchor="end" class="mono" font-size="16" letter-spacing="2" fill="#677487">STAR MARROW LABS / 01—03</text>
+  </g>
+
+  <!-- Evolution path -->
+  <g>
+    <text x="80" y="214" class="mono" font-size="16" font-weight="700" letter-spacing="2.5" fill="#6f7c8e">BUSINESS PRESSURE</text>
+    <line x1="80" y1="252" x2="1830" y2="252" stroke="#344154" stroke-width="2"/>
+    <polygon points="1830,252 1808,241 1808,263" fill="#77869a"/>
+
+    <circle cx="360" cy="252" r="7" fill="#3bb7ad"/>
+    <text x="360" y="237" text-anchor="middle" class="mono" font-size="17" fill="#7edbd2">QUERY PRESSURE</text>
+
+    <circle cx="960" cy="252" r="7" fill="#d79b45"/>
+    <text x="960" y="237" text-anchor="middle" class="mono" font-size="17" fill="#efbd74">TRANSACTION CONSISTENCY</text>
+
+    <circle cx="1560" cy="252" r="7" fill="#c76878"/>
+    <text x="1560" y="237" text-anchor="middle" class="mono" font-size="17" fill="#e69aaa">TRAFFIC SURGE</text>
+  </g>
+
+  <!-- Experiment 01 -->
+  <g>
+    <rect x="80" y="304" width="560" height="696" rx="24" fill="#101923" stroke="#263547" stroke-width="2"/>
+    <rect x="80" y="304" width="560" height="7" rx="3.5" fill="#3bb7ad"/>
+
+    <rect x="116" y="344" width="48" height="34" rx="7" fill="#173d3b" stroke="#317d77"/>
+    <text x="140" y="367" text-anchor="middle" class="mono" font-size="17" font-weight="700" fill="#80ded5">01</text>
+    <text x="181" y="367" class="card-kicker mono" fill="#60c8bf">READ PATH</text>
+
+    <text x="116" y="432" class="card-title">高频查询</text>
+    <text x="116" y="472" class="card-subtitle">数据库还能撑多久？</text>
+    <line x1="116" y1="506" x2="604" y2="506" stroke="#273646" stroke-width="2"/>
+
+    <text x="116" y="541" class="section-label">CORE IDEAS</text>
+    <rect x="116" y="562" width="231" height="58" rx="12" fill="#173d3b" stroke="#3bb7ad" stroke-width="2"/>
+    <text x="231.5" y="599" text-anchor="middle" class="core">Cache Aside</text>
+    <rect x="359" y="562" width="245" height="58" rx="12" fill="#173d3b" stroke="#3bb7ad" stroke-width="2"/>
+    <text x="481.5" y="599" text-anchor="middle" class="core">缓存击穿</text>
+    <rect x="116" y="632" width="488" height="58" rx="12" fill="#173d3b" stroke="#3bb7ad" stroke-width="2"/>
+    <text x="360" y="669" text-anchor="middle" class="core">缓存穿透</text>
+
+    <text x="116" y="729" class="section-label">RUN · OBSERVE · COMPARE</text>
+    <g>
+      <rect x="116" y="750" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="233.5" y="779" text-anchor="middle" class="tag mono">MySQL Direct Read</text>
+      <rect x="363" y="750" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="483.5" y="779" text-anchor="middle" class="tag">Redis DTO Cache</text>
+
+      <rect x="116" y="807" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="233.5" y="836" text-anchor="middle" class="tag mono">Cache Hit / Miss</text>
+      <rect x="363" y="807" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="483.5" y="836" text-anchor="middle" class="tag">MySQL 回源</text>
+
+      <rect x="116" y="864" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="233.5" y="893" text-anchor="middle" class="tag">同进程互斥合并</text>
+      <rect x="363" y="864" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="483.5" y="893" text-anchor="middle" class="tag">负缓存 60s</text>
+
+      <rect x="116" y="921" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="233.5" y="950" text-anchor="middle" class="tag mono">wrk2 压测</text>
+      <rect x="363" y="921" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="483.5" y="950" text-anchor="middle" class="tag mono">QPS · P50 · P95 · P99</text>
+    </g>
+  </g>
+
+  <!-- Experiment 02 -->
+  <g>
+    <rect x="680" y="304" width="560" height="696" rx="24" fill="#101923" stroke="#263547" stroke-width="2"/>
+    <rect x="680" y="304" width="560" height="7" rx="3.5" fill="#d79b45"/>
+
+    <rect x="716" y="344" width="48" height="34" rx="7" fill="#48351b" stroke="#946a31"/>
+    <text x="740" y="367" text-anchor="middle" class="mono" font-size="17" font-weight="700" fill="#f0bd73">02</text>
+    <text x="781" y="367" class="card-kicker mono" fill="#e2a955">WRITE CONSISTENCY</text>
+
+    <text x="716" y="432" class="card-title">购买与一致性</text>
+    <text x="716" y="472" class="card-subtitle">缓存和数据库怎么保持正确？</text>
+    <line x1="716" y1="506" x2="1204" y2="506" stroke="#273646" stroke-width="2"/>
+
+    <text x="716" y="541" class="section-label">CORE IDEAS</text>
+    <rect x="716" y="562" width="231" height="58" rx="12" fill="#48351b" stroke="#d79b45" stroke-width="2"/>
+    <text x="831.5" y="599" text-anchor="middle" class="core">缓存一致性</text>
+    <rect x="959" y="562" width="245" height="58" rx="12" fill="#48351b" stroke="#d79b45" stroke-width="2"/>
+    <text x="1081.5" y="599" text-anchor="middle" class="core">最终一致性</text>
+    <rect x="716" y="632" width="488" height="58" rx="12" fill="#48351b" stroke="#d79b45" stroke-width="2"/>
+    <text x="960" y="669" text-anchor="middle" class="core mono">UPDATE / COMMIT → DEL</text>
+
+    <text x="716" y="729" class="section-label">COMMIT · INVALIDATE · CONVERGE</text>
+    <g>
+      <rect x="716" y="750" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="833.5" y="779" text-anchor="middle" class="tag">MySQL 权威库存</text>
+      <rect x="963" y="750" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1083.5" y="779" text-anchor="middle" class="tag">Redis DTO Cache</text>
+
+      <rect x="716" y="807" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="833.5" y="836" text-anchor="middle" class="tag">条件 UPDATE</text>
+      <rect x="963" y="807" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1083.5" y="836" text-anchor="middle" class="tag">写后缓存失效</text>
+
+      <rect x="716" y="864" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="833.5" y="893" text-anchor="middle" class="tag mono">同步 DEL</text>
+      <rect x="963" y="864" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1083.5" y="893" text-anchor="middle" class="tag mono">Outbox + RocketMQ</text>
+
+      <rect x="716" y="921" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="833.5" y="950" text-anchor="middle" class="tag">数据不一致窗口</text>
+      <rect x="963" y="921" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1083.5" y="950" text-anchor="middle" class="tag mono">request_id 幂等</text>
+    </g>
+  </g>
+
+  <!-- Experiment 03 -->
+  <g>
+    <rect x="1280" y="304" width="560" height="696" rx="24" fill="#101923" stroke="#263547" stroke-width="2"/>
+    <rect x="1280" y="304" width="560" height="7" rx="3.5" fill="#c76878"/>
+
+    <rect x="1316" y="344" width="48" height="34" rx="7" fill="#45242d" stroke="#8d4554"/>
+    <text x="1340" y="367" text-anchor="middle" class="mono" font-size="17" font-weight="700" fill="#eda2b1">03</text>
+    <text x="1381" y="367" class="card-kicker mono" fill="#dc8495">CONCURRENT ADMISSION</text>
+
+    <text x="1316" y="432" class="card-title">流量洪峰</text>
+    <text x="1316" y="472" class="card-subtitle">大量请求怎么安全进入系统？</text>
+    <line x1="1316" y1="506" x2="1804" y2="506" stroke="#273646" stroke-width="2"/>
+
+    <text x="1316" y="541" class="section-label">CORE IDEAS</text>
+    <rect x="1316" y="562" width="142" height="128" rx="12" fill="#45242d" stroke="#c76878" stroke-width="2"/>
+    <text x="1387" y="636" text-anchor="middle" class="core">限流</text>
+    <rect x="1470" y="562" width="181" height="128" rx="12" fill="#45242d" stroke="#c76878" stroke-width="2"/>
+    <text x="1560.5" y="636" text-anchor="middle" class="core mono">Redis Lua</text>
+    <rect x="1663" y="562" width="141" height="128" rx="12" fill="#45242d" stroke="#c76878" stroke-width="2"/>
+    <text x="1733.5" y="636" text-anchor="middle" class="core">MQ 削峰</text>
+
+    <text x="1316" y="729" class="section-label">LIMIT · ADMIT · ASYNC</text>
+    <g>
+      <rect x="1316" y="750" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1433.5" y="779" text-anchor="middle" class="tag">进程内 Token Bucket</text>
+      <rect x="1563" y="750" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1683.5" y="779" text-anchor="middle" class="tag">防重复参与</text>
+
+      <rect x="1316" y="807" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1433.5" y="836" text-anchor="middle" class="tag">原子准入 · 扣库存</text>
+      <rect x="1563" y="807" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1683.5" y="836" text-anchor="middle" class="tag">防超卖</text>
+
+      <rect x="1316" y="864" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1433.5" y="893" text-anchor="middle" class="tag mono">RocketMQ</text>
+      <rect x="1563" y="864" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1683.5" y="893" text-anchor="middle" class="tag">普通消息异步下单</text>
+
+      <rect x="1316" y="921" width="235" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1433.5" y="950" text-anchor="middle" class="tag">延迟消息取消</text>
+      <rect x="1563" y="921" width="241" height="45" rx="9" fill="#141f2b" stroke="#2b3a4b"/>
+      <text x="1683.5" y="950" text-anchor="middle" class="tag mono">Consumer · Retry</text>
+    </g>
+  </g>
+
+  <g>
+    <line x1="80" y1="1036" x2="1840" y2="1036" stroke="#263244"/>
+    <text x="80" y="1063" class="mono" font-size="15" letter-spacing="1.5" fill="#617084">RUN THE PAGE · SEND REAL REQUESTS · OBSERVE REAL METRICS</text>
+    <text x="1840" y="1063" text-anchor="end" font-size="15" letter-spacing="1.2" fill="#617084">真实页面 · 真实请求 · 真实指标</text>
+  </g>
+</svg>

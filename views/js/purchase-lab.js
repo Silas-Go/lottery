@@ -2,8 +2,7 @@
     "use strict";
 
     var REPLAY_POSITION_KEY = "silas.cache-aside.purchase-replay-position.v2";
-    // 独立实验报告使用新的前端信封保存，record/trace 本身保持原结构不变。
-    // requestId 既是幂等键也是精确回看索引，避免同一方案重跑后误载最新一轮。
+    // 旧版多报告归档只用于启动时清理；当前每种方案只保留最近一次结果。
     var REPORT_ARCHIVE_KEY = "silas.cache-aside.purchase-report-archive.v1";
     var PURCHASE_COUNT = 150;
     var PROBE_RATE = 20;
@@ -15,13 +14,6 @@
     var SETTLEMENT_REVEAL_MS = 2800;
     var ACTIVE_STATUSES = ["running", "waiting_outbox", "waiting_consumer"];
     var resultStore = window.SilasPurchaseLabResults;
-    var reportArchiveMemory = null;
-    // 对比选择和生成结果不写回实验 record，也不复用真实执行/回放状态机。
-    var comparisonState = {
-        syncReportId: null,
-        asyncReportId: null,
-        generated: null
-    };
     var profiles = {
         4: { name: "星髓" }
     };
@@ -131,141 +123,6 @@
 
     function clone(value) {
         return JSON.parse(JSON.stringify(value));
-    }
-
-    function emptyReportArchive() {
-        return {
-            schemaVersion: 1,
-            nextSequenceByMaterial: {},
-            reports: []
-        };
-    }
-
-    function readReportArchive() {
-        if (reportArchiveMemory) {
-            return clone(reportArchiveMemory);
-        }
-        var archive = null;
-        try {
-            archive = JSON.parse(window.sessionStorage.getItem(REPORT_ARCHIVE_KEY) || "null");
-        } catch (_) {
-            archive = null;
-        }
-        if (!archive || archive.schemaVersion !== 1 || !Array.isArray(archive.reports)) {
-            archive = emptyReportArchive();
-        }
-        if (!archive.nextSequenceByMaterial ||
-                typeof archive.nextSequenceByMaterial !== "object") {
-            archive.nextSequenceByMaterial = {};
-        }
-        reportArchiveMemory = archive;
-        return clone(archive);
-    }
-
-    function writeReportArchive(archive) {
-        reportArchiveMemory = clone(archive);
-        try {
-            window.sessionStorage.setItem(REPORT_ARCHIVE_KEY, JSON.stringify(archive));
-            return true;
-        } catch (_) {
-            return false;
-        }
-    }
-
-    function reportRequestId(record) {
-        return record && record.run && record.run.requestId ?
-            String(record.run.requestId) : "";
-    }
-
-    function isReportableRecord(record) {
-        return !!(record && record.run && record.probe &&
-            (record.run.status === "completed" || record.run.status === "failed") &&
-            Array.isArray(record.run.trace) &&
-            reportRequestId(record));
-    }
-
-    function isCompleteReportRecord(record) {
-        return isReportableRecord(record) && record.run.status === "completed";
-    }
-
-    function saveReportEnvelope(record, options) {
-        options = options || {};
-        if (!isReportableRecord(record)) {
-            return null;
-        }
-        var archive = readReportArchive();
-        var reportId = reportRequestId(record);
-        var existing = archive.reports.find(function (envelope) {
-            return envelope && envelope.reportId === reportId;
-        });
-        if (existing) {
-            return clone(existing);
-        }
-        var materialKey = String(Number(record.materialId || 0));
-        var highestSequence = archive.reports.reduce(function (highest, envelope) {
-            if (!envelope || !envelope.record ||
-                    String(Number(envelope.record.materialId || 0)) !== materialKey) {
-                return highest;
-            }
-            return Math.max(highest, Number(envelope.sequence || 0));
-        }, 0);
-        var sequence = Math.max(
-            Number(archive.nextSequenceByMaterial[materialKey] || 1),
-            highestSequence + 1
-        );
-        var envelope = {
-            reportId: reportId,
-            sequence: sequence,
-            savedAt: record.frozenAt || new Date().toISOString(),
-            record: clone(record)
-        };
-        archive.reports.push(envelope);
-        archive.nextSequenceByMaterial[materialKey] = sequence + 1;
-        var persisted = writeReportArchive(archive);
-        if (!persisted && !options.silent) {
-            showToast("实验报告已保留在当前页面，但浏览器存储空间不足，刷新后可能无法恢复。", "error");
-        }
-        return clone(envelope);
-    }
-
-    function migrateLatestResultsToArchive() {
-        var legacy = resultStore ? resultStore.list() : {};
-        Object.keys(legacy || {}).map(function (strategy) {
-            return legacy[strategy];
-        }).filter(isReportableRecord).sort(function (left, right) {
-            return new Date(left.frozenAt || left.run.executedAt || 0).getTime() -
-                new Date(right.frozenAt || right.run.executedAt || 0).getTime();
-        }).forEach(function (record) {
-            saveReportEnvelope(record, { silent: true });
-        });
-    }
-
-    function reportEnvelopesForMaterial(materialId) {
-        return readReportArchive().reports.filter(function (envelope) {
-            return envelope && isReportableRecord(envelope.record) &&
-                Number(envelope.record.materialId) === Number(materialId);
-        }).sort(function (left, right) {
-            return Number(left.sequence || 0) - Number(right.sequence || 0);
-        });
-    }
-
-    function findReportEnvelope(reportId) {
-        if (!reportId) {
-            return null;
-        }
-        var envelope = readReportArchive().reports.find(function (candidate) {
-            return candidate && candidate.reportId === String(reportId);
-        });
-        return envelope ? clone(envelope) : null;
-    }
-
-    function reportLabel(envelope) {
-        var sequence = Number(envelope && envelope.sequence || 0);
-        return "实验报告 " + String(sequence).padStart(2, "0");
-    }
-
-    function reportEnvelopeForRecord(record) {
-        return findReportEnvelope(reportRequestId(record));
     }
 
     function createProbeState() {
@@ -1584,9 +1441,7 @@
         var run = record.run;
         var materialName = record.materialName || (state.profile && state.profile.name) || "材料";
         var strategyName = strategyNames[record.strategy] || record.strategy || "—";
-        var envelope = reportEnvelopeForRecord(record);
-        byId("report-document-number").textContent = envelope ?
-            reportLabel(envelope) : "独立实验报告";
+        byId("report-document-number").textContent = "本轮实验结果";
         byId("report-material-title").textContent = materialName;
         byId("report-strategy-subtitle").textContent = strategyName;
         byId("report-material").textContent = materialName;
@@ -1662,9 +1517,7 @@
         byId("battle-settlement").hidden = true;
         byId("battle-report-scroll").setAttribute("aria-hidden", "false");
         byId("shop-allegory-stage").classList.remove("is-settling");
-        var envelope = findReportEnvelope(requestId);
-        byId("result-status").textContent = envelope ?
-            reportLabel(envelope) + " 已生成" : "真实报告已生成";
+        byId("result-status").textContent = "本轮结果已生成";
         renderSavedResults();
     }
 
@@ -1715,10 +1568,8 @@
         byId("result-consistency").className = consistent === true ? "is-good" : (consistent === false ? "is-bad" : "");
         byId("result-stock-pair").textContent = "MySQL " + stockText(run.finalMySQLStock) +
             " / Redis " + stockText(run.finalRedisStock);
-        var envelope = reportEnvelopeForRecord(record);
         byId("result-status").textContent = run.status === "failed" ?
-            "真实运行失败" :
-            (envelope ? reportLabel(envelope) + " 已保存" : "真实结果已保存");
+            "真实运行失败" : "本轮结果已保存";
         renderBattleOverview(record);
         renderTechnicalDetails(record);
     }
@@ -2334,10 +2185,8 @@
         if (!record || !record.run) {
             return record;
         }
-        var saved = record.run.status === "completed" && resultStore ?
+        return record.run.status === "completed" && resultStore ?
             resultStore.save(record) : record;
-        var envelope = saveReportEnvelope(saved || record);
-        return envelope ? envelope.record : (saved || record);
     }
 
     function loadReplayRecord(record, options) {
@@ -2469,7 +2318,7 @@
                 action: "请求在取得完整 trace 前失败，页面已经停止推进。",
                 reason: "缺少真实证据时不能继续展示成功步骤。",
                 evidence: "错误：" + error.message,
-                next: "查看失败节点和真实事件日志。",
+                next: "查看失败节点和本轮执行记录。",
                 tone: "error",
                 final: true
             });
@@ -2529,11 +2378,6 @@
         return "证据不足";
     }
 
-    function setComparisonMedal(ownerId, metricId, winner, metric) {
-        byId(ownerId).textContent = winnerLabel(winner);
-        byId(metricId).textContent = metric;
-    }
-
     function renderComparisonBattle(sync, asyncRecord) {
         var syncRun = sync.run;
         var asyncRun = asyncRecord.run;
@@ -2552,18 +2396,6 @@
         byId("compare-sync-p99").textContent = formatMS(syncRun.purchaseP99Ms);
         byId("compare-async-p99").textContent = formatMS(asyncRun.purchaseP99Ms);
         byId("compare-speed-winner").textContent = winnerLabel(speedWinner);
-        byId("compare-speed-note").textContent = speedWinner === "tie" ?
-            "裁决原因：两种方案的 P99 位于 3% 或 1 ms 容差内，本轮响应表现接近。" :
-            (speedWinner === "unknown" ?
-                "结论依据：至少一份报告缺少有效 P99，本维度不强行比较。" :
-                "胜出原因：" + winnerLabel(speedWinner) + "的 P99 更低，差距为 " +
-                    formatMS(Math.abs(Number(syncRun.purchaseP99Ms) - Number(asyncRun.purchaseP99Ms))) + "。");
-        setComparisonMedal(
-            "medal-speed-owner",
-            "medal-speed-metric",
-            speedWinner,
-            "同步 " + formatMS(syncRun.purchaseP99Ms) + " · 异步 " + formatMS(asyncRun.purchaseP99Ms)
-        );
 
         var syncOld = Number(syncProbe.oldReads || 0);
         var asyncOld = Number(asyncProbe.oldReads || 0);
@@ -2587,23 +2419,6 @@
         byId("compare-async-window").textContent = asyncProbe.maxStaleWindowMs > 0 ?
             formatMS(asyncProbe.maxStaleWindowMs) : "0 ms";
         byId("compare-consistency-winner").textContent = winnerLabel(consistencyWinner);
-        byId("compare-consistency-note").textContent = consistencyWinner === "tie" ?
-            "裁决原因：两轮探针的旧读次数和不一致窗口都接近，本轮不区分胜负。" :
-            (consistencyWinner === "unknown" ?
-                "裁决原因：两轮有效样本不足或覆盖量差距过大，本维度不强行裁决。同步完成 " +
-                    formatNumber(syncProbe.completed) + " 次，异步完成 " +
-                    formatNumber(asyncProbe.completed) + " 次。" :
-                "胜出原因：" + winnerLabel(consistencyWinner) +
-                    "观察到更少旧读；旧读相同时以最大窗口作为次级判据。");
-        setComparisonMedal(
-            "medal-consistency-owner",
-            "medal-consistency-metric",
-            consistencyWinner,
-            consistencyWinner === "unknown" ?
-                "有效探针 " + formatNumber(syncProbe.completed) + " / " +
-                    formatNumber(asyncProbe.completed) + " 次" :
-                "旧读 " + syncOld + " / " + asyncOld + " 次"
-        );
 
         var syncFailure = !!traceStep(syncRun, [
             "cache_invalidation_failed",
@@ -2635,315 +2450,77 @@
             "请求链出现失效失败" : "Redis DEL 位于购买请求链";
         byId("compare-async-isolation").textContent = asyncFailure ? "消息链未完成" :
             (asyncRecovered ? "重试 " + asyncRetryCount + " 次后收敛" : "缓存失效移出购买请求链");
-        byId("compare-isolation-winner").textContent = winnerLabel(isolationWinner);
-        byId("compare-isolation-note").textContent = !isolationMeasured ?
-            "结论依据：两轮 trace 都没有故障样本；按实际链路结构，Outbox + MQ 将缓存失效移出购买请求，故障不会直接阻断 Response。此项是机制分析，不冒充故障实测。" :
-            (isolationWinner === "async" ?
-                "胜出原因：本轮证据显示购买完成后，缓存失效可以由消息链路重试并继续收敛。" :
-                (isolationWinner === "sync" ?
-                    "胜出原因：本轮异步消息链路未完成，而同步链路完成了请求内失效。" :
-                    "裁决原因：两种方案都留下故障证据，本维度不强行选边。"));
-        setComparisonMedal(
-            "medal-isolation-owner",
-            "medal-isolation-metric",
-            isolationWinner,
-            !isolationMeasured ? "机制裁决 · 本轮无故障样本" :
-                "同步 " + (syncFailure ? "失败" : "完成") + " · 异步重试 " + asyncRetryCount + " 次"
-        );
+        byId("compare-isolation-winner").textContent = isolationMeasured ?
+            winnerLabel(isolationWinner) : "本轮未实测";
 
-        var speedSentence = speedWinner === "unknown" ?
-            "响应速度缺少足够证据。" :
-            (speedWinner === "tie" ?
-                "两种方案的购买响应速度接近。" :
-                winnerLabel(speedWinner) + "在本轮购买响应速度上占优。");
-        var consistencySentence = consistencyWinner === "tie" ?
-            "两轮缓存及时性接近。" :
-            (consistencyWinner === "unknown" ?
-                "缓存及时性缺少足够探针证据。" :
-                winnerLabel(consistencyWinner) + "在旧读与不一致窗口上更稳。");
-        var isolationSentence = isolationMeasured ?
-            winnerLabel(isolationWinner) + "获得了本轮故障证据支持。" :
-            "本轮没有触发故障；从已保存链路结构看，Outbox + MQ 的缓存失效不阻塞 Response，因此故障隔离更强。";
-        var recommendation;
-        if (speedWinner === "async" && currentConsistency(asyncRun) === true) {
-            recommendation = "如果采购规模继续放大且业务能接受可观测的短暂旧读窗口，异步失效更值得优先评估；对库存展示必须立即更新的交易，仍应保留同步方案。";
-        } else if (consistencyWinner === "sync" && asyncOld > syncOld) {
-            recommendation = "对库存及时性敏感的小规模交易，同步失效更直接；只有当响应延迟或故障隔离成为主要矛盾时，再承担异步链路的工程复杂度。";
-        } else {
-            recommendation = "最终选择应由流量规模、可接受的不一致窗口和运维能力共同决定，而不是给方案贴上永久胜负标签。";
-        }
-        byId("alchemist-conclusion").textContent =
-            "本次" + materialName + "采购中，" + speedSentence + consistencySentence +
-            isolationSentence +
-            "从架构结构看，同步删除缓存更简单，也更容易让缓存及时更新；" +
-            "Outbox + MQ 把缓存失效移出核心响应链，减少核心链路依赖，更适合需要高并发与故障恢复能力的场景。" +
-            recommendation;
+        var speedConclusion = speedWinner === "unknown" ? "响应 P99 缺少有效数据" :
+            (speedWinner === "tie" ? "两种方案的响应 P99 接近" :
+                winnerLabel(speedWinner) + "的响应 P99 更低");
+        var consistencyConclusion = consistencyWinner === "unknown" ?
+            "一致性探针证据不足，暂不判断" :
+            (consistencyWinner === "tie" ? "两种方案的一致性表现接近" :
+                winnerLabel(consistencyWinner) + "观察到更少旧读或更短窗口");
+        byId("comparison-conclusion").textContent =
+            speedConclusion + "；" + consistencyConclusion + "。同步方案链路更短，" +
+            "Outbox + MQ 则把缓存失效移出购买响应链。选择取决于业务更看重实现简单，还是响应延迟与故障恢复。";
     }
 
-    function reportSelectionKey(strategy) {
-        return strategy === "sync-invalidate" ? "syncReportId" : "asyncReportId";
-    }
-
-    function ensureComparisonSelection(reports) {
-        ["sync-invalidate", "outbox-mq-invalidate"].forEach(function (strategy) {
-            var key = reportSelectionKey(strategy);
-            var selectedExists = reports.some(function (envelope) {
-                return envelope.reportId === comparisonState[key] &&
-                    envelope.record.strategy === strategy &&
-                    isCompleteReportRecord(envelope.record);
-            });
-            if (selectedExists) {
-                return;
-            }
-            var candidates = reports.filter(function (envelope) {
-                return envelope.record.strategy === strategy &&
-                    isCompleteReportRecord(envelope.record);
-            });
-            comparisonState[key] = candidates.length ?
-                candidates[candidates.length - 1].reportId : null;
-        });
-    }
-
-    function selectedComparisonPair(reports) {
-        var sync = reports.find(function (envelope) {
-            return envelope.reportId === comparisonState.syncReportId &&
-                envelope.record.strategy === "sync-invalidate";
-        });
-        var asyncRecord = reports.find(function (envelope) {
-            return envelope.reportId === comparisonState.asyncReportId &&
-                envelope.record.strategy === "outbox-mq-invalidate";
-        });
-        if (!sync || !asyncRecord || sync.reportId === asyncRecord.reportId ||
-                Number(sync.record.materialId) !== Number(asyncRecord.record.materialId) ||
-                !isCompleteReportRecord(sync.record) ||
-                !isCompleteReportRecord(asyncRecord.record)) {
-            return null;
-        }
-        return { sync: sync, asyncRecord: asyncRecord };
-    }
-
-    function addReportCardMetric(list, label, value) {
-        var item = document.createElement("div");
-        var term = document.createElement("dt");
-        var detail = document.createElement("dd");
-        term.textContent = label;
-        detail.textContent = value;
-        item.appendChild(term);
-        item.appendChild(detail);
-        list.appendChild(item);
-    }
-
-    function selectReportForComparison(reportId) {
-        var envelope = findReportEnvelope(reportId);
-        if (!envelope || Number(envelope.record.materialId) !== state.materialId ||
-                !isCompleteReportRecord(envelope.record)) {
-            showToast("只有完整完成的实验报告可以加入方案对比。", "error");
-            return;
-        }
-        comparisonState[reportSelectionKey(envelope.record.strategy)] = envelope.reportId;
-        renderSavedResults();
-        showToast(reportLabel(envelope) + " 已设为" +
-            (envelope.record.strategy === "sync-invalidate" ? "同步" : "异步") +
-            "方案的对比样本。");
-    }
-
-    function createSavedCard(envelope) {
-        var record = envelope.record;
-        var run = record.run;
-        var probe = record.probe;
-        var comparable = isCompleteReportRecord(record);
-        var card = document.createElement("article");
-        card.className = "purchase-saved-card battle-saved-card";
-        card.setAttribute("role", "listitem");
-        card.dataset.reportId = envelope.reportId;
-        var selectionKey = reportSelectionKey(record.strategy);
-        var selected = comparisonState[selectionKey] === envelope.reportId;
-        if (selected) {
-            card.classList.add("is-selected-for-comparison");
-        }
-        var meta = document.createElement("div");
-        meta.className = "battle-saved-meta";
-        var number = document.createElement("strong");
-        number.textContent = "《" + reportLabel(envelope) + "》";
-        var time = document.createElement("time");
-        time.dateTime = envelope.savedAt || record.frozenAt || "";
-        time.textContent = formatDateTime(envelope.savedAt || record.frozenAt || run.executedAt);
-        meta.appendChild(number);
-        meta.appendChild(time);
-        var name = document.createElement("small");
-        name.className = "battle-saved-strategy";
-        name.textContent = strategyNames[record.strategy] || record.strategy;
-        var title = document.createElement("h3");
-        title.textContent = (record.materialName || "材料") + " · " +
-            (record.strategy === "sync-invalidate" ? "同步删除缓存" : "Outbox + MQ");
-        var metrics = document.createElement("dl");
-        metrics.className = "battle-saved-metrics";
-        addReportCardMetric(
-            metrics,
-            "成功购买",
-            formatNumber(run.purchaseSucceeded) + " / " + formatNumber(run.purchaseRequested)
-        );
-        addReportCardMetric(metrics, "Response P99", formatMS(run.purchaseP99Ms));
-        addReportCardMetric(
-            metrics,
-            "一致性窗口",
-            Number(probe.maxStaleWindowMs) > 0 ? formatMS(probe.maxStaleWindowMs) : "0 ms"
-        );
-        addReportCardMetric(metrics, "旧库存读取", formatNumber(probe.oldReads) + " 次");
-        addReportCardMetric(
-            metrics,
-            "最终状态",
-            run.status === "failed" ? "实验失败" :
-                (currentConsistency(run) === true ? "库存一致" : "库存未一致")
-        );
-        var conclusion = document.createElement("p");
-        conclusion.className = "battle-saved-conclusion";
-        conclusion.textContent = shopkeeperVerdict(record);
-        var actions = document.createElement("div");
-        actions.className = "battle-saved-actions";
-        var reportButton = document.createElement("button");
-        var processButton = document.createElement("button");
-        var compareButton = document.createElement("button");
-        reportButton.type = "button";
-        reportButton.textContent = "查看本次报告";
-        reportButton.setAttribute("aria-label", "查看" + reportLabel(envelope) + "的独立实验报告");
-        reportButton.addEventListener("click", function () {
-            loadArchivedReport(envelope.reportId, true);
-        });
-        processButton.type = "button";
-        processButton.textContent = "重新查看实验过程";
-        processButton.setAttribute("aria-label", "回看" + reportLabel(envelope) + "的完整实验过程");
-        processButton.addEventListener("click", function () {
-            loadArchivedReport(envelope.reportId, false);
-        });
-        compareButton.type = "button";
-        compareButton.className = "battle-select-report";
-        compareButton.setAttribute("aria-pressed", selected ? "true" : "false");
-        compareButton.disabled = !comparable;
-        compareButton.textContent = comparable ?
-            (selected ? "已选为对比样本" : "设为对比样本") : "失败报告不可对比";
-        compareButton.setAttribute("aria-label", "将" + reportLabel(envelope) + "设为" +
-            (record.strategy === "sync-invalidate" ? "同步" : "异步") + "对比样本");
-        compareButton.addEventListener("click", function () {
-            selectReportForComparison(envelope.reportId);
-        });
-        actions.appendChild(reportButton);
-        actions.appendChild(processButton);
-        actions.appendChild(compareButton);
-        card.appendChild(meta);
-        card.appendChild(name);
-        card.appendChild(title);
-        card.appendChild(metrics);
-        card.appendChild(conclusion);
-        card.appendChild(actions);
-        return card;
-    }
-
-    function visibleReportEnvelopes() {
-        var reports = reportEnvelopesForMaterial(state.materialId);
-        // 新记录写入 sessionStorage 后仍需完成六步回放与结算动画；在卷轴揭示前，
-        // 报告列表不能提前泄露本轮指标。
-        var currentRequestId = state.record && state.record.run && state.record.run.requestId;
-        if (currentRequestId && !settlement.revealed[currentRequestId]) {
-            reports = reports.filter(function (envelope) {
-                return envelope.reportId !== currentRequestId;
-            });
-        }
-        return reports;
+    function renderWaitingComparison(sync, asyncRecord) {
+        var syncRun = sync && sync.run;
+        var asyncRun = asyncRecord && asyncRecord.run;
+        var syncProbe = sync && sync.probe;
+        var asyncProbe = asyncRecord && asyncRecord.probe;
+        byId("duel-title").textContent = "购买方案对比";
+        byId("compare-sync-p99").textContent = syncRun ? formatMS(syncRun.purchaseP99Ms) : "等待实验";
+        byId("compare-async-p99").textContent = asyncRun ? formatMS(asyncRun.purchaseP99Ms) : "等待实验";
+        byId("compare-sync-old").textContent = syncProbe ? formatNumber(syncProbe.oldReads) + " 次" : "等待实验";
+        byId("compare-async-old").textContent = asyncProbe ? formatNumber(asyncProbe.oldReads) + " 次" : "等待实验";
+        byId("compare-sync-window").textContent = syncProbe ?
+            (syncProbe.maxStaleWindowMs > 0 ? formatMS(syncProbe.maxStaleWindowMs) : "0 ms") : "—";
+        byId("compare-async-window").textContent = asyncProbe ?
+            (asyncProbe.maxStaleWindowMs > 0 ? formatMS(asyncProbe.maxStaleWindowMs) : "0 ms") : "—";
+        byId("compare-sync-isolation").textContent = syncRun ? "Redis DEL 位于购买请求链" : "等待实验";
+        byId("compare-async-isolation").textContent = asyncRun ? "缓存失效移出购买请求链" : "等待实验";
+        byId("compare-speed-winner").textContent = "等待两种方案";
+        byId("compare-consistency-winner").textContent = "等待两种方案";
+        byId("compare-isolation-winner").textContent = "等待两种方案";
+        byId("comparison-conclusion").textContent = sync ?
+            "同步方案已有结果；完成一次 Outbox + MQ 实验后自动生成对比。" :
+            (asyncRecord ? "Outbox + MQ 已有结果；完成一次同步删除缓存实验后自动生成对比。" :
+                "两种方案各完成一次实验后，这里会直接生成对比。");
     }
 
     function renderSavedResults() {
-        var reports = visibleReportEnvelopes();
-        var section = byId("purchase-saved-results");
-        var grid = byId("purchase-saved-grid");
-        section.hidden = reports.length === 0;
-        ensureComparisonSelection(reports);
-        grid.replaceChildren();
-        reports.forEach(function (envelope) {
-            grid.appendChild(createSavedCard(envelope));
-        });
-        var syncCount = reports.filter(function (envelope) {
-            return envelope.record.strategy === "sync-invalidate" &&
-                isCompleteReportRecord(envelope.record);
-        }).length;
-        var asyncCount = reports.filter(function (envelope) {
-            return envelope.record.strategy === "outbox-mq-invalidate" &&
-                isCompleteReportRecord(envelope.record);
-        }).length;
-        var pair = selectedComparisonPair(reports);
-        var button = byId("generate-comparison-report");
-        button.disabled = !pair;
-        if (syncCount && asyncCount) {
-            byId("comparison-readiness").textContent =
-                "已解锁：存在同步删除缓存和 Outbox + MQ 两种不同方案的完整报告。";
-            byId("comparison-selection-summary").textContent = pair ?
-                "当前选择：" + reportLabel(pair.sync) + "（同步） + " +
-                    reportLabel(pair.asyncRecord) + "（异步）。点击按钮后才会生成对比。" :
-                "请分别选择一份同步报告和一份异步报告。";
-        } else if (syncCount) {
-            byId("comparison-readiness").textContent =
-                "已保存 " + syncCount + " 份同步报告；还需完成一份 Outbox + MQ 实验报告。";
+        var saved = resultStore ? resultStore.list() : {};
+        var sync = saved["sync-invalidate"];
+        var asyncRecord = saved["outbox-mq-invalidate"];
+        if (sync && Number(sync.materialId) !== state.materialId) {
+            sync = null;
+        }
+        if (asyncRecord && Number(asyncRecord.materialId) !== state.materialId) {
+            asyncRecord = null;
+        }
+        if (sync && asyncRecord) {
+            byId("comparison-readiness").textContent = "两种方案均已完成，可以直接比较。";
             byId("comparison-selection-summary").textContent =
-                "同一方案的多次实验不会解锁方案对比。";
-        } else if (asyncCount) {
-            byId("comparison-readiness").textContent =
-                "已保存 " + asyncCount + " 份 Outbox + MQ 报告；还需完成一份同步删除缓存实验报告。";
+                "同步方案：最近一次结果 · 异步方案：最近一次结果";
+            renderComparisonBattle(sync, asyncRecord);
+        } else if (sync) {
+            byId("comparison-readiness").textContent = "同步方案已完成，还需运行一次 Outbox + MQ。";
             byId("comparison-selection-summary").textContent =
-                "同一方案的多次实验不会解锁方案对比。";
-        } else {
-            byId("comparison-readiness").textContent =
-                "现有报告记录了失败过程；还需要两个不同方案的完整完成报告。";
+                "同步方案：已有结果 · 异步方案：等待结果";
+            renderWaitingComparison(sync, null);
+        } else if (asyncRecord) {
+            byId("comparison-readiness").textContent = "Outbox + MQ 已完成，还需运行一次同步删除缓存。";
             byId("comparison-selection-summary").textContent =
-                "失败报告可以回看，但不会作为架构对比样本。";
-        }
-    }
-
-    function loadArchivedReport(reportId, showReport) {
-        var envelope = findReportEnvelope(reportId);
-        if (!envelope || Number(envelope.record.materialId) !== state.materialId ||
-                !isReportableRecord(envelope.record)) {
-            showToast("这份报告没有保存完整 trace，无法回看过程。", "error");
-            return;
-        }
-        var record = envelope.record;
-        loadReplayRecord(record, {
-            autoplay: false,
-            index: showReport ? 5 : 0,
-            furthest: 5,
-            speed: 1
-        });
-        if (showReport) {
-            settleBattleReport(state.record, false);
-            showToast("已载入" + reportLabel(envelope) + "；没有调用购买接口。");
+                "同步方案：等待结果 · 异步方案：已有结果";
+            renderWaitingComparison(null, asyncRecord);
         } else {
-            showToast("已载入" + reportLabel(envelope) + "的完整过程；没有调用购买接口。");
+            byId("comparison-readiness").textContent = "两种方案各完成一次实验后即可查看。";
+            byId("comparison-selection-summary").textContent =
+                "同步方案：等待结果 · 异步方案：等待结果";
+            renderWaitingComparison(null, null);
         }
-    }
-
-    function generateComparisonReport() {
-        var reports = visibleReportEnvelopes();
-        var pair = selectedComparisonPair(reports);
-        if (!pair) {
-            showToast("请先保存并选择两个不同方案的完整实验报告。", "error");
-            return;
-        }
-        // 只有这个显式按钮入口会计算对比；保存、回放和列表渲染都不会调用比较函数。
-        renderComparisonBattle(pair.sync.record, pair.asyncRecord.record);
-        byId("duel-sync-source").textContent =
-            reportLabel(pair.sync) + " · " + formatDateTime(pair.sync.savedAt);
-        byId("duel-async-source").textContent =
-            reportLabel(pair.asyncRecord) + " · " + formatDateTime(pair.asyncRecord.savedAt);
-        comparisonState.generated = {
-            sourceReportIds: [pair.sync.reportId, pair.asyncRecord.reportId],
-            generatedAt: new Date().toISOString()
-        };
-        var dialog = byId("comparison-report-dialog");
-        if (typeof dialog.showModal === "function") {
-            dialog.showModal();
-        } else {
-            dialog.setAttribute("open", "");
-        }
-        byId("duel-title").focus();
     }
 
     function runOtherStrategy() {
@@ -2995,10 +2572,6 @@
         byId("run-other-strategy").addEventListener("click", runOtherStrategy);
         byId("rerun-current-strategy").addEventListener("click", startExperiment);
         byId("open-technical-details").addEventListener("click", openTechnicalDetails);
-        byId("generate-comparison-report").addEventListener("click", generateComparisonReport);
-        byId("comparison-report-dialog").addEventListener("close", function () {
-            byId("generate-comparison-report").focus();
-        });
         byId("technical-details-panel").addEventListener("toggle", function () {
             byId("open-technical-details").textContent =
                 byId("technical-details-panel").open ? "收起工程证据" : "展开工程证据";
@@ -3032,12 +2605,8 @@
         if (!cursor || Number(cursor.materialId) !== state.materialId) {
             return false;
         }
-        var envelope = findReportEnvelope(cursor.requestId);
-        var record = envelope && envelope.record;
-        if (!record) {
-            var saved = resultStore ? resultStore.list() : {};
-            record = saved[cursor.strategy];
-        }
+        var saved = resultStore ? resultStore.list() : {};
+        var record = saved[cursor.strategy];
         if (!record || !record.run || !record.probe || record.run.requestId !== cursor.requestId) {
             return false;
         }
@@ -3060,7 +2629,11 @@
         if (!showContext(incomingMaterial())) {
             return;
         }
-        migrateLatestResultsToArchive();
+        try {
+            window.sessionStorage.removeItem(REPORT_ARCHIVE_KEY);
+        } catch (_) {
+            // 历史报告归档已下线；无法访问存储时不影响最新结果模式。
+        }
         bindEvents();
         if (incomingPlan.strategy) {
             setSelectedStrategy(incomingPlan.strategy);
