@@ -313,9 +313,9 @@ GET /api/metrics/stream
 | 路径 | 用途 |
 |---|---|
 | `/` | 三个平级实验的总览 |
-| `/material-shop?experiment=query` | 查询实验计划工作台 |
+| `/material-shop?experiment=query` | 查询实验详情页 |
 | `/lab` | 查询实验室 |
-| `/material-shop?experiment=purchase` | 购买实验计划工作台 |
+| `/material-shop?experiment=purchase` | 购买实验详情页 |
 | `/purchase-lab` | 购买实验室 |
 | `/seckill-lab` | 秒杀实验室 |
 | `/result` | 秒杀订单支付/取消页 |

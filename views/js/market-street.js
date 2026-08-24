@@ -74,11 +74,11 @@
                 WORLD_TRANSITION_KEY,
                 key === "seckill" ? "street-to-seckill-lab" : "street-to-material-shop");
         } catch (_) {
-            // 该标记只控制页面转场；浏览器禁用存储时仍必须允许进入实验。
+            // 该标记只控制页面转场；浏览器禁用存储时仍必须允许打开详情。
         }
         body.classList.add("is-departing");
         document.getElementById("market-announcer").textContent =
-            "正在进入" + ({ query: "旁路缓存查询", purchase: "库存一致性购买", seckill: "秒杀交易" }[key] || "实验");
+            "正在打开" + ({ query: "旁路缓存查询", purchase: "库存一致性购买", seckill: "秒杀交易" }[key] || "实验") + "详情";
         window.setTimeout(function () {
             window.location.assign(target);
         }, reducedMotion ? 0 : 390);

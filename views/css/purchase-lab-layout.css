@@ -423,10 +423,9 @@
 
 .purchase-running-bar { grid-template-columns: minmax(220px, .8fr) auto minmax(620px, 2fr); }
 
-.purchase-replay-controls { display: grid; grid-template-columns: repeat(5, minmax(72px, auto)) minmax(220px, auto); align-items: center; gap: 6px; }
+.purchase-replay-controls { display: grid; grid-template-columns: repeat(3, minmax(72px, auto)); align-items: center; gap: 6px; }
 
 .purchase-replay-controls > button,
-.purchase-speed-control button,
 .purchase-details-link {
     min-height: 36px;
     padding: 0 11px;
@@ -441,7 +440,6 @@
 }
 
 .purchase-replay-controls > button:hover:not(:disabled),
-.purchase-speed-control button:hover:not(:disabled),
 .purchase-details-link:hover:not(:disabled) { border-color: var(--purchase-cyan); color: white; }
 
 .purchase-replay-controls button:disabled,
@@ -449,27 +447,11 @@
 
 .purchase-replay-controls .purchase-replay-primary { border-color: rgba(102, 211, 208, .72); background: linear-gradient(135deg, #2c898e, #245e73); color: white; }
 
-.purchase-speed-control {
-    display: grid;
-    grid-template-columns: auto repeat(3, minmax(44px, 1fr));
-    align-items: center;
-    gap: 4px;
-    min-height: 36px;
-    padding-left: 8px;
-    border-left: 1px solid var(--lab-line);
-}
-
-.purchase-speed-control > span { padding-right: 3px; color: #728993; font-size: 8px; font-weight: 900; }
-
-.purchase-speed-control button { min-height: 30px; padding: 0 7px; }
-
-.purchase-speed-control button.is-active { border-color: rgba(229, 181, 98, .65); background: rgba(229, 181, 98, .12); color: #f0cf88; }
-
 .purchase-timeline-panel { padding: 17px 18px; border-color: rgba(102, 211, 208, .28); }
 
 .purchase-timeline {
     display: grid;
-    grid-template-columns: repeat(6, minmax(130px, 1fr));
+    grid-template-columns: repeat(5, minmax(130px, 1fr));
     gap: 8px;
     margin: 0;
     padding: 0;
@@ -567,23 +549,20 @@
 @media (max-width: 980px) {
 .purchase-timeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .purchase-timeline li:not(:last-child)::after { display: none; }
-.purchase-replay-controls { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    .purchase-speed-control { grid-column: 1 / -1; border-left: 0; padding-left: 0; }
+.purchase-replay-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
     .purchase-running-bar { grid-template-columns: 1fr; }
 .purchase-running-progress { padding: 8px 0; border: 0; border-top: 1px solid var(--lab-line); border-bottom: 1px solid var(--lab-line); text-align: left; }
-    .purchase-replay-controls { grid-column: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .purchase-replay-controls { grid-column: auto; grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .purchase-replay-controls .purchase-replay-primary { grid-column: span 1; }
-    .purchase-speed-control { grid-column: 1 / -1; }
     .purchase-timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 460px) {
     .purchase-timeline { grid-template-columns: 1fr; }
     .purchase-replay-controls { grid-template-columns: 1fr; }
-    .purchase-speed-control { grid-column: 1; }
 }
 
 /* ================================================================
@@ -705,12 +684,10 @@
 .purchase-running-progress strong { color: #a55331; }
 
 .purchase-replay-controls > button,
-.purchase-speed-control button,
 .purchase-details-link,
 .purchase-completion-actions button { border-color: rgba(119, 76, 43, .28); background: #fffaf0; color: #694a38; box-shadow: 0 3px 8px rgba(88, 50, 25, .05); }
 
 .purchase-replay-controls > button:hover:not(:disabled),
-.purchase-speed-control button:hover:not(:disabled),
 .purchase-details-link:hover:not(:disabled),
 .purchase-completion-actions button:hover:not(:disabled) { border-color: #a85c37; background: white; color: #7d3f29; }
 
@@ -722,10 +699,6 @@
 .purchase-hero-button:hover:not(:disabled) { box-shadow: 0 16px 32px rgba(140, 72, 35, .27); }
 
 .purchase-hero-button:disabled { border-color: rgba(116, 75, 43, .18); background: #ead9bd; color: #9c8874; }
-
-.purchase-speed-control { border-left-color: rgba(116, 75, 43, .16); color: #806b5b; }
-
-.purchase-speed-control button.is-active { border-color: #a85c37; background: #f2d8ad; color: #7b3e29; }
 
 .purchase-timeline { border-color: rgba(115, 74, 41, .18); background: rgba(255, 250, 240, .76); }
 

@@ -40,12 +40,12 @@
     var connectionPlan = null;
     var connectionPlanRequest = 0;
     var queryExplainerMode = "direct";
-    // 配置页只给两轮建立共同条件；Direct 用作自动连接数的预估样本，
+    // 详情页只给两轮建立共同条件；Direct 用作自动连接数的预估样本，
     // 进入实验室选择真实路径后会按该路径重新估算，任务创建时再由 Runner 锁定。
     var CONFIG_PREVIEW_MODE = "direct";
     var marketPreviewTimer = null;
     var marketPreviewSignature = "";
-    // 购买实验没有 wrk2 或目标 QPS；计划工作台只配置后端真实支持的缓存失效路径。
+    // 购买实验没有 wrk2 或目标 QPS；详情页只展示并选择后端真实支持的缓存失效路径。
     var purchasePlanStrategies = Object.freeze({
         "sync-invalidate": Object.freeze({
             label: "同步删除缓存",
@@ -98,9 +98,9 @@
             dialogue: "交谈",
             choosing: "选择材料",
             record_selected: "取得档案片",
-            crowd_preparing: "配置查询潮汐",
-            purchase_preparing: "配置购买实验",
-            crowd_armed: "计划已确认",
+            crowd_preparing: "查看查询实验",
+            purchase_preparing: "查看购买实验",
+            crowd_armed: "实验条件已确认",
             crowd_submitting: "卷轴投递",
             entering_purchase_lab: "进入购买实验室"
         };
@@ -133,7 +133,7 @@
         if (connectionMode === "auto") {
             var planned = matchingConnectionPlan();
             return "# 两条读取路径共享 RATE=" + tier.rate + "、DURATION=" + tier.duration + "s。\n" +
-                "# 配置页当前预估 CONNECTIONS=" + (planned ? planned.connections : "PENDING") + "；" +
+                "# 详情页当前预估 CONNECTIONS=" + (planned ? planned.connections : "PENDING") + "；" +
                 "进入实验室选择路径后会重新计算，任务创建时锁定最终值。";
         }
         function loadCommand(path) {
@@ -185,7 +185,7 @@
         byId("market-mechanism").classList.remove("is-previewing");
     }
 
-    // 计划工作台只播放一次“计划将如何流动”的预演反馈，不代表 Runner 已经启动。
+    // 详情页只播放一次“请求将如何流动”的预演反馈，不代表 Runner 已经启动。
     // 保存计划或进入真实任务状态后必须立刻停止，真实请求动画只由实验室观测驱动。
     function replayMarketPreview(signature, targetRate) {
         if (!signature || signature === marketPreviewSignature) {
@@ -513,8 +513,8 @@
         }
 
         if (state === "crowd_preparing" && !activeTask) {
-            byId("crowd-status-title").textContent = "计划等待确认";
-            byId("crowd-status-copy").textContent = "确认后只进入实验室，不会自动发送压测请求。";
+            byId("crowd-status-title").textContent = "实验条件待确认";
+            byId("crowd-status-copy").textContent = "进入实验室后仍需手动开始，不会自动发送压测请求。";
             byId("crowd-clock").hidden = true;
         }
     }
@@ -774,7 +774,7 @@
         var activeButtonCopy = task.status === "running" ? "查询卷轴正在投递" :
             (task.status === "collecting" ? "正在结算查询潮汐" : "正在准备查询潮汐");
         byId("start-crowd-test").textContent = active ? activeButtonCopy :
-            (task.status === "completed" ? "配置下一轮实验" : "重新确认计划");
+            (task.status === "completed" ? "查看下一轮实验" : "重新进入实验室");
         byId("enter-crowd-lab").hidden = !task.taskId;
         byId("enter-crowd-lab").textContent = active ? "进入实验室查看" : "进入实验室查看结果";
         byId("crowd-status-title").textContent = titles[task.status] || "等待查询潮汐";
@@ -885,22 +885,22 @@
         }
         stopMarketPreview();
         enteringCrowdLab = true;
-        // 压测计划进入的是观测现场，不是档案读取槽。此处只确认计划交接，
+        // 当前实验条件进入的是观测现场，不是档案读取槽。此处只确认条件交接，
         // 不播放请求卷轴，也不复用单次查验的插卡/接受印章动画。
         setState("crowd_armed");
         document.body.classList.add("crowd-lab-handoff");
-        byId("crowd-status-title").textContent = "计划已确认";
+        byId("crowd-status-title").textContent = "实验条件已确认";
         byId("crowd-status-copy").textContent = task ?
             "正在进入实验室恢复任务观测。" :
             "正在进入实验室建立观测；Runner 尚未创建，没有请求发出。";
         byId("market-flow-status").textContent = task ? "恢复任务观测" : "等待实验室观测";
         byId("market-announcer").textContent = task ?
             "正在进入实验室恢复任务观测" :
-            "压测计划已确认，正在进入实验室建立观测，当前没有真实请求";
+            "实验条件已确认，正在进入实验室建立观测，当前没有真实请求";
         if (plan) {
             await animateTaskOrderHandoff(plan);
             byId("crowd-status-copy").textContent =
-                "实验计划已确认；即将进入实验室建立观测，Runner 仍未创建。";
+                "实验条件已确认；即将进入实验室建立观测，Runner 仍未创建。";
             byId("market-flow-status").textContent = "任务指令已送达";
         }
         document.body.classList.add("is-crowd-lab-departing");
@@ -929,9 +929,9 @@
         stopMarketPreview();
         setExperimentControlsLocked(true);
         byId("start-crowd-test").disabled = true;
-        byId("start-crowd-test").textContent = "正在交接计划";
-        byId("crowd-status-title").textContent = "正在交接实验计划";
-        byId("crowd-status-copy").textContent = "本次操作只保存配置并进入实验室，Runner 不会自动创建任务。";
+        byId("start-crowd-test").textContent = "正在进入实验室";
+        byId("crowd-status-title").textContent = "正在交接实验条件";
+        byId("crowd-status-copy").textContent = "本次操作只保存当前条件并进入实验室，Runner 不会自动创建任务。";
         byId("crowd-connection-current").textContent = "尚未创建";
         byId("market-flow-status").textContent = "计划交接中";
         byId("market-mechanism").dataset.flowState = "planned";
@@ -949,7 +949,7 @@
                 launchWhenObserved: false,
                 sharedConditions: true,
                 materialName: materials[selectedCode].name,
-                // 配置页不替用户选择路径；Direct 只是实验室打开时的默认选项。
+                // 详情页不替用户选择运行路径；Direct 只是实验室打开时的默认选项。
                 mode: "direct",
                 cacheTemperature: "cold",
                 tier: crowdTierID,
@@ -983,8 +983,8 @@
             activeTask = null;
             setExperimentControlsLocked(false);
             byId("start-crowd-test").disabled = false;
-            byId("start-crowd-test").textContent = "重新确认计划";
-            byId("crowd-status-title").textContent = "未能保存实验计划";
+            byId("start-crowd-test").textContent = "重新进入实验室";
+            byId("crowd-status-title").textContent = "未能保存实验条件";
             byId("crowd-status-copy").textContent = error.message;
             byId("crowd-connection-current").textContent = "尚未创建";
             byId("market-flow-status").textContent = "计划交接失败";
@@ -1029,7 +1029,7 @@
 
     function openPurchaseMode() {
         if (isTaskActive()) {
-            showToast("查询潮汐仍在运行，请先结束当前任务再配置购买实验。");
+            showToast("查询潮汐仍在运行，请先结束当前任务再查看购买实验。");
             return;
         }
         if (state === "crowd_preparing") {
@@ -1072,11 +1072,11 @@
         setState("crowd_preparing");
         setExperimentControlsLocked(false);
         byId("start-crowd-test").disabled = false;
-        byId("start-crowd-test").textContent = "确认共同条件并进入实验室";
+        byId("start-crowd-test").textContent = "进入查询实验室";
         byId("enter-crowd-lab").hidden = true;
         byId("crowd-connection-current").textContent = "尚未创建";
-        byId("crowd-status-title").textContent = "计划等待确认";
-        byId("crowd-status-copy").textContent = "确认后只进入实验室，不会自动发送压测请求。";
+        byId("crowd-status-title").textContent = "实验条件待确认";
+        byId("crowd-status-copy").textContent = "进入实验室后仍需手动开始，不会自动发送压测请求。";
         byId("crowd-clock").textContent = "00:00 / 00:30";
         byId("crowd-clock").hidden = true;
         byId("market-mechanism").dataset.faultLayer = "none";
@@ -1130,7 +1130,7 @@
         setState("entering_purchase_lab");
         byId("market-announcer").textContent =
             materials[selectedCode].name + "的" + purchasePlanStrategies[purchasePlanStrategy].label +
-            "计划已确认，正在前往采购实验室";
+            "方案已选择，正在前往购买实验室";
         window.setTimeout(function () {
             window.location.assign("/purchase-lab?strategy=" +
                 encodeURIComponent(purchasePlanStrategy) + "&intent=new");

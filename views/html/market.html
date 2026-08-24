@@ -5,8 +5,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f2c77d" />
-    <meta name="description" content="围绕星髓配置旁路缓存查询或库存一致性购买实验计划。" />
-    <title>星髓实验计划工作台 · Silas</title>
+    <meta name="description" content="进一步了解星髓的旁路缓存查询与库存一致性购买实验。" />
+    <title>星髓实验详情 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <script src="/js/market-planner-bootstrap.js?v=20260805-planner-workbench-v1"></script>
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
@@ -22,12 +22,12 @@
             <span><strong>SILAS</strong><small>STAR MARROW LABS</small></span>
         </a>
         <div class="market-location">
-            <i></i><span>星髓实验计划工作台</span><a href="/">返回实验总览</a>
+            <i></i><span>星髓实验详情</span><a href="/">返回实验总览</a>
         </div>
     </header>
 
     <main class="market-event" aria-labelledby="event-title">
-        <h1 id="event-title" class="sr-only">星髓实验计划工作台</h1>
+        <h1 id="event-title" class="sr-only">星髓实验详情</h1>
 
         <section class="event-card" aria-live="polite">
             <header class="planner-context">
@@ -45,7 +45,7 @@
             </header>
 
             <div class="event-heading">
-                <span id="event-kicker">STAR MARROW · EXPERIMENT PLANNER</span>
+                <span id="event-kicker">STAR MARROW · EXPERIMENT GUIDE</span>
                 <small id="event-step">可行动</small>
             </div>
 
@@ -62,19 +62,19 @@
                         <header class="task-draft-header">
                             <div>
                                 <small>QUERY LOAD TEST · 星髓</small>
-                                <strong>配置查询压测计划</strong>
-                                <p>先了解两条对比路径并定义共同流量条件，再进入实验室选择本轮路径、手动开始并观察真实服务端指标。</p>
+                                <strong>进一步了解查询实验</strong>
+                                <p>看清两条读取路径、实验对象和共同运行条件，再进入实验室选择本轮路径并观察真实指标。</p>
                             </div>
                             <button id="leave-crowd-mode" type="button">返回实验总览</button>
                         </header>
 
                         <ol id="market-task-lifecycle" class="task-lifecycle" aria-label="压测任务流程">
-                            <li data-market-stage="plan" class="is-current"><i>01</i><span>计划配置</span></li>
+                            <li data-market-stage="plan" class="is-current"><i>01</i><span>实验详情</span></li>
                             <li data-market-stage="lab"><i>02</i><span>实验执行</span></li>
                             <li data-market-stage="result"><i>03</i><span>结果报告</span></li>
                         </ol>
 
-                        <div class="task-contract-strip task-plan-summary" role="status" aria-live="polite" aria-label="本轮查询压测计划">
+                        <div class="task-contract-strip task-plan-summary" role="status" aria-live="polite" aria-label="查询实验条件概览">
                             <div class="is-path"><small>对比对象</small><strong id="crowd-summary-path">Direct vs Cache-Aside</strong></div>
                             <div class="is-intent"><small>目标速率</small><output id="crowd-size-value">1,500 req/s</output></div>
                             <div class="is-config"><small>Runner 计划</small><strong id="crowd-connection-plan">计算中</strong></div>
@@ -87,7 +87,7 @@
                                 <section class="task-intent-panel" aria-labelledby="task-intent-heading">
                                     <header>
                                         <span>TRAFFIC INTENT</span>
-                                        <strong id="task-intent-heading">了解查询成本并配置共同流量</strong>
+                                        <strong id="task-intent-heading">了解查询成本与共同流量</strong>
                                     </header>
                                     <aside class="query-target-brief" aria-label="本轮查询对象与数据分布">
                                         <div class="query-target-identity">
@@ -193,11 +193,11 @@
                             <div class="crowd-confirmation-bar">
                                 <div class="crowd-status" role="status" aria-live="polite">
                                     <i></i>
-                                    <span><strong id="crowd-status-title">计划等待确认</strong><small id="crowd-status-copy">确认后只进入实验室，不会自动发送压测请求。</small></span>
+                                    <span><strong id="crowd-status-title">实验条件待确认</strong><small id="crowd-status-copy">进入实验室后仍需手动开始，不会自动发送压测请求。</small></span>
                                     <time id="crowd-clock" hidden>00:00 / 00:30</time>
                                 </div>
                                 <div class="crowd-run-actions">
-                                    <button id="start-crowd-test" class="event-primary" type="button">确认共同条件并进入实验室</button>
+                                    <button id="start-crowd-test" class="event-primary" type="button">进入查询实验室</button>
                                     <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入实验室查看</button>
                                 </div>
                             </div>
@@ -299,19 +299,19 @@ Connection: keep-alive</code></pre>
                         <header class="task-draft-header">
                             <div>
                                 <small>PURCHASE EXPERIMENT · 星髓</small>
-                                <strong>配置购买实验计划</strong>
-                                <p>选择缓存失效策略，再进入实验室观察响应路径与最终一致性窗口。</p>
+                                <strong>进一步了解购买实验</strong>
+                                <p>对比两条缓存失效路径，再进入实验室观察响应边界与最终一致性窗口。</p>
                             </div>
                             <button id="leave-purchase-mode" type="button">返回实验总览</button>
                         </header>
 
                         <ol class="task-lifecycle" aria-label="购买实验流程">
-                            <li class="is-current"><i>01</i><span>计划配置</span></li>
+                            <li class="is-current"><i>01</i><span>实验详情</span></li>
                             <li><i>02</i><span>实验执行</span></li>
                             <li><i>03</i><span>结果报告</span></li>
                         </ol>
 
-                        <div class="task-contract-strip purchase-plan-summary" role="status" aria-live="polite" aria-label="本轮购买实验计划">
+                        <div class="task-contract-strip purchase-plan-summary" role="status" aria-live="polite" aria-label="购买实验条件概览">
                             <div class="is-path"><small>失效路径</small><strong id="purchase-plan-summary-strategy">同步删除缓存</strong></div>
                             <div class="is-intent"><small>购买批次</small><strong>150 个唯一请求</strong></div>
                             <div class="is-config"><small>服务端并发</small><strong>12 个事务槽</strong></div>
@@ -345,7 +345,7 @@ Connection: keep-alive</code></pre>
                                     <p><strong>失败窗口：</strong>如果 MySQL 已经提交，但 Redis 删除失败，数据库库存已经变化，缓存却仍可能保留旧值，并且系统可能失去后续补偿依据。</p>
                                     <p><strong>可靠补偿：</strong>Outbox 会在更新库存的同一事务中，额外写入一条“缓存需要失效”的可靠记录。事务成功后，后台任务再通过消息队列执行缓存删除；即使首次失败，也能依据 Outbox 记录持续重试，使缓存最终恢复一致。</p>
                                 </aside>
-                                <p class="purchase-plan-fixed-copy">购买批次固定为 150 个唯一 request_id；这里配置失效路径，不把批次数伪装成 req/s。</p>
+                                <p class="purchase-plan-fixed-copy">购买批次固定为 150 个唯一 request_id；这里对比失效路径，不把批次数伪装成 req/s。</p>
                             </section>
 
                             <aside id="purchase-plan-preview" class="purchase-plan-preview" data-strategy="sync-invalidate" aria-labelledby="purchase-plan-preview-heading">
@@ -365,12 +365,12 @@ Connection: keep-alive</code></pre>
                             <div class="crowd-status" role="status" aria-live="polite">
                                 <i></i>
                                 <span>
-                                    <strong id="purchase-plan-status-title">购买计划等待确认</strong>
+                                    <strong id="purchase-plan-status-title">实验方案待确认</strong>
                                     <small id="purchase-plan-status-copy">进入采购实验室后，由你点击开始，才会真实重置并修改库存。</small>
                                 </span>
                             </div>
                             <div class="crowd-run-actions">
-                                <button id="confirm-purchase-plan" class="event-primary" type="button">确认计划并进入采购实验室</button>
+                                <button id="confirm-purchase-plan" class="event-primary" type="button">进入购买实验室</button>
                             </div>
                         </div>
                     </div>
@@ -390,7 +390,7 @@ Connection: keep-alive</code></pre>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260813-query-explainer-v1"></script>
+    <script src="/js/market.js?v=20260825-experiment-detail-v2"></script>
 </body>
 
 </html>

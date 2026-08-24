@@ -10,8 +10,8 @@
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/purchase-lab-layout.css?v=20260824-inline-comparison-v2" />
-    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260824-stage-unify-v1" />
+    <link rel="stylesheet" href="/css/purchase-lab-layout.css?v=20260825-metrics-v4" />
+    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260825-metrics-v4" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
@@ -40,7 +40,7 @@
             <div><small>STATUS</small><strong id="header-status">准备观察</strong></div>
         </div>
         <nav class="experiment-return-nav" aria-label="购买实验页面导航">
-            <a href="/material-shop?experiment=purchase"><span aria-hidden="true">←</span>返回配置页</a>
+            <a href="/material-shop?experiment=purchase"><span aria-hidden="true">←</span>返回实验详情</a>
             <a href="/">返回实验总览</a>
         </nav>
     </header>
@@ -101,13 +101,12 @@
                     <div><small>01 / SAVED TRACE</small><h2 id="timeline-heading">本轮实验时间线</h2></div>
                     <span id="timeline-mode" class="purchase-live-badge">等待真实执行</span>
                 </div>
-                <ol id="purchase-timeline" class="purchase-timeline" aria-label="六步实验时间线">
+                <ol id="purchase-timeline" class="purchase-timeline" aria-label="五步实验时间线">
                     <li><button type="button" data-replay-step="0" data-status="waiting" disabled><span>01</span><strong>Purchase Tasks</strong><small data-step-status>waiting</small></button></li>
                     <li><button type="button" data-replay-step="1" data-status="waiting" disabled><span>02</span><strong>MySQL 事务提交</strong><small data-step-status>waiting</small></button></li>
                     <li><button type="button" data-replay-step="2" data-status="waiting" disabled><span>03</span><strong>Response 边界</strong><small data-step-status>waiting</small></button></li>
                     <li><button type="button" data-replay-step="3" data-status="waiting" disabled><span>04</span><strong>缓存失效链路</strong><small data-step-status>waiting</small></button></li>
-                    <li><button type="button" data-replay-step="4" data-status="waiting" disabled><span>05</span><strong>Consistency Probe</strong><small data-step-status>waiting</small></button></li>
-                    <li><button type="button" data-replay-step="5" data-status="waiting" disabled><span>06</span><strong>实验完成</strong><small data-step-status>waiting</small></button></li>
+                    <li><button type="button" data-replay-step="4" data-status="waiting" disabled><span>05</span><strong>一致性结果</strong><small data-step-status>waiting</small></button></li>
                 </ol>
             </section>
 
@@ -129,24 +128,16 @@
                         <div class="purchase-running-summary">
                             <span id="running-phase">准备实验</span>
                             <strong><span id="running-material">星髓</span> · <span id="running-strategy">—</span></strong>
-                            <small id="execution-boundary-copy">同步与异步共用这组控制；真实执行结束后可播放、单步前进或直接查看结果。</small>
+                            <small id="execution-boundary-copy">真实执行结束后会自动回放；这里的按钮只移动保存的 Trace。</small>
                         </div>
                         <div class="purchase-running-progress">
                             <small>回放位置</small>
-                            <strong id="replay-position">— / 6</strong>
+                            <strong id="replay-position">— / 5</strong>
                         </div>
                         <div class="purchase-replay-controls" aria-label="同步与异步共用的回放控制">
                             <button id="replay-previous" type="button" disabled aria-label="回放上一步">上一步</button>
                             <button id="replay-toggle" class="purchase-replay-primary" type="button" disabled aria-label="播放回放">播放</button>
                             <button id="replay-next" type="button" disabled aria-label="回放下一步">下一步</button>
-                            <button id="replay-restart" type="button" disabled>重新播放</button>
-                            <button id="replay-result" type="button" disabled>跳到结果</button>
-                            <div class="purchase-speed-control" role="group" aria-label="播放速度">
-                                <span>速度</span>
-                                <button type="button" data-replay-speed="0.5" disabled>0.5x</button>
-                                <button type="button" data-replay-speed="1" class="is-active" disabled>1x</button>
-                                <button type="button" data-replay-speed="2" disabled>2x</button>
-                            </div>
                         </div>
                     </section>
 
@@ -176,23 +167,8 @@
                                 <small>为什么这样做</small>
                                 <p id="system-subtitle-reason">删除缓存不会删除库存，只会让下一次查询重新加载最新数据。</p>
                             </article>
-                            <article class="system-subtitle-item">
-                                <small>真实证据</small>
-                                <p id="system-subtitle-evidence">MySQL：真实库存 · Redis：查询副本</p>
-                            </article>
-                            <article class="system-subtitle-item">
-                                <small id="system-subtitle-next-label">接下来</small>
-                                <p id="system-subtitle-next">先选择同步或异步缓存失效方案。</p>
-                            </article>
                         </div>
                     </section>
-
-                    <div class="system-subtitle-dictionary" aria-label="本页核心术语即时翻译">
-                        <span><b>MySQL</b>真实库存</span>
-                        <span><b>Redis Key</b>一条材料查询副本</span>
-                        <span><b>DEL</b>丢掉旧副本</span>
-                        <span><b>MISS</b>副本暂时不存在，库存仍在</span>
-                    </div>
 
                     <div id="shop-allegory-stage" class="execution-flow-shell">
                         <section id="critical-phase" class="execution-phase critical-phase" data-phase-state="idle" aria-labelledby="critical-phase-title">
@@ -203,27 +179,21 @@
                             <div class="flow-track critical-track">
                                 <article id="node-buyers" class="execution-node" data-flow-node data-state="idle">
                                     <header><span>01</span><strong>Purchase Tasks</strong></header>
-                                    <p>150 个唯一 request_id，经 12 个并发槽持续进入。</p>
                                     <small data-node-status>等待释放任务</small>
                                     <dl><div><dt>进度</dt><dd data-node-time>0 / 150</dd></div><div><dt>输入</dt><dd data-node-io>150 × 1</dd></div></dl>
                                 </article>
                                 <span id="edge-tasks-service" class="flow-edge" data-state="idle" aria-hidden="true"><i></i></span>
                                 <article id="node-service" class="execution-node" data-flow-node data-state="idle">
                                     <header><span>02</span><strong>Purchase Service</strong></header>
-                                    <p>校验参数、分发购买，并收集每笔真实结果。</p>
                                     <small data-node-status>等待请求</small>
                                     <dl><div><dt>耗时</dt><dd data-node-time>—</dd></div><div><dt>I/O</dt><dd data-node-io>—</dd></div></dl>
                                 </article>
                                 <span id="edge-service-mysql" class="flow-edge" data-state="idle" aria-hidden="true"><i></i></span>
                                 <article id="node-mysql" class="execution-node transaction-node" data-flow-node data-state="idle">
                                     <header><span>03</span><strong>MySQL Transaction</strong></header>
-                                    <p>同一事务提交库存条件扣减、订单，以及可选 Outbox。</p>
                                     <small data-node-status>等待事务</small>
                                     <dl><div><dt>进度</dt><dd data-node-time>—</dd></div><div><dt>库存</dt><dd data-node-io>— → —</dd></div></dl>
-                                    <div class="transaction-write-set">
-                                        <div data-state="idle"><b>Inventory + Order</b><span>always</span></div>
-                                        <div id="node-outbox" data-state="idle"><b>Outbox Event</b><span data-node-status>按方案决定</span><i data-node-time>同事务</i><em data-node-io>—</em></div>
-                                    </div>
+                                    <span id="node-outbox" class="transaction-outbox-note" data-state="idle"><b>+ Outbox Event</b><span data-node-status>按方案决定</span><i data-node-time>同事务</i><em data-node-io>—</em></span>
                                 </article>
                                 <span id="edge-mysql-response" class="flow-edge response-edge" data-state="idle" aria-hidden="true">
                                     <i></i>
@@ -234,7 +204,6 @@
                                 </span>
                                 <article id="node-response" class="execution-node response-node" data-flow-node data-state="idle">
                                     <header><span>04</span><strong>Response</strong></header>
-                                    <p>这里结束请求关键路径；异步方案不等待后台删缓存。</p>
                                     <small data-node-status>等待返回</small>
                                     <dl><div><dt>P99</dt><dd data-node-time>—</dd></div><div><dt>结果</dt><dd data-node-io>—</dd></div></dl>
                                 </article>
@@ -244,38 +213,29 @@
                         <section id="async-phase" class="execution-phase async-phase" data-phase-state="locked" aria-labelledby="async-phase-title">
                             <header>
                                 <span>PHASE 02 · ASYNC INVALIDATION</span>
-                                <div><strong id="async-phase-title">提交后的缓存失效支线</strong><small id="async-phase-status">事务提交后展开；同步方案不进入</small></div>
+                                <div><strong id="async-phase-title">提交后的缓存失效支线</strong><small id="async-phase-status">事务提交后展开</small></div>
                             </header>
-                            <div class="phase-handoff"><span>REQUEST CRITICAL PATH ENDED</span><i aria-hidden="true"></i><strong>Outbox handoff</strong></div>
                             <div class="flow-track async-track">
                                 <article id="node-worker" class="execution-node publisher-node" data-flow-node data-state="idle">
                                     <header><span>05</span><strong>Outbox Publisher</strong></header>
-                                    <p>每 1 秒扫描 pending / retry，认领后发布失效事件。</p>
                                     <small data-node-status>等待 Outbox</small>
                                     <dl><div><dt>重试</dt><dd data-node-time>0</dd></div><div><dt>状态</dt><dd data-node-io>—</dd></div></dl>
-                                    <div id="publisher-beat" class="publisher-beat" data-state="idle">
-                                        <span aria-hidden="true"><i></i></span>
-                                        <div><small>REAL SCAN CADENCE</small><strong id="publisher-countdown">1.0 s</strong><em id="publisher-scan-meta">等待真实扫描</em></div>
-                                    </div>
                                 </article>
                                 <span id="edge-worker-mq" class="flow-edge" data-state="idle" aria-hidden="true"><i></i></span>
                                 <article id="node-mq" class="execution-node" data-flow-node data-state="idle">
                                     <header><span>06</span><strong>RocketMQ</strong></header>
-                                    <p>只传递 PURCHASE_CACHE_INVALIDATE（删除材料缓存通知）。</p>
                                     <small data-node-status>等待发布</small>
                                     <dl><div><dt>待处理</dt><dd data-node-time>0</dd></div><div><dt>状态</dt><dd data-node-io>—</dd></div></dl>
                                 </article>
                                 <span id="edge-mq-consumer" class="flow-edge" data-state="idle" aria-hidden="true"><i></i></span>
                                 <article id="node-consumer" class="execution-node" data-flow-node data-state="idle">
                                     <header><span>07</span><strong>缓存失效 Consumer</strong></header>
-                                    <p>只处理删缓存通知：校验事件 → DEL → 标记完成 → ACK；不处理创建或取消订单。</p>
                                     <small data-node-status>等待消息</small>
                                     <dl><div><dt>消息</dt><dd data-node-time>0 / 150</dd></div><div><dt>动作</dt><dd data-node-io>—</dd></div></dl>
                                 </article>
                                 <span id="edge-consumer-redis" class="flow-edge" data-state="idle" aria-hidden="true"><i></i></span>
                                 <article id="node-async-redis" class="execution-node redis-delete-node" data-flow-node data-state="idle">
                                     <header><span>08</span><strong>Redis DEL</strong></header>
-                                    <p>删除材料查询副本，不删除 MySQL 库存；失败则不 Ack。</p>
                                     <small data-node-status>等待缓存失效 Consumer</small>
                                     <dl><div><dt>缓存键</dt><dd data-node-time>1</dd></div><div><dt>消息处理</dt><dd data-node-io>0 / 150</dd></div></dl>
                                 </article>
@@ -309,8 +269,8 @@
                         <dl class="purchase-score-grid">
                             <div><dt>成功购买</dt><dd id="game-success-count" data-game-metric>0</dd></div>
                             <div><dt>MySQL 库存</dt><dd id="stage-mysql-stock" data-game-metric>—</dd></div>
-                            <div><dt>Redis 库存</dt><dd id="stage-redis-stock" data-game-metric>—</dd></div>
-                            <div><dt>旧库存读取</dt><dd id="game-old-read-count" data-game-metric>0</dd></div>
+                            <div><dt>Redis 缓存</dt><dd id="stage-redis-stock" data-game-metric>—</dd></div>
+                            <div><dt>旧值读取</dt><dd id="game-old-read-count" data-game-metric>0</dd></div>
                         </dl>
                         <div class="purchase-stage-meta">
                             <div><span>链路状态</span><strong id="stage-message-state">—</strong></div>
@@ -533,7 +493,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
-    <script src="/js/purchase-lab.js?v=20260824-inline-comparison-v2"></script>
+    <script src="/js/purchase-lab.js?v=20260825-metrics-v4"></script>
 </body>
 
 </html>

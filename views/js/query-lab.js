@@ -3583,7 +3583,7 @@
         byId("crowd-scroll-count").textContent = formatNumber(completedRequests);
         byId("crowd-actual-rate").textContent =
             Number(task.metrics.actualQps || 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + " QPS";
-        byId("purchase-entry").textContent = "配置购买实验";
+        byId("purchase-entry").textContent = "查看购买实验详情";
         byId("purchase-entry-note").textContent =
             "先回到店外选择缓存失效路径；购买实验固定发出 150 个唯一请求，不复用本轮 QPS 或连接配置。";
     }
@@ -4233,7 +4233,7 @@
                 connectionMode: state.pendingRun.connectionMode || connectionMode,
                 connections: Number(state.pendingRun.plannedConnections || 0),
                 reason: state.pendingRun.connectionReason || "",
-                // 配置页的自动值只是共同条件预估；共享计划必须在实验室按所选路径重算。
+                // 详情页的自动值只是共同条件预估；进入实验室后必须按所选路径重算。
                 requestMode: state.pendingRun.sharedConditions ? "shared-preview" : state.pendingRun.mode,
                 requestExperiment: state.pendingRun.experiment || "cache-aside-read",
                 requestProtection: state.pendingRun.protection || ""
@@ -4241,7 +4241,7 @@
         }
         state.loadtestTaskId = entry === "crowd" ? (incomingLoadtestTaskID() ||
             (state.pendingRun && state.pendingRun.taskId) || "") : "";
-        // 配置页只把计划带入实验室；即使旧链接仍含 launch=when-observed，
+        // 详情页只把共同条件带入实验室；即使旧链接仍含 launch=when-observed，
         // 也必须等待用户在实验室明确点击开始按钮，不能自动创建 Runner 任务。
         state.loadtestStartRequested = false;
         document.body.dataset.entryMode = state.entry;

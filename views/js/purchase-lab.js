@@ -26,8 +26,7 @@
         "MySQL 事务提交",
         "Response 边界",
         "缓存失效链路",
-        "Consistency Probe",
-        "实验完成"
+        "一致性结果"
     ];
     // settlement 只负责“结算动画 -> 展开报告”的视觉节奏。
     // 它不进入 executionMode，也不写回 trace，防止结果动画扩大实验状态机。
@@ -38,7 +37,7 @@
     };
     // HUD 只在真实状态或保存 trace 切换时滚动到新数值；动画不生成业务进度。
     var metricAnimations = new WeakMap();
-    // executionMode 表示“真实执行 / 回放 / 暂停 / 结果”边界；replay 只保存前端游标和速度。
+    // executionMode 表示“真实执行 / 回放 / 暂停 / 结果”边界；replay 只保存前端游标。
     // 只有 startExperiment 会进入购买与重置接口，任何回放控制都不能复用该入口。
     var state = {
         materialId: null,
@@ -53,7 +52,6 @@
         replay: {
             index: 0,
             furthest: -1,
-            speed: 1,
             playing: false,
             timer: null
         }
@@ -199,8 +197,7 @@
                 strategy: state.strategy,
                 requestId: state.record.run.requestId,
                 index: state.replay.index,
-                furthest: state.replay.furthest,
-                speed: state.replay.speed
+                furthest: state.replay.furthest
             }));
         } catch (_) {
             // 当前页面仍持有完整 trace；禁用存储只影响刷新恢复。
@@ -318,7 +315,7 @@
     }
 
     function stockText(value) {
-        return value === null || value === undefined ? "MISS" : formatNumber(value);
+        return value === null || value === undefined ? "未缓存" : formatNumber(value);
     }
 
     function showToast(message, tone) {
@@ -394,7 +391,7 @@
         return summary;
     }
 
-    // 当前步骤讲解只在“业务阶段”变化时替换静态文字；160ms 实时计数只更新不播报的证据格。
+    // 当前步骤讲解只在“业务阶段”变化时替换静态文字；完整 trace 继续留在本轮执行记录中。
     // 这样真实执行可以很快，教学文字仍保持稳定，避免把业务时钟错误地当成阅读时钟。
     function setStepExplanation(details) {
         var panel = byId("system-subtitle");
@@ -425,7 +422,6 @@
             details.term,
             details.action,
             details.reason,
-            details.next,
             tone,
             mode,
             details.final ? "final" : "next"
@@ -438,14 +434,10 @@
             byId("system-subtitle-term").textContent = details.term || "当前步骤";
             byId("system-subtitle-line").textContent = details.action || "—";
             byId("system-subtitle-reason").textContent = details.reason || "—";
-            byId("system-subtitle-next-label").textContent = details.final ? "最终结论" : "接下来";
-            byId("system-subtitle-next").textContent = details.next || "—";
             // 单独的隐藏播报区只在语义阶段变化时更新，并同时读出步骤名与核心动作。
             byId("system-subtitle-announcement").textContent =
                 (details.term || "当前步骤") + "。发生了什么：" + (details.action || "—");
         }
-        // evidence 不在 aria-live 区域内；它可以随真实数量刷新而不打断阅读或重复朗读整张卡片。
-        byId("system-subtitle-evidence").textContent = details.evidence || "—";
     }
 
     function currentMaterialName() {
@@ -721,36 +713,6 @@
         }
     }
 
-    function formatClockTime(value) {
-        if (!value) {
-            return "尚未扫描";
-        }
-        var date = new Date(value);
-        if (Number.isNaN(date.getTime())) {
-            return "尚未扫描";
-        }
-        return date.toLocaleTimeString("zh-CN", { hour12: false });
-    }
-
-    function renderPublisherClock(run) {
-        var beat = byId("publisher-beat");
-        if (!beat) {
-            return;
-        }
-        var interval = Math.max(1, Number(run && run.publisherScanIntervalMs || 1000));
-        var nextAt = run && run.publisherNextScanAt ? new Date(run.publisherNextScanAt).getTime() : 0;
-        var remaining = nextAt ? Math.max(0, nextAt - Date.now()) : interval;
-        var active = state.strategy === "outbox-mq-invalidate" && state.executionMode === "executing" &&
-            run && (run.status === "waiting_outbox" || run.outboxStatus === "retry");
-        beat.dataset.state = active ? "active" : (run && run.publisherScanCount ? "observed" : "idle");
-        beat.style.setProperty("--publisher-scan-ms", interval + "ms");
-        byId("publisher-countdown").textContent = active ?
-            (Math.min(interval, remaining) / 1000).toFixed(1) + " s" : (interval / 1000).toFixed(1) + " s";
-        byId("publisher-scan-meta").textContent = run && run.publisherScanCount ?
-            ("真实扫描 #" + run.publisherScanCount + " · " + formatClockTime(run.publisherLastScanAt)) :
-            "等待真实扫描";
-    }
-
     function renderProbeStream(probe, mode) {
         probe = probe || state.probe || createProbeState();
         var latest = probe.latest;
@@ -825,13 +787,14 @@
         byId("running-strategy").textContent = strategyNames[state.strategy] || "—";
         byId("execution-boundary-copy").textContent = state.executionDetail ||
             (busy ? "后端正在真实扣减库存并完成失效链路；此时尚未播放任何阶段。" :
-                "真实执行与回放相互分离；上一步、下一步和重新播放都只读取本轮 trace。");
-        byId("replay-position").textContent = ready ? ((state.replay.index + 1) + " / 6") : "— / 6";
+                "真实执行与回放相互分离；回放按钮只读取本轮 Trace。");
+        byId("replay-position").textContent = ready ?
+            ((state.replay.index + 1) + " / " + stageNames.length) : "— / " + stageNames.length;
         byId("timeline-mode").textContent = label;
         byId("start-purchase-run").disabled = busy || !state.strategy;
         byId("start-purchase-run").textContent = busy ? "后端正在真实执行…" : "开始 150 个请求实验";
         byId("prepare-action-hint").textContent = state.strategy ?
-            ("本轮将真实执行“" + strategyNames[state.strategy] + "”；完成后停在第一步，由你决定何时继续。请先结束其他标签页中的查询压测。") :
+            ("本轮将真实执行“" + strategyNames[state.strategy] + "”；完成后自动回放五个关键步骤。请先结束其他标签页中的查询压测。") :
             "请先选择一种缓存失效方案。";
         byId("replay-previous").disabled = !ready || busy || state.replay.index <= 0;
         byId("replay-next").disabled = !ready || busy || state.replay.index >= stageNames.length - 1;
@@ -839,13 +802,6 @@
         byId("replay-toggle").textContent = state.replay.playing ? "暂停" : "播放";
         byId("replay-toggle").setAttribute("aria-label", state.replay.playing ? "暂停回放" : "播放回放");
         byId("replay-toggle").setAttribute("aria-pressed", String(state.replay.playing));
-        byId("replay-restart").disabled = !ready || busy;
-        byId("replay-result").disabled = !ready || busy;
-        document.querySelectorAll("[data-replay-speed]").forEach(function (button) {
-            button.disabled = !ready || busy;
-            button.classList.toggle("is-active", Number(button.dataset.replaySpeed) === state.replay.speed);
-            button.setAttribute("aria-pressed", String(Number(button.dataset.replaySpeed) === state.replay.speed));
-        });
         document.querySelectorAll(".purchase-strategy-card").forEach(function (button) {
             button.disabled = busy;
         });
@@ -920,7 +876,6 @@
             setFlowEdge(edge, "idle");
         });
         focusFlowNode(null, "critical", record ? "TRACE READY" : "等待执行", "等待 Purchase Tasks");
-        renderPublisherClock(record && record.run);
         renderProbeStream(record && record.probe, record ? "completed" : "idle");
         byId("purchase-fault-banner").hidden = true;
     }
@@ -1179,7 +1134,6 @@
             setFlowEdge("edge-consumer-redis", outbox.completed ? "completed" : "running");
             focusFlowNode(outbox.completed === outbox.total && outbox.total ? "node-async-redis" : "node-consumer",
                 "async", "异步失效链路", "Publisher → MQ → 缓存失效 Consumer → Redis DEL");
-            renderPublisherClock(run);
             if (outbox.completed === outbox.total && outbox.total) {
                 renderCompletedAsyncExplanation(run, outbox, "replay");
             } else {
@@ -1195,7 +1149,7 @@
                 });
             }
         }
-        byId("story-redis-stock").textContent = "MISS";
+        byId("story-redis-stock").textContent = "未缓存";
     }
 
     function applyProbeFrame(record) {
@@ -1270,8 +1224,7 @@
             ["transaction_committed", "update_mysql", "idempotent_order", "sold_out", "outbox_created", "write_outbox"],
             ["purchase_responded"],
             ["cache_invalidated", "delete_cache", "cache_invalidation_failed", "delete_cache_failed"],
-            ["query_material"],
-            []
+            ["query_material"]
         ];
         var events = [];
         (record.run.trace || []).forEach(function (step) {
@@ -1325,7 +1278,7 @@
                 });
             }
         }
-        if (index === 5) {
+        if (index === stageNames.length - 1) {
             events.push({
                 clock: "RESULT",
                 label: record.run.status === "failed" ? "EXPERIMENT FAILED" : "EXPERIMENT COMPLETED",
@@ -1660,8 +1613,6 @@
         }
         if (state.replay.index >= 4) {
             applyProbeFrame(state.record);
-        }
-        if (state.replay.index >= 5) {
             applyCompleteFrame(state.record);
         }
         renderStageReadout(state.record, state.replay.index);
@@ -1702,7 +1653,7 @@
                 return;
             }
             scheduleReplayAdvance();
-        }, REPLAY_STEP_MS / state.replay.speed);
+        }, REPLAY_STEP_MS);
     }
 
     function pauseReplay(detail) {
@@ -1729,7 +1680,7 @@
         }
         state.replay.playing = true;
         setExecutionMode("replaying",
-            "正在按本轮已保存 trace 回放；默认 1x 时每个关键步骤停留 6 秒。");
+            "正在按本轮已保存 Trace 自动回放；每个关键步骤停留 6 秒。");
         renderPlaybackFrame(state.replay.index, { advance: true });
         scheduleReplayAdvance();
     }
@@ -1749,31 +1700,6 @@
         }
     }
 
-    function restartReplay() {
-        if (!state.record) {
-            return;
-        }
-        clearReplayTimer();
-        state.replay.index = 0;
-        state.replay.playing = true;
-        setExecutionMode("replaying",
-            "已从第一步重新播放保存的 trace；没有调用重置或购买接口。");
-        renderPlaybackFrame(0, { advance: true });
-        scheduleReplayAdvance();
-    }
-
-    function jumpToResult() {
-        if (!state.record) {
-            return;
-        }
-        pauseReplay("已跳到实验结果；这是保存结果的回看，不会再次执行购买。");
-        state.replay.furthest = stageNames.length - 1;
-        renderPlaybackFrame(stageNames.length - 1, { advance: true });
-        setExecutionMode("result",
-            "实验结果来自已经完成的真实执行；可点击任意已完成步骤继续回看。");
-        settleBattleReport(state.record, true);
-    }
-
     function chooseTimelineStep(index) {
         if (!state.record || index > state.replay.furthest) {
             return;
@@ -1784,18 +1710,6 @@
             setExecutionMode("result",
                 "正在查看已保存报告；此操作只读取本轮 trace。");
             settleBattleReport(state.record, true);
-        }
-    }
-
-    function setReplaySpeed(speed) {
-        if ([0.5, 1, 2].indexOf(speed) < 0) {
-            return;
-        }
-        state.replay.speed = speed;
-        renderHeaderAndControls();
-        persistReplayPosition();
-        if (state.replay.playing) {
-            scheduleReplayAdvance();
         }
     }
 
@@ -2097,7 +2011,6 @@
             "执行解释：当前亮点来自后端增量快照，不是前端定时器推演。" :
             (asyncStrategy ? "执行解释：Response 已结束，缓存失效正沿独立事件链推进。" :
                 "执行解释：同步 Redis DEL 已计入购买响应耗时。");
-        renderPublisherClock(run);
         renderProbeStream(state.probe, state.probe.active ? "active" : "completed");
         renderLiveStepExplanation(run);
     }
@@ -2196,15 +2109,16 @@
         state.liveRun = clone(record.run);
         prepareBattleReport(state.record);
         setSelectedStrategy(record.strategy);
-        state.replay.index = Math.max(0, Math.min(5, Number(options.index || 0)));
+        state.replay.index = Math.max(0, Math.min(stageNames.length - 1, Number(options.index || 0)));
         state.replay.furthest = options.furthest === undefined ?
-            (options.autoplay ? 0 : 5) : Math.max(0, Math.min(5, Number(options.furthest)));
-        state.replay.speed = [0.5, 1, 2].indexOf(Number(options.speed)) >= 0 ? Number(options.speed) : 1;
+            (options.autoplay ? 0 : stageNames.length - 1) :
+            Math.max(0, Math.min(stageNames.length - 1, Number(options.furthest)));
         state.replay.playing = !!options.autoplay;
-        setExecutionMode(options.autoplay ? "replaying" : (state.replay.index === 5 ? "result" : "paused"),
+        setExecutionMode(options.autoplay ? "replaying" :
+            (state.replay.index === stageNames.length - 1 ? "result" : "paused"),
             options.autoplay ?
-                "正在按保存 trace 回放，每个 1x 步骤停留 6 秒。" :
-                "同步与异步方案共用顶部控制条；真实执行已结束并停在当前步骤，点击下一步或播放后继续。");
+                "真实执行已经完成，正在自动回放五个关键步骤。" :
+                "真实执行已经完成；可使用上一步、播放暂停和下一步回看 Trace。");
         renderPlaybackFrame(state.replay.index, { advance: true });
         if (options.autoplay) {
             scheduleReplayAdvance();
@@ -2286,7 +2200,7 @@
             var record = buildRecord(run, baseline);
             var saved = saveRecord(record);
             // 真实执行和教学回放使用两只时钟：结果返回后停在第一步，用户明确操作才继续。
-            loadReplayRecord(saved || record, { autoplay: false, index: 0, furthest: 0, speed: 1 });
+            loadReplayRecord(saved || record, { autoplay: true, index: 0, furthest: 0 });
             showToast(run.status === "completed" ?
                 "真实执行已完成，已停在第一步；点击下一步继续。" :
                 "真实执行返回失败状态，已停在第一步查看证据。",
@@ -2536,7 +2450,7 @@
             return;
         }
         pauseReplay("已回到完整过程的第一步；可点击时间线或使用前后步继续回看。");
-        state.replay.furthest = 5;
+        state.replay.furthest = stageNames.length - 1;
         renderPlaybackFrame(0, { advance: false });
     }
 
@@ -2557,17 +2471,10 @@
                 chooseTimelineStep(Number(button.dataset.replayStep));
             });
         });
-        document.querySelectorAll("[data-replay-speed]").forEach(function (button) {
-            button.addEventListener("click", function () {
-                setReplaySpeed(Number(button.dataset.replaySpeed));
-            });
-        });
         byId("start-purchase-run").addEventListener("click", startExperiment);
         byId("replay-previous").addEventListener("click", function () { stepReplay(-1); });
         byId("replay-toggle").addEventListener("click", playReplay);
         byId("replay-next").addEventListener("click", function () { stepReplay(1); });
-        byId("replay-restart").addEventListener("click", restartReplay);
-        byId("replay-result").addEventListener("click", jumpToResult);
         byId("view-full-process").addEventListener("click", viewFullProcess);
         byId("run-other-strategy").addEventListener("click", runOtherStrategy);
         byId("rerun-current-strategy").addEventListener("click", startExperiment);
@@ -2610,15 +2517,15 @@
         if (!record || !record.run || !record.probe || record.run.requestId !== cursor.requestId) {
             return false;
         }
+        var restoredIndex = Math.min(stageNames.length - 1, Math.max(0, Number(cursor.index || 0)));
         loadReplayRecord(record, {
             autoplay: false,
-            index: cursor.index,
-            furthest: Math.max(Number(cursor.furthest || 0), Number(cursor.index || 0)),
-            speed: cursor.speed
+            index: restoredIndex,
+            furthest: Math.max(Number(cursor.furthest || 0), restoredIndex)
         });
-        setExecutionMode(cursor.index === 5 ? "result" : "paused",
+        setExecutionMode(restoredIndex === stageNames.length - 1 ? "result" : "paused",
             "已从本页会话恢复上次回放位置；没有调用购买接口。");
-        if (Number(cursor.index) === 5) {
+        if (restoredIndex === stageNames.length - 1) {
             settleBattleReport(state.record, false);
         }
         return true;
