@@ -10,7 +10,7 @@
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260825-query-path-cn-v4" />
+    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260827-fixed-query-load-v1" />
     <link rel="stylesheet" href="/css/query-lab.css?v=20260806-scenario-comparison-v1" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
@@ -115,14 +115,14 @@
                                 <aside id="lab-crowd-settings" class="lab-crowd-settings" hidden>
                                     <div>
                                         <small>本轮任务草案</small>
-                                        <strong id="lab-crowd-summary">目标与连接计划载入中</strong>
+                                        <strong id="lab-crowd-summary">1,500 req/s · wrk2 -c 500</strong>
                                     </div>
                                     <details class="lab-runner-plan-detail">
-                                        <summary>Runner 连接策略</summary>
+                                        <summary>固定运行条件</summary>
                                         <div class="lab-connection-plan" role="status" aria-live="polite">
                                             <small>wrk2 connections</small>
-                                            <strong id="lab-connection-plan-value">计划计算中</strong>
-                                            <span id="lab-connection-plan-copy">创建任务时锁定最终配置</span>
+                                            <strong id="lab-connection-plan-value">固定 · wrk2 -c 500</strong>
+                                            <span id="lab-connection-plan-copy">1500 QPS / -c 500 / 30 秒</span>
                                         </div>
                                     </details>
                                 </aside>
@@ -668,7 +668,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260806-scenario-comparison-v1"></script>
-    <script src="/js/query-lab.js?v=20260825-query-path-cn-v4"></script>
+    <script src="/js/query-lab.js?v=20260827-fixed-query-load-v1"></script>
 </body>
 
 </html>

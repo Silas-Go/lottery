@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/material-shop.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260825-query-path-cn-v4" />
+    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260827-fixed-query-load-v1" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -77,7 +77,7 @@
                         <div class="task-contract-strip task-plan-summary" role="status" aria-live="polite" aria-label="查询实验条件概览">
                             <div class="is-path"><small>对比对象</small><strong id="crowd-summary-path">直接查询 vs 旁路缓存</strong></div>
                             <div class="is-intent"><small>目标速率</small><output id="crowd-size-value">1,500 req/s</output></div>
-                            <div class="is-config"><small>Runner 计划</small><strong id="crowd-connection-plan">计算中</strong></div>
+                            <div class="is-config"><small>连接承载</small><strong id="crowd-connection-plan">固定 · -c 500</strong></div>
                             <div class="is-fact"><small>任务状态</small><strong id="crowd-connection-current">尚未创建</strong></div>
                             <div class="is-duration"><small>持续时间</small><strong>30 秒</strong></div>
                         </div>
@@ -133,54 +133,27 @@
                                             </article>
                                         </div>
                                     </aside>
-                                    <div class="planner-field-heading is-qps">
-                                        <span><i>01</i><strong>设置共同目标 QPS</strong></span>
-                                        <small><b>每秒计划发起的 HTTP 请求数</b>，不是在线用户数，也不是并发请求数</small>
-                                    </div>
-                                    <div class="crowd-tier-options" role="group" aria-label="目标请求速率">
-                                        <button type="button" data-crowd-tier="qps_100" aria-pressed="false">
-                                            <span>涓流</span><strong>100 req/s</strong><small>目标速率</small>
-                                        </button>
-                                        <button type="button" data-crowd-tier="qps_300" aria-pressed="false">
-                                            <span>涟漪</span><strong>300 req/s</strong><small>目标速率</small>
-                                        </button>
-                                        <button type="button" data-crowd-tier="qps_800" aria-pressed="false">
-                                            <span>浪潮</span><strong>800 req/s</strong><small>目标速率</small>
-                                        </button>
-                                        <button class="is-active" type="button" data-crowd-tier="qps_1500" aria-pressed="true">
-                                            <span>满潮</span><strong>1500 req/s</strong><small>目标速率</small>
-                                        </button>
-                                    </div>
                                 </section>
 
                                 <section class="runner-plan-panel" aria-labelledby="runner-plan-heading">
                                     <header class="planner-field-heading is-runner">
-                                        <span><i>02</i><strong id="runner-plan-heading">设置共同连接承载</strong></span>
-                                        <small>wrk2 connections</small>
+                                        <span><i>01</i><strong id="runner-plan-heading">固定共同运行条件</strong></span>
+                                        <small>两条路径保持完全一致</small>
                                     </header>
-                                    <p class="runner-parameter-note"><code>-c N</code><span>表示 wrk2 维护 N 条 HTTP/1.1 持久连接。请求会复用当前可用连接，不保证平均分配；响应越慢，连接占用越久。</span></p>
-                                    <div class="conduit-mode-control">
+                                    <div class="fixed-load-profile" aria-label="固定压测配置">
                                         <div>
-                                            <small>连接策略</small>
-                                            <div class="conduit-mode-options" role="group" aria-label="wrk2 连接配置方式">
-                                                <button class="is-active" type="button" data-connection-mode="auto" aria-pressed="true">Runner 自动</button>
-                                                <button type="button" data-connection-mode="manual" aria-pressed="false">手动指定</button>
-                                            </div>
+                                            <small>目标速率</small>
+                                            <strong>1,500 req/s</strong>
+                                            <span>每秒计划发起的 HTTP 请求数</span>
                                         </div>
-                                        <div id="manual-conduit-options" class="manual-conduit-options" role="group" aria-label="手动选择 wrk2 connections" hidden>
-                                            <button type="button" data-connection-count="70" aria-pressed="false">70</button>
-                                            <button type="button" data-connection-count="140" aria-pressed="false">140</button>
-                                            <button class="is-active" type="button" data-connection-count="300" aria-pressed="true">300</button>
-                                            <button type="button" data-connection-count="500" aria-pressed="false">500</button>
-                                            <small>connections</small>
+                                        <div>
+                                            <small>连接承载</small>
+                                            <strong>wrk2 -c 500</strong>
+                                            <span>500 条 HTTP/1.1 持久连接</span>
                                         </div>
                                     </div>
-
-                                    <details class="runner-plan-detail">
-                                        <summary>连接策略依据</summary>
-                                        <p id="crowd-connection-copy">正在读取 Runner 历史。</p>
-                                        <small id="crowd-size-note">固定运行 30 秒；进入实验室并完成观测准备后，创建任务并锁定最终配置。</small>
-                                    </details>
+                                    <p class="runner-parameter-note"><code>-c 500</code><span id="crowd-connection-copy">QPS、连接数和时长均已固定，不再需要选择档位或连接策略。</span></p>
+                                    <small id="crowd-size-note" class="fixed-load-note">固定运行 30 秒；进入实验室选择读取路径并手动开始。</small>
                                 </section>
 
                             </div>
@@ -203,7 +176,7 @@
                                 <dl>
                                     <div><dt>查询对象</dt><dd id="query-preview-path">星髓详情</dd></div>
                                     <div><dt>目标速率</dt><dd id="query-preview-rate">1,500 req/s</dd></div>
-                                    <div><dt>连接计划</dt><dd id="query-preview-connections">计算中</dd></div>
+                                    <div><dt>连接承载</dt><dd id="query-preview-connections">-c 500</dd></div>
                                     <div><dt>持续时间</dt><dd>30 秒</dd></div>
                                 </dl>
                             </aside>
@@ -409,7 +382,7 @@ Connection: keep-alive</code></pre>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260825-query-path-cn-v4"></script>
+    <script src="/js/market.js?v=20260827-fixed-query-load-v1"></script>
 </body>
 
 </html>

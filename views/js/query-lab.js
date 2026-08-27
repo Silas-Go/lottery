@@ -82,19 +82,14 @@
         reducedMotion: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
     };
     var metricAnimations = new WeakMap();
-    // 查询潮汐是目标 QPS，魔法通路是 wrk2 保持的 HTTP 持久连接；二者都不是用户人数。
-    // 运行前通过 Runner 的同源预估接口显示 -c；创建任务后必须用 CreateResponse/Task 的最终值覆盖，
-    // 避免前端复制自动算法，也避免把配置连接数误称为成功建立的 socket 数。
+    // 查询实验固定使用 1500 QPS、wrk2 -c 500 和 30 秒；QPS 是计划请求速率，
+    // -c 是 HTTP 持久连接数，二者都不是用户人数。任务创建后仍以 Runner 回包为事实。
     var crowdTiers = Object.freeze({
-        qps_100: Object.freeze({ label: "涓流", rate: 100, duration: 30 }),
-        qps_300: Object.freeze({ label: "涟漪", rate: 300, duration: 30 }),
-        qps_800: Object.freeze({ label: "浪潮", rate: 800, duration: 30 }),
         qps_1500: Object.freeze({ label: "满潮", rate: 1500, duration: 30 })
     });
-    var allowedConnections = Object.freeze([70, 140, 300, 500]);
     var crowdTierID = "qps_1500";
-    var connectionMode = "auto";
-    var manualConnections = 300;
+    var connectionMode = "manual";
+    var manualConnections = 500;
 
     var sourceDefinitions = {
         mysql: {
@@ -307,23 +302,11 @@
     }
 
     function incomingCrowdConfig() {
-        var query = new URLSearchParams(window.location.search);
-        var tierID = crowdTierForRate(query.get("rate"));
-        if (!tierID) {
-            // 旧书签只用于恢复页面，不再把旧挡位名称带回新参数模型。
-            var legacyRates = { visitors: 100, tide_eve: 300, crowd: 1500, boiling_city: 1500 };
-            tierID = crowdTierForRate(legacyRates[query.get("tier")]) || "qps_1500";
-        }
-        var requestedMode = query.get("connectionMode");
-        var mode = requestedMode === "manual" ? "manual" : "auto";
-        var requestedConnections = Number(query.get("connections") || 0);
-        if (allowedConnections.indexOf(requestedConnections) < 0) {
-            requestedConnections = 300;
-        }
+        // 新任务不再从 URL 接受流量档位；旧任务仍由 task id 恢复其真实配置。
         return {
-            tierID: tierID,
-            connectionMode: mode,
-            connections: requestedConnections
+            tierID: "qps_1500",
+            connectionMode: "manual",
+            connections: 500
         };
     }
 
@@ -407,7 +390,8 @@
     }
 
     function selectedConnectionMode() {
-        return state.scenario === "steady" ? connectionMode : "auto";
+        // 击穿/穿透接口要求 Runner 控制连接模式，但 1500 QPS 对应的受控值同样是 -c 500。
+        return state.scenario === "steady" ? "manual" : "auto";
     }
 
     function selectedProtection() {
@@ -479,18 +463,14 @@
             pending.plannedConnections || 0);
         var effectiveConnectionMode = selectedConnectionMode();
         var plannedConnections = effectiveConnectionMode === "manual" ? manualConnections :
-            Number(plan && plan.connections || handoffConnections || 0);
+            Number(plan && plan.connections || handoffConnections || manualConnections);
         var resolvedConnections = Number(taskTier && taskTier.connections || 0);
         var connectionCopy = taskTier && !taskMode ?
             ("旧任务 · -c " + resolvedConnections.toLocaleString("zh-CN")) :
             (resolvedConnections > 0 ?
                 (taskMode === "manual" ? "手动" : "自动") + " · -c " +
                     resolvedConnections.toLocaleString("zh-CN") + " · 已锁定" :
-                (effectiveConnectionMode === "manual" ?
-                    "手动 · -c " + manualConnections.toLocaleString("zh-CN") + " · 计划" :
-                    (plannedConnections > 0 ?
-                        "自动 · -c " + plannedConnections.toLocaleString("zh-CN") + " · 计划" :
-                        "自动 · 计划计算中")));
+                "固定 · -c " + plannedConnections.toLocaleString("zh-CN") + " · 计划");
         var cached = currentExperiment().mode === "cached";
         var pathLabel = cached ? "Redis 旁路缓存" : "MySQL 直接查询";
         if (state.scenario === "breakdown") {
@@ -524,7 +504,7 @@
                     "页面和指标观测均已就绪，正在锁定最终 Runner 配置。" :
                     (state.labSceneReady && state.metricsObservationReady ?
                         (pending.sharedConditions ?
-                            "共同 QPS、连接策略与时长已载入；选择直接查询或旁路缓存，再点击开始创建任务。" :
+                            "固定 QPS、-c 与时长已载入；选择直接查询或旁路缓存，再点击开始创建任务。" :
                             "观测已经就绪；点击开始按钮后才会创建 Runner 任务并发送真实请求。") :
                         "Runner 尚未创建，当前没有连接启用，也没有真实请求发送。")) :
                 (pendingTask ? "正在通过任务快照恢复 Runner 状态；此时不会播放请求动画。" :
@@ -1058,14 +1038,12 @@
         var plan = matchingLabConnectionPlan();
         var effectiveConnectionMode = selectedConnectionMode();
         var plannedConnections = effectiveConnectionMode === "manual" ? manualConnections :
-            Number(plan && plan.connections || 0);
-        byId("lab-connection-plan-value").textContent = plannedConnections > 0 ?
-            (effectiveConnectionMode === "manual" ? "计划 · wrk2 -c " : "自动计划 · wrk2 -c ") +
-                plannedConnections.toLocaleString("zh-CN") :
-            "自动计划计算中";
+            Number(plan && plan.connections || manualConnections);
+        byId("lab-connection-plan-value").textContent = "固定 · wrk2 -c " +
+            plannedConnections.toLocaleString("zh-CN");
         byId("lab-connection-plan-copy").textContent = state.connectionPlanError ?
-            "计划暂不可用；任务创建时由 Runner 返回最终配置。" :
-            "任务尚未创建" + (plan && plan.reason ? " · " + plan.reason : "");
+            "固定配置不受预览接口影响；创建任务时仍由 Runner 回包确认。" :
+            "任务尚未创建 · 1500 QPS / -c 500 / 30 秒";
     }
 
     async function refreshLabConnectionPlan() {
@@ -2990,13 +2968,6 @@
         if (task.tier && task.tier.rate) {
             crowdTierID = crowdTierForRate(task.tier.rate) || crowdTierID;
         }
-        if (task.connectionMode === "manual") {
-            connectionMode = "manual";
-            manualConnections = Number(task.requestedConnections || task.tier && task.tier.connections ||
-                manualConnections);
-        } else if (task.connectionMode === "auto") {
-            connectionMode = "auto";
-        }
         renderCrowdSetup();
         renderScenarioControls(task);
         if (loadtestIsActive(task)) {
@@ -4098,7 +4069,6 @@
         if (scenario !== "steady") {
             state.entry = "crowd-setup";
             document.body.dataset.entryMode = "crowd-setup";
-            connectionMode = "auto";
             if (currentExperiment().mode !== "cached" || currentExperiment().cacheTemperature !== "cold") {
                 experimentState.set({ mode: "cached", cacheTemperature: "cold" });
             }
@@ -4207,6 +4177,19 @@
             experimentState.set({ cacheTemperature: "cold" });
         }
         var pendingRun = entry === "crowd" ? experimentResults.pending() : null;
+        if (pendingRun && !pendingRun.taskId) {
+            var fixedTier = crowdTiers.qps_1500;
+            var fixedConnectionMode = selectedConnectionMode();
+            pendingRun = Object.assign({}, pendingRun, {
+                tier: "qps_1500",
+                expectedRate: fixedTier.rate,
+                expectedDurationSeconds: fixedTier.duration,
+                connectionMode: fixedConnectionMode,
+                plannedConnections: manualConnections,
+                requestedConnections: fixedConnectionMode === "manual" ? manualConnections : 0
+            });
+            experimentResults.arm(pendingRun);
+        }
         if (!pendingRun && entry === "crowd" && incomingLaunchWhenObserved()) {
             var incomingTier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
             pendingRun = {
@@ -4233,7 +4216,7 @@
                 connectionMode: state.pendingRun.connectionMode || connectionMode,
                 connections: Number(state.pendingRun.plannedConnections || 0),
                 reason: state.pendingRun.connectionReason || "",
-                // 详情页的自动值只是共同条件预估；进入实验室后必须按所选路径重算。
+                // 固定条件从详情页交接；任务创建后仍由 Runner 回包覆盖真实配置。
                 requestMode: state.pendingRun.sharedConditions ? "shared-preview" : state.pendingRun.mode,
                 requestExperiment: state.pendingRun.experiment || "cache-aside-read",
                 requestProtection: state.pendingRun.protection || ""

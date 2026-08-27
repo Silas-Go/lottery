@@ -20,22 +20,18 @@
     var ACTIVE_TASK_KEY = "silas.cache-aside.active-loadtest.v1";
     var WORLD_TRANSITION_KEY = "silas.world-transition.v1";
     var arrivingFromStreet = false;
-    // 查询潮汐描述计划 QPS，不代表人数；通路数量描述 wrk2 保持的 HTTP 连接。
-    // 前端只提交白名单速率与通路模式，Runner 仍会再次校验并解析最终连接数。
+    // 两条查询路径固定使用 1500 QPS、wrk2 -c 500 和 30 秒，避免把配置选择
+    // 变成实验步骤；QPS 仍表示计划请求速率，-c 表示 HTTP 持久连接数。
     var crowdTiers = Object.freeze({
-        qps_100: Object.freeze({ label: "涓流", rate: 100, duration: 30 }),
-        qps_300: Object.freeze({ label: "涟漪", rate: 300, duration: 30 }),
-        qps_800: Object.freeze({ label: "浪潮", rate: 800, duration: 30 }),
         qps_1500: Object.freeze({ label: "满潮", rate: 1500, duration: 30 })
     });
-    var allowedConnections = Object.freeze([70, 140, 300, 500]);
     var crowdShells = Object.freeze({
         powershell: Object.freeze({ label: "PowerShell 5.1+" }),
         bash: Object.freeze({ label: "Bash / WSL" })
     });
     var crowdTierID = "qps_1500";
-    var connectionMode = "auto";
-    var manualConnections = 300;
+    var connectionMode = "manual";
+    var manualConnections = 500;
     var crowdShell = "powershell";
     var connectionPlan = null;
     var connectionPlanRequest = 0;
@@ -363,21 +359,15 @@
 
     function renderConnectionPlan() {
         var plan = matchingConnectionPlan();
-        var connections = connectionMode === "manual" ? manualConnections :
-            Number(plan && plan.connections || 0);
-        var planValue = connections > 0 ?
-            (connectionMode === "auto" ? "预估 · 自动 · -c " : "计划 · 手动 · -c ") +
-                connections.toLocaleString("zh-CN") : "计算中";
-        byId("crowd-connection-plan").textContent = planValue;
-        byId("query-preview-connections").textContent = connections > 0 ?
-            (connectionMode === "auto" ? "预估 · -c " : "共同 · -c ") +
-                connections.toLocaleString("zh-CN") : "计算中";
+        var connections = manualConnections;
+        byId("crowd-connection-plan").textContent = "固定 · -c " +
+            connections.toLocaleString("zh-CN");
+        byId("query-preview-connections").textContent = "-c " +
+            connections.toLocaleString("zh-CN");
         byId("crowd-connection-current").textContent = "尚未创建";
-        byId("crowd-connection-copy").textContent = plan && plan.reason ?
-            "共同条件预估（直接查询样本） · " + plan.reason + "；进入实验室选定路径后会重新计算。" :
-            (connectionMode === "manual" ?
-                "两条路径共享所选 wrk2 -c；任务创建时锁定。" :
-                "正在读取共同条件预估；进入实验室选定路径后会从 70 / 140 / 300 / 500 中重新计算。");
+        byId("crowd-connection-copy").textContent =
+            "QPS、连接数和时长均已固定，不再需要选择档位或连接策略。" +
+            (plan && plan.reason ? " Runner 已确认该配置。" : "");
         renderMarketConduits(connections, "planned");
         return connections;
     }
@@ -417,12 +407,10 @@
             if (requestID !== connectionPlanRequest) {
                 return;
             }
-            byId("crowd-connection-plan").textContent = connectionMode === "manual" ?
-                "手动 · -c " + manualConnections : "自动计划暂不可用";
-            byId("query-preview-connections").textContent = connectionMode === "manual" ?
-                "-c " + manualConnections : "暂不可用";
+            byId("crowd-connection-plan").textContent = "固定 · -c " + manualConnections;
+            byId("query-preview-connections").textContent = "-c " + manualConnections;
             byId("crowd-connection-copy").textContent =
-                "Runner 暂时无法计算：" + error.message;
+                "固定配置不受预览接口影响；Runner 暂时无法确认：" + error.message;
         }
     }
 
@@ -473,29 +461,11 @@
         if (!crowdTiers[crowdTierID]) {
             crowdTierID = "qps_1500";
         }
-        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (button) {
-            var active = button.dataset.crowdTier === crowdTierID;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-        });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-connection-mode]"), function (button) {
-            var active = button.dataset.connectionMode === connectionMode;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-        });
-        var manualPanel = byId("manual-conduit-options");
-        manualPanel.hidden = connectionMode !== "manual";
-        Array.prototype.forEach.call(document.querySelectorAll("[data-connection-count]"), function (button) {
-            var active = Number(button.dataset.connectionCount) === manualConnections;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-        });
         var plannedConnections = renderConnectionPlan();
         byId("crowd-size-value").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("query-preview-rate").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
-        byId("crowd-size-note").textContent = connectionMode === "auto" ?
-            "两条路径固定运行 " + tier.duration + " 秒；当前 -c 是共同条件预估，进入实验室选定路径后重新计算并在启动时锁定。" :
-            "两条路径固定运行 " + tier.duration + " 秒，并共享手动指定的 -c；进入实验室后由开始按钮创建任务。";
+        byId("crowd-size-note").textContent = "固定运行 " + tier.duration +
+            " 秒；进入实验室选择读取路径并手动开始。";
         byId("market-source-rate").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("market-flow-target").textContent = tier.rate.toLocaleString("zh-CN") + " req/s";
         byId("market-flow-actual-label").textContent = "运行事实";
@@ -581,7 +551,7 @@
             byId(id).disabled = locked;
         });
         Array.prototype.forEach.call(document.querySelectorAll(
-            "[data-query-explainer], [data-crowd-tier], [data-connection-mode], [data-connection-count]"), function (control) {
+            "[data-query-explainer]"), function (control) {
             control.disabled = locked;
         });
     }
@@ -940,6 +910,9 @@
         byId("market-mechanism").dataset.capacityState = "unknown";
         renderMarketLifecycle({ status: "submitting" });
         try {
+            crowdTierID = "qps_1500";
+            connectionMode = "manual";
+            manualConnections = 500;
             var tier = crowdTiers[crowdTierID];
             var preview = matchingConnectionPlan();
             var plannedConnections = connectionMode === "manual" ?
@@ -1002,6 +975,9 @@
             return;
         }
         activeTask = null;
+        crowdTierID = "qps_1500";
+        connectionMode = "manual";
+        manualConnections = 500;
         enteringCrowdLab = false;
         marketPreviewSignature = "";
         setState("crowd_preparing");
@@ -1065,6 +1041,9 @@
             return;
         }
         activeTask = null;
+        crowdTierID = "qps_1500";
+        connectionMode = "manual";
+        manualConnections = 500;
         marketLastActiveStatus = "starting";
         marketPreviewSignature = "";
         setState("crowd_preparing");
@@ -1145,43 +1124,6 @@
                 }
                 queryExplainerMode = mode;
                 renderQueryExplainer();
-            });
-        });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-tier]"), function (button) {
-            button.addEventListener("click", function () {
-                var nextTier = button.dataset.crowdTier;
-                if (isTaskActive() || !crowdTiers[nextTier] || nextTier === crowdTierID) {
-                    return;
-                }
-                beginNextMarketDraft();
-                crowdTierID = nextTier;
-                renderCrowdTier();
-                refreshConnectionPlan();
-            });
-        });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-connection-mode]"), function (button) {
-            button.addEventListener("click", function () {
-                if (isTaskActive() || (button.dataset.connectionMode !== "auto" &&
-                    button.dataset.connectionMode !== "manual")) {
-                    return;
-                }
-                beginNextMarketDraft();
-                connectionMode = button.dataset.connectionMode;
-                renderCrowdTier();
-                refreshConnectionPlan();
-            });
-        });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-connection-count]"), function (button) {
-            button.addEventListener("click", function () {
-                var nextConnections = Number(button.dataset.connectionCount);
-                if (isTaskActive() || allowedConnections.indexOf(nextConnections) < 0) {
-                    return;
-                }
-                beginNextMarketDraft();
-                manualConnections = nextConnections;
-                connectionMode = "manual";
-                renderCrowdTier();
-                refreshConnectionPlan();
             });
         });
         Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-shell]"), function (button) {

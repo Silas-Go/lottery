@@ -482,6 +482,44 @@ html[data-planner="query"] .planner-field-heading > small {
 
 html[data-planner="query"] .planner-field-heading > small b { color: #315f59; }
 
+html[data-planner="query"] .fixed-load-profile {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0 0 10px;
+    border: 1px solid rgba(49, 95, 89, .48);
+    background: #e4f1e7;
+    box-shadow: inset 0 4px rgba(49, 95, 89, .1);
+}
+
+html[data-planner="query"] .fixed-load-profile > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 12px 14px;
+}
+
+html[data-planner="query"] .fixed-load-profile > div + div {
+    border-left: 1px solid rgba(49, 95, 89, .28);
+}
+
+html[data-planner="query"] .fixed-load-profile small {
+    color: #52635d;
+    font-size: 10px;
+    font-weight: 900;
+}
+
+html[data-planner="query"] .fixed-load-profile strong {
+    color: var(--planner-teal-dark);
+    font: 900 17px/1.2 "SFMono-Regular", Consolas, monospace;
+}
+
+html[data-planner="query"] .fixed-load-profile span,
+html[data-planner="query"] .fixed-load-note {
+    color: #52635d;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
 html[data-planner="query"] .runner-parameter-note {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
@@ -729,6 +767,8 @@ html[data-planner] .purchase-plan-preview dd { font-size: 11px; }
     html[data-planner="query"] .query-risk-map article + article { padding-left: 0; border-top: 1px solid rgba(118, 91, 56, .22); border-left: 0; }
     html[data-planner="query"] .planner-field-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
     html[data-planner="query"] .planner-field-heading > small { text-align: left; }
+    html[data-planner="query"] .fixed-load-profile { grid-template-columns: minmax(0, 1fr); }
+    html[data-planner="query"] .fixed-load-profile > div + div { border-top: 1px solid rgba(49, 95, 89, .28); border-left: 0; }
 
     html[data-planner] .query-plan-preview { display: grid; grid-template-columns: minmax(0, 1fr); }
     html[data-planner] .query-plan-preview > small,
