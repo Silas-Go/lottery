@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/material-shop.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260827-fixed-query-load-v1" />
+    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260827-pressure-model-v5" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -61,136 +61,124 @@
                     <div id="crowd-panel" class="crowd-panel">
                         <header class="task-draft-header">
                             <div>
-                                <small>QUERY LOAD TEST · 星髓</small>
-                                <strong>进一步了解查询实验</strong>
-                                <p>看清两条读取路径、实验对象和共同运行条件，再进入实验室选择本轮路径并观察真实指标。</p>
+                                <small>EXPERIMENT BRIEFING · 星髓</small>
+                                <strong>实验前须知</strong>
+                                <p>本轮固定使用 1,500 QPS、<code>-c 500</code> 和 30 秒；进入实验室后选择查询路径并手动开始。</p>
                             </div>
                             <button id="leave-crowd-mode" type="button">返回实验总览</button>
                         </header>
 
-                        <ol id="market-task-lifecycle" class="task-lifecycle" aria-label="压测任务流程">
-                            <li data-market-stage="plan" class="is-current"><i>01</i><span>实验详情</span></li>
-                            <li data-market-stage="lab"><i>02</i><span>实验执行</span></li>
-                            <li data-market-stage="result"><i>03</i><span>结果报告</span></li>
-                        </ol>
-
-                        <div class="task-contract-strip task-plan-summary" role="status" aria-live="polite" aria-label="查询实验条件概览">
-                            <div class="is-path"><small>对比对象</small><strong id="crowd-summary-path">直接查询 vs 旁路缓存</strong></div>
-                            <div class="is-intent"><small>目标速率</small><output id="crowd-size-value">1,500 req/s</output></div>
-                            <div class="is-config"><small>连接承载</small><strong id="crowd-connection-plan">固定 · -c 500</strong></div>
-                            <div class="is-fact"><small>任务状态</small><strong id="crowd-connection-current">尚未创建</strong></div>
-                            <div class="is-duration"><small>持续时间</small><strong>30 秒</strong></div>
-                        </div>
-
                         <div class="crowd-workbench">
-                            <div class="crowd-config-column">
-                                <section class="task-intent-panel" aria-labelledby="task-intent-heading">
+                            <section class="query-briefing" aria-labelledby="query-briefing-title">
+                                <header class="query-run-intro">
+                                    <span>PRESSURE MODEL</span>
+                                    <strong id="query-briefing-title">这轮压力怎么施加到系统</strong>
+                                    <p>wrk2 按目标速率计划请求，再用固定数量的 HTTP 持久连接把请求送到 Go API。</p>
+                                </header>
+
+                                <div class="query-core-concepts">
+                                    <article class="query-concept-card is-qps">
+                                        <header><span>01</span><div><small>核心概念</small><strong>1,500 QPS 是什么？</strong></div></header>
+                                        <div class="qps-pressure-visual" role="img" aria-label="一秒内均匀计划发送一千五百个请求到 Go API">
+                                            <div class="qps-time-window"><small>TIME WINDOW</small><strong>1 秒</strong><span>0s → 1s</span></div>
+                                            <div class="qps-request-stream">
+                                                <span aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                                                <strong>均匀计划发送</strong><b>1,500 requests</b>
+                                            </div>
+                                            <i class="query-flow-arrow" aria-hidden="true">→</i>
+                                            <div class="query-api-node"><small>TARGET</small><strong>GO API</strong></div>
+                                        </div>
+                                        <ul class="query-concept-facts">
+                                            <li><b>目标</b><span>wrk2 每秒计划发送 1,500 个请求</span></li>
+                                            <li><b>不是</b><span>1,500 个用户，也不是服务端完成量</span></li>
+                                            <li><b>跟不上时</b><span>请求会等待、积压，实际吞吐可能明显低于 1,500 QPS</span></li>
+                                        </ul>
+                                    </article>
+
+                                    <article class="query-concept-card is-connections">
+                                        <header><span>02</span><div><small>核心概念</small><strong><code>-c 500</code> 是什么？</strong></div></header>
+                                        <div class="connection-pressure-visual" role="img" aria-label="wrk2 通过五百条 HTTP 1.1 持久连接向 Go API 发送请求">
+                                            <div class="query-runner-node"><small>LOAD GENERATOR</small><strong>wrk2</strong></div>
+                                            <i class="query-flow-arrow" aria-hidden="true">↓</i>
+                                            <div class="connection-bundle">
+                                                <span aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                                                <strong>500 条 HTTP/1.1 connections</strong>
+                                                <small>Keep-Alive · 持续复用</small>
+                                            </div>
+                                            <i class="query-flow-arrow" aria-hidden="true">↓</i>
+                                            <div class="query-api-node"><small>TARGET</small><strong>GO API</strong></div>
+                                        </div>
+                                        <ul class="query-concept-facts">
+                                            <li><b>500 表示</b><span>连接数，不是 500 QPS，也不是 500 个用户</span></li>
+                                            <li><b>连接模型</b><span>HTTP/1.1 Keep-Alive；本实验不使用 HTTP/2 多路复用</span></li>
+                                            <li><b>近似理解</b><span>每条连接同一时刻主要承载一个在途请求</span></li>
+                                        </ul>
+                                    </article>
+                                </div>
+
+                                <p class="query-pressure-relation"><strong>QPS</strong> 决定想发多快，<strong><code>-c</code></strong> 决定用多少条连接承载这些请求。</p>
+
+                                <div class="query-run-conditions">
+                                    <article class="query-duration-card">
+                                        <header><span>03</span><div><small>持续时间</small><strong>每条路径 30 秒</strong></div></header>
+                                        <div><span>MySQL Direct</span><b>30s</b><i></i><span>Cache Aside</span><b>30s</b></div>
+                                    </article>
+                                    <article class="query-control-card">
+                                        <header><span>04</span><div><small>控制变量</small><strong>本轮只改变查询路径</strong></div></header>
+                                        <ul>
+                                            <li>相同查询对象</li><li>1,500 QPS</li><li><code>-c 500</code></li><li>30 秒</li>
+                                        </ul>
+                                        <p><b>唯一不同</b><span>MySQL Direct vs Redis Cache Aside</span></p>
+                                    </article>
+                                </div>
+
+                                <section class="query-briefing-paths" aria-labelledby="query-briefing-paths-title">
                                     <header>
-                                        <span>TRAFFIC INTENT</span>
-                                        <strong id="task-intent-heading">了解查询成本与共同流量</strong>
+                                        <div><small>05 · COMPARISON</small><strong id="query-briefing-paths-title">本轮对比方案</strong></div>
+                                        <span>进入实验室后选择本轮路径</span>
                                     </header>
-                                    <aside class="query-target-brief" aria-label="本轮查询对象与数据分布">
-                                        <div class="query-target-identity">
-                                            <small>本轮查询对象</small>
-                                            <strong>星髓详情</strong>
-                                            <span>MaterialDetailDTO</span>
-                                        </div>
-                                        <div class="query-target-details">
-                                            <p><b>数据来源</b><span><code>materials</code> 基础资料 · <code>material_components</code> 组成关系 · <code>trades</code> 交易统计 · <code>reviews</code> 评分聚合</span></p>
-                                        </div>
-                                    </aside>
-                                    <div class="planner-field-heading is-comparison">
-                                        <span><strong>本次实验的两条对比路径</strong></span>
-                                        <small>点击方案查看右侧解说，不决定本轮运行路径</small>
+                                    <div>
+                                        <article>
+                                            <small>方案 A</small>
+                                            <strong>MySQL Direct</strong>
+                                            <p><span>Request</span><i>→</i><span>Go API</span><i>→</i><span>MySQL</span><i>→</i><span>Response</span></p>
+                                        </article>
+                                        <article>
+                                            <small>方案 B</small>
+                                            <strong>Redis Cache Aside</strong>
+                                            <p><span>Request</span><i>→</i><span>Go API</span><i>→</i><span>Redis</span><i>→</i><span>Response</span></p>
+                                            <em>缓存未命中时，再回源 MySQL。</em>
+                                        </article>
                                     </div>
-                                    <div class="query-path-comparison" role="group" aria-label="切换方案解说">
-                                        <button class="is-active" type="button" data-query-explainer="direct" aria-pressed="true">
-                                            <small>方案 A</small><strong>MySQL 直接查询</strong><span>每次查询 MySQL，并现场组装 DTO</span>
-                                            <em>HTTP → Go API → 4 条 SQL → DTO</em>
-                                            <span class="query-path-card-action">正在解说</span>
-                                        </button>
-                                        <button type="button" data-query-explainer="cached" aria-pressed="false">
-                                            <small>方案 B</small><strong>Redis 旁路缓存</strong><span>Redis 命中直接返回，未命中才回源 MySQL</span>
-                                            <em>HTTP → Go API → Redis → 未命中后查询 MySQL</em>
-                                            <span class="query-path-card-action">查看方案解说 →</span>
-                                        </button>
-                                    </div>
-                                    <aside id="query-risk-map" class="query-risk-map" aria-labelledby="query-risk-map-heading" hidden>
-                                        <header>
-                                            <span><small>后续问题 02–03</small><strong id="query-risk-map-heading">引入缓存以后，还会遇到什么？</strong></span>
-                                            <em>实验室继续验证</em>
-                                        </header>
-                                        <div>
-                                            <article>
-                                                <span>02</span>
-                                                <div><strong>缓存击穿</strong><p>热点缓存键突然失效，并发未命中会同时放大 MySQL 回源。</p></div>
-                                                <em>无保护 vs 按缓存键互斥 + 双检</em>
-                                            </article>
-                                            <article>
-                                                <span>03</span>
-                                                <div><strong>缓存穿透</strong><p>不存在的材料每次都未命中，请求会反复落到 MySQL。</p></div>
-                                                <em>无保护 vs 60 秒负缓存</em>
-                                            </article>
-                                        </div>
-                                    </aside>
                                 </section>
 
-                                <section class="runner-plan-panel" aria-labelledby="runner-plan-heading">
-                                    <header class="planner-field-heading is-runner">
-                                        <span><i>01</i><strong id="runner-plan-heading">固定共同运行条件</strong></span>
-                                        <small>两条路径保持完全一致</small>
-                                    </header>
-                                    <div class="fixed-load-profile" aria-label="固定压测配置">
-                                        <div>
-                                            <small>目标速率</small>
-                                            <strong>1,500 req/s</strong>
-                                            <span>每秒计划发起的 HTTP 请求数</span>
-                                        </div>
-                                        <div>
-                                            <small>连接承载</small>
-                                            <strong>wrk2 -c 500</strong>
-                                            <span>500 条 HTTP/1.1 持久连接</span>
-                                        </div>
+                                <div class="crowd-confirmation-bar">
+                                    <div class="crowd-status" role="status" aria-live="polite">
+                                        <i></i>
+                                        <span><strong id="crowd-status-title">运行条件已固定</strong><small id="crowd-status-copy">进入后选择路径，再手动开始。</small></span>
+                                        <time id="crowd-clock" hidden>00:00 / 00:30</time>
                                     </div>
-                                    <p class="runner-parameter-note"><code>-c 500</code><span id="crowd-connection-copy">QPS、连接数和时长均已固定，不再需要选择档位或连接策略。</span></p>
-                                    <small id="crowd-size-note" class="fixed-load-note">固定运行 30 秒；进入实验室选择读取路径并手动开始。</small>
-                                </section>
+                                    <div class="crowd-run-actions">
+                                        <button id="start-crowd-test" class="event-primary" type="button">进入查询实验室</button>
+                                        <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入实验室查看</button>
+                                    </div>
+                                </div>
+                            </section>
 
-                            </div>
-
-                            <aside class="query-plan-preview" aria-labelledby="query-plan-preview-heading">
-                                <small id="query-plan-preview-eyebrow">方案解说 · 方案 A</small>
-                                <strong id="query-plan-preview-heading">方案解说 · MySQL 直接查询</strong>
-                                <div class="query-plan-material">
-                                    <img src="/img/star-marrow-relic.png" alt="" />
-                                    <span><small>实验材料</small><b>星髓</b></span>
-                                </div>
-                                <code id="query-preview-route">GET /api/archives/4/direct</code>
-                                <p id="query-preview-copy">每个 HTTP 请求都进入 MySQL，完成 4 条查询后现场组装同一份 MaterialDetailDTO。</p>
-                                <div class="query-path-explanation" aria-live="polite">
-                                    <p><b id="query-explainer-chain-label">请求链</b><span id="query-explainer-chain">Go API → MySQL → 4 条 SQL → DTO</span></p>
-                                    <p><b id="query-explainer-trait-label">性能特征</b><span id="query-explainer-trait">没有缓存命中收益，每次请求都会重复查询和组装。</span></p>
-                                    <p><b id="query-explainer-proof-label">重点观察</b><span id="query-explainer-proof">MySQL 回源、SQL 查询数，以及 P95 / P99 延迟。</span></p>
-                                </div>
-                                <div class="query-plan-shared-heading"><strong>共同运行条件</strong><span>两轮保持一致</span></div>
-                                <dl>
-                                    <div><dt>查询对象</dt><dd id="query-preview-path">星髓详情</dd></div>
-                                    <div><dt>目标速率</dt><dd id="query-preview-rate">1,500 req/s</dd></div>
-                                    <div><dt>连接承载</dt><dd id="query-preview-connections">-c 500</dd></div>
-                                    <div><dt>持续时间</dt><dd>30 秒</dd></div>
-                                </dl>
-                            </aside>
-
-                            <div class="crowd-confirmation-bar">
-                                <div class="crowd-status" role="status" aria-live="polite">
-                                    <i></i>
-                                    <span><strong id="crowd-status-title">实验条件待确认</strong><small id="crowd-status-copy">进入实验室后仍需手动开始，不会自动发送压测请求。</small></span>
-                                    <time id="crowd-clock" hidden>00:00 / 00:30</time>
-                                </div>
-                                <div class="crowd-run-actions">
-                                    <button id="start-crowd-test" class="event-primary" type="button">进入查询实验室</button>
-                                    <button id="enter-crowd-lab" class="event-secondary" type="button" hidden>进入实验室查看</button>
-                                </div>
+                            <div class="query-briefing-runtime" hidden>
+                                <ol id="market-task-lifecycle">
+                                    <li data-market-stage="plan"></li>
+                                    <li data-market-stage="lab"></li>
+                                    <li data-market-stage="result"></li>
+                                </ol>
+                                <span id="crowd-summary-path">直接查询 vs 旁路缓存</span>
+                                <output id="crowd-size-value">1,500 req/s</output>
+                                <span id="crowd-connection-plan">固定 · -c 500</span>
+                                <span id="crowd-connection-current">尚未创建</span>
+                                <span id="crowd-connection-copy">固定运行条件</span>
+                                <span id="crowd-size-note">固定运行 30 秒</span>
+                                <span id="query-preview-rate">1,500 req/s</span>
+                                <span id="query-preview-connections">-c 500</span>
                             </div>
 
                             <aside id="market-mechanism" class="market-mechanism" data-flow-state="planned" data-task-phase="planned" data-capacity-state="unknown" aria-labelledby="market-mechanism-heading">
@@ -271,19 +259,6 @@ Connection: keep-alive</code></pre>
                             </aside>
                         </div>
 
-                        <details id="equivalent-command" class="crowd-command-details">
-                            <summary>技术细节 · 查看等价命令</summary>
-                            <p>用于复现实验，不参与普通操作流程。</p>
-                            <div class="crowd-command-toolbar">
-                                <small>当前终端</small>
-                                <div class="crowd-shell-options" role="group" aria-label="压测命令终端类型">
-                                    <button class="is-active" type="button" data-crowd-shell="powershell" aria-pressed="true">PowerShell 5.1+</button>
-                                    <button type="button" data-crowd-shell="bash" aria-pressed="false">Bash / WSL</button>
-                                </div>
-                            </div>
-                            <code id="market-load-command">正在生成压测命令…</code>
-                            <button id="copy-market-command" class="event-secondary" type="button">复制当前命令</button>
-                        </details>
                     </div>
 
                     <div id="purchase-plan-panel" class="purchase-plan-panel">
@@ -382,7 +357,7 @@ Connection: keep-alive</code></pre>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260827-fixed-query-load-v1"></script>
+    <script src="/js/market.js?v=20260827-pressure-model-v5"></script>
 </body>
 
 </html>

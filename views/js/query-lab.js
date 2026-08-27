@@ -1402,6 +1402,7 @@
     function renderFrozenResults() {
         var direct = latestWrk2Result("direct");
         var cached = latestWrk2Result("cached");
+        byId("query-result-analysis").hidden = !(direct && cached);
         renderFinalTaskMetrics("direct", direct);
         renderFinalTaskMetrics("cached", cached);
         renderFrozenCard("direct", direct);

@@ -10,8 +10,8 @@
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260827-fixed-query-load-v1" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260806-scenario-comparison-v1" />
+    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260827-query-briefing-v1" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260827-query-briefing-v1" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
@@ -619,6 +619,47 @@
                     </div>
                     <p>只有材料、目标速率、wrk2 -c 配置值和时长一致时才比较。实际请求延迟与需求侧延迟分别裁决；不会把连接数、QPS 或请求数换算成用户人数。</p>
                 </div>
+
+                <section id="query-result-analysis" class="query-result-analysis" aria-labelledby="query-result-analysis-title" hidden>
+                    <header>
+                        <div>
+                            <small>IMPLEMENTATION · RESULT ANALYSIS</small>
+                            <h3 id="query-result-analysis-title">查询路径实现与结果归因</h3>
+                        </div>
+                        <span>两轮结果已冻结</span>
+                    </header>
+
+                    <div class="query-result-analysis-grid">
+                        <article>
+                            <span>01</span>
+                            <div><small>同一个返回对象</small><strong>MaterialDetailDTO</strong><p>两条路径最终返回同一份星髓详情。它由基础资料、组成材料、交易统计和评分聚合组成。</p></div>
+                        </article>
+                        <article>
+                            <span>02</span>
+                            <div><small>MySQL Direct 做了什么</small><strong>每次执行 4 条真实 SQL</strong><p>依次读取基础 JOIN、组成列表、交易聚合和评分聚合，再组装最终 DTO；没有用延时函数人为制造差距。</p></div>
+                        </article>
+                        <article>
+                            <span>03</span>
+                            <div><small>Cache Aside 做了什么</small><strong>先查 Redis，必要时再查 MySQL</strong><p>命中时直接返回完整 DTO；未命中时按材料加锁并双检，执行 4 条 SQL 后回填 Redis。Redis 异常时会降级读取 MySQL。</p></div>
+                        </article>
+                    </div>
+
+                    <aside class="query-result-reading">
+                        <strong>根据同条件结果判断主要瓶颈</strong>
+                        <p>如果旁路缓存同时表现为更高的目标完成率、更低的实际请求延迟，并且 SSE 中 SQL 数下降、缓存命中率上升，才说明“命中后跳过数据库查询与 DTO 组装”是这轮差异的主要原因。若 Socket Errors 或需求侧延迟仍高，则还要检查连接承载和投递欠账，不能把所有差异都归因于缓存。</p>
+                    </aside>
+
+                    <details class="query-result-command">
+                        <summary>复现实验 · 查看固定条件下的等价命令</summary>
+                        <pre><code>curl -fsS -X POST http://localhost:5678/api/chapters/cache-aside/reset &gt;/dev/null
+
+# 方案 A · MySQL Direct
+docker compose --profile loadtest run --rm --no-deps -e RATE=1500 -e DURATION=30s -e THREADS=1 -e CONNECTIONS=500 -e TARGET_URL=http://app:5678/api/archives/4/direct -e SCRIPT=/opt/wrk2/scripts/read.lua wrk2
+
+# 方案 B · Cache Aside
+docker compose --profile loadtest run --rm --no-deps -e RATE=1500 -e DURATION=30s -e THREADS=1 -e CONNECTIONS=500 -e TARGET_URL=http://app:5678/api/archives/4/cached -e SCRIPT=/opt/wrk2/scripts/read.lua wrk2</code></pre>
+                    </details>
+                </section>
             </section>
             </details>
 
@@ -668,7 +709,7 @@
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260806-scenario-comparison-v1"></script>
-    <script src="/js/query-lab.js?v=20260827-fixed-query-load-v1"></script>
+    <script src="/js/query-lab.js?v=20260827-query-briefing-v1"></script>
 </body>
 
 </html>

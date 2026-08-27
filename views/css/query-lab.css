@@ -707,6 +707,26 @@
 .query-focus .frozen-result-card,
 .query-focus .frozen-comparison { border-color: var(--query-line); border-radius: 1px; background: #fffaf0; }
 
+.query-focus .query-result-analysis {
+    border-color: var(--query-line);
+    border-radius: 1px;
+    background: #fffaf0;
+}
+
+.query-focus .query-result-analysis > header { border-color: #d8ccb3; }
+.query-focus .query-result-analysis > header h3,
+.query-focus .query-result-analysis-grid article strong,
+.query-focus .query-result-reading strong { color: var(--query-ink); }
+.query-focus .query-result-analysis > header > span { color: var(--query-teal-dark); }
+.query-focus .query-result-analysis-grid article { border-color: #d8ccb3; background: #fbf5e5; }
+.query-focus .query-result-analysis-grid article > span { color: #fffef7; background: var(--query-teal); }
+.query-focus .query-result-analysis-grid article p,
+.query-focus .query-result-reading p { color: var(--query-muted); }
+.query-focus .query-result-reading { border-left-color: var(--query-teal); background: #e7f1e8; }
+.query-focus .query-result-command { border-color: #d8ccb3; background: #f7edd7; }
+.query-focus .query-result-command > summary { color: var(--query-teal-dark); }
+.query-focus .query-result-command pre { border-color: #d8ccb3; color: #35524e; background: #fffdf7; }
+
 .query-focus .metrics-row,
 .query-focus .metrics-row > *,
 .query-focus .frozen-result-card header,

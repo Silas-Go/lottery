@@ -25,17 +25,11 @@
     var crowdTiers = Object.freeze({
         qps_1500: Object.freeze({ label: "满潮", rate: 1500, duration: 30 })
     });
-    var crowdShells = Object.freeze({
-        powershell: Object.freeze({ label: "PowerShell 5.1+" }),
-        bash: Object.freeze({ label: "Bash / WSL" })
-    });
     var crowdTierID = "qps_1500";
     var connectionMode = "manual";
     var manualConnections = 500;
-    var crowdShell = "powershell";
     var connectionPlan = null;
     var connectionPlanRequest = 0;
-    var queryExplainerMode = "direct";
     // 详情页只给两轮建立共同条件；直接查询用作自动连接数的预估样本，
     // 进入实验室选择真实路径后会按该路径重新估算，任务创建时再由 Runner 锁定。
     var CONFIG_PREVIEW_MODE = "direct";
@@ -122,32 +116,6 @@
         return Object.keys(materials).find(function (code) {
             return materials[code].id === numericId;
         }) || "";
-    }
-
-    function crowdCommand() {
-        var tier = crowdTiers[crowdTierID];
-        if (connectionMode === "auto") {
-            var planned = matchingConnectionPlan();
-            return "# 两条读取路径共享 RATE=" + tier.rate + "、DURATION=" + tier.duration + "s。\n" +
-                "# 详情页当前预估 CONNECTIONS=" + (planned ? planned.connections : "PENDING") + "；" +
-                "进入实验室选择路径后会重新计算，任务创建时锁定最终值。";
-        }
-        function loadCommand(path) {
-            return "docker compose --profile loadtest run --rm --no-deps " +
-            "-e RATE=" + tier.rate + " -e DURATION=" + tier.duration + "s -e THREADS=1 -e CONNECTIONS=" + manualConnections + " " +
-            "-e TARGET_URL=http://app:5678/api/archives/" + materialNumericId() + "/" + path + " " +
-            "-e SCRIPT=/opt/wrk2/scripts/read.lua wrk2";
-        }
-        if (crowdShell === "powershell") {
-            return "$ErrorActionPreference = \"Stop\"\n" +
-                "Invoke-WebRequest -UseBasicParsing -Method Post " +
-                "-Uri \"http://localhost:5678/api/chapters/cache-aside/reset\" | Out-Null\n" +
-                "# 方案 A · MySQL 直接查询\n" + loadCommand("direct") + "\n\n" +
-                "# 方案 B · Redis 旁路缓存（保持相同 QPS、-c 与时长）\n" + loadCommand("cached");
-        }
-        return "curl -fsS -X POST http://localhost:5678/api/chapters/cache-aside/reset >/dev/null\n" +
-            "# 方案 A · MySQL 直接查询\n" + loadCommand("direct") + "\n\n" +
-            "# 方案 B · Redis 旁路缓存（保持相同 QPS、-c 与时长）\n" + loadCommand("cached");
     }
 
     function matchingConnectionPlan() {
@@ -422,40 +390,6 @@
         renderMarketRequestPreview();
     }
 
-    function renderQueryExplainer() {
-        var cached = queryExplainerMode === "cached";
-        Array.prototype.forEach.call(document.querySelectorAll("[data-query-explainer]"), function (button) {
-            var active = button.dataset.queryExplainer === queryExplainerMode;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-            var action = button.querySelector(".query-path-card-action");
-            if (action) {
-                action.textContent = active ? "正在解说" : "查看方案解说 →";
-            }
-        });
-        byId("query-plan-preview-eyebrow").textContent =
-            "方案解说 · " + (cached ? "方案 B" : "方案 A");
-        byId("query-plan-preview-heading").textContent =
-            "方案解说 · " + (cached ? "Redis 旁路缓存" : "MySQL 直接查询");
-        byId("query-preview-route").textContent =
-            "GET /api/archives/4/" + (cached ? "cached" : "direct");
-        byId("query-preview-copy").textContent = cached ?
-            "请求先查询 Redis；命中后直接返回，只有未命中才进入回源保护、查询 MySQL 并回填完整 DTO。" :
-            "每个 HTTP 请求都进入 MySQL，完成 4 条查询后现场组装同一份 MaterialDetailDTO。";
-        byId("query-explainer-chain").textContent = cached ?
-            "Go API → Redis；未命中 → 按缓存键互斥并双检 → MySQL → 回填 Redis。" :
-            "Go API → MySQL → 4 条 SQL → DTO。";
-        byId("query-explainer-trait-label").textContent = cached ? "工程价值" : "性能特征";
-        byId("query-explainer-trait").textContent = cached ?
-            "缓存命中会避开数据库查询与 DTO 组装，用少量等待换取 MySQL 稳定。" :
-            "没有缓存命中收益，每次请求都会重复查询和组装。";
-        byId("query-explainer-proof-label").textContent = cached ? "潜在问题" : "重点观察";
-        byId("query-explainer-proof").textContent = cached ?
-            "热点缓存键失效可能引发缓存击穿；不存在的材料反复回源会形成缓存穿透，后续阶段分别验证。" :
-            "MySQL 回源、SQL 查询数，以及 P95 / P99 延迟。";
-        byId("query-risk-map").hidden = !cached;
-    }
-
     function renderCrowdTier() {
         var tier = crowdTiers[crowdTierID] || crowdTiers.qps_1500;
         if (!crowdTiers[crowdTierID]) {
@@ -479,31 +413,11 @@
         byId("market-mechanism").dataset.capacityState = "unknown";
         renderMarketRequestPreview();
         renderMarketLifecycle(null);
-        if (selectedCode) {
-            byId("market-load-command").textContent = crowdCommand();
-        }
-
         if (state === "crowd_preparing" && !activeTask) {
-            byId("crowd-status-title").textContent = "实验条件待确认";
-            byId("crowd-status-copy").textContent = "进入实验室后仍需手动开始，不会自动发送压测请求。";
+            byId("crowd-status-title").textContent = "运行条件已固定";
+            byId("crowd-status-copy").textContent = "进入后选择路径，再手动开始。";
             byId("crowd-clock").hidden = true;
         }
-    }
-
-    function renderCrowdShell() {
-        var shell = crowdShells[crowdShell] || crowdShells.powershell;
-        if (!crowdShells[crowdShell]) {
-            crowdShell = "powershell";
-        }
-        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-shell]"), function (button) {
-            var active = button.dataset.crowdShell === crowdShell;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-        });
-        if (selectedCode) {
-            byId("market-load-command").textContent = crowdCommand();
-        }
-        byId("copy-market-command").setAttribute("aria-label", "复制 " + shell.label + " 等价命令");
     }
 
     function updateCrowdTicketCodes() {
@@ -549,10 +463,6 @@
     function setExperimentControlsLocked(locked) {
         ["leave-crowd-mode"].forEach(function (id) {
             byId(id).disabled = locked;
-        });
-        Array.prototype.forEach.call(document.querySelectorAll(
-            "[data-query-explainer]"), function (control) {
-            control.disabled = locked;
         });
     }
 
@@ -983,7 +893,6 @@
         setState("crowd_preparing");
         updateFoyerExperimentQuery("query");
         renderCrowdTier();
-        renderCrowdShell();
         refreshConnectionPlan();
         byId("enter-crowd-lab").hidden = true;
         byId("start-crowd-test").focus({ preventScroll: true });
@@ -1052,29 +961,11 @@
         byId("start-crowd-test").textContent = "进入查询实验室";
         byId("enter-crowd-lab").hidden = true;
         byId("crowd-connection-current").textContent = "尚未创建";
-        byId("crowd-status-title").textContent = "实验条件待确认";
-        byId("crowd-status-copy").textContent = "进入实验室后仍需手动开始，不会自动发送压测请求。";
+        byId("crowd-status-title").textContent = "运行条件已固定";
+        byId("crowd-status-copy").textContent = "进入后选择路径，再手动开始。";
         byId("crowd-clock").textContent = "00:00 / 00:30";
         byId("crowd-clock").hidden = true;
         byId("market-mechanism").dataset.faultLayer = "none";
-    }
-
-    async function copyCrowdCommand() {
-        var command = byId("market-load-command").textContent;
-        try {
-            await navigator.clipboard.writeText(command);
-        } catch (_) {
-            var textarea = document.createElement("textarea");
-            textarea.value = command;
-            textarea.style.position = "fixed";
-            textarea.style.opacity = "0";
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand("copy");
-            textarea.remove();
-        }
-        showToast("等价命令已复制");
-        byId("market-announcer").textContent = "当前终端版本的等价压测命令已复制";
     }
 
     function leaveCrowdMode() {
@@ -1116,27 +1007,6 @@
         byId("enter-crowd-lab").addEventListener("click", function () {
             enterCrowdLabView();
         });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-query-explainer]"), function (button) {
-            button.addEventListener("click", function () {
-                var mode = button.dataset.queryExplainer;
-                if ((mode !== "direct" && mode !== "cached") || mode === queryExplainerMode) {
-                    return;
-                }
-                queryExplainerMode = mode;
-                renderQueryExplainer();
-            });
-        });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-crowd-shell]"), function (button) {
-            button.addEventListener("click", function () {
-                var nextShell = button.dataset.crowdShell;
-                if (!crowdShells[nextShell] || nextShell === crowdShell) {
-                    return;
-                }
-                crowdShell = nextShell;
-                renderCrowdShell();
-            });
-        });
-        byId("copy-market-command").addEventListener("click", copyCrowdCommand);
         byId("leave-crowd-mode").addEventListener("click", leaveCrowdMode);
         document.querySelectorAll("[data-purchase-explainer]").forEach(function (button) {
             button.addEventListener("click", function () {
@@ -1151,7 +1021,6 @@
         startWorldEntrance();
         bindEvents();
         renderExperimentState(experimentState.get());
-        renderQueryExplainer();
         experimentState.subscribe(renderExperimentState);
         var requestedExperiment = incomingFoyerExperiment();
         restoreActiveTask().then(function () {
