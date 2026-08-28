@@ -10,8 +10,8 @@
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260827-query-briefing-v1" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260827-query-briefing-v1" />
+    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260828-result-contrast-v2" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260828-result-contrast-v2" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
@@ -73,18 +73,6 @@
                         </div>
                         <span id="query-route-label" class="endpoint-label">GET /api/archives/:id/{direct|cached}</span>
                     </div>
-
-                    <nav class="query-scenario-nav" aria-label="选择缓存查询实验阶段">
-                        <button id="scenario-steady" class="is-active" type="button" aria-pressed="true">
-                            <small>阶段 1</small><strong>稳态性能</strong><span>直接查询 vs 旁路缓存</span>
-                        </button>
-                        <button id="scenario-breakdown" type="button" aria-pressed="false">
-                            <small>阶段 2</small><strong>热点击穿</strong><span>ARC-004 真实失效与恢复</span>
-                        </button>
-                        <button id="scenario-penetration" type="button" aria-pressed="false">
-                            <small>阶段 3</small><strong>缓存穿透</strong><span>不存在 ID 与负缓存</span>
-                        </button>
-                    </nav>
 
                     <div class="archive-reader-control">
                         <header class="archive-reader-heading">
@@ -495,106 +483,23 @@
                     </article>
                 </section>
 
-                <details class="query-report-drawer">
-                    <summary>
-                        <span><b>本轮实验结果</b><small>实验完成后查看冻结指标与结论</small></span>
-                        <i aria-hidden="true">查看</i>
-                    </summary>
-                <section class="metrics-panel lab-panel" aria-labelledby="metrics-heading">
-                    <div class="panel-heading">
-                        <div>
-                            <span>04 / WRK2 FINAL RESULTS</span>
-                            <h2 id="metrics-heading">两条路径的 wrk2 最终指标</h2>
-                        </div>
-                        <div class="result-heading-actions">
-                            <span id="wrk2-final-status" class="metrics-timestamp" role="status" aria-live="polite">等待 wrk2 完成</span>
-                            <button class="clear-comparison-button" data-clear-comparison type="button">清空结果</button>
-                        </div>
-                    </div>
-
-                    <div class="metrics-table" role="table" aria-label="MySQL 直接查询与 Redis 旁路缓存的 wrk2 最终指标">
-                        <div class="metrics-row metrics-head" role="row">
-                            <span role="columnheader">指标</span><strong role="columnheader">MySQL 直接查询</strong><strong role="columnheader">Redis 旁路缓存</strong>
-                        </div>
-                        <div class="metrics-row" role="row"><span>目标速率</span><strong id="direct-target-qps">—</strong><strong id="cached-target-qps">—</strong></div>
-                        <div class="metrics-row" role="row"><span>实际速率</span><strong id="direct-actual-qps">—</strong><strong id="cached-actual-qps">—</strong></div>
-                        <div class="metrics-row" role="row"><span>目标完成率</span><strong id="direct-completion-rate">—</strong><strong id="cached-completion-rate">—</strong></div>
-                        <div class="metrics-row" role="row"><span>完成请求</span><strong id="direct-total">—</strong><strong id="cached-total">—</strong></div>
-                        <div class="metrics-row" role="row"><span>wrk2 -c（配置连接数）</span><strong id="direct-connections">—</strong><strong id="cached-connections">—</strong></div>
-                        <div class="metrics-row" role="row"><span>实际时长</span><strong id="direct-duration">—</strong><strong id="cached-duration">—</strong></div>
-                        <div class="metrics-row" role="row"><span>实际请求 P50</span><strong id="direct-request-p50">—</strong><strong id="cached-request-p50">—</strong></div>
-                        <div class="metrics-row" role="row"><span>实际请求 P95</span><strong id="direct-request-p95">—</strong><strong id="cached-request-p95">—</strong></div>
-                        <div class="metrics-row" role="row"><span>实际请求 P99</span><strong id="direct-request-p99">—</strong><strong id="cached-request-p99">—</strong></div>
-                        <div class="metrics-row" role="row"><span>需求侧 P50（含投递欠账）</span><strong id="direct-p50">—</strong><strong id="cached-p50">—</strong></div>
-                        <div class="metrics-row" role="row"><span>需求侧 P95（含投递欠账）</span><strong id="direct-p95">—</strong><strong id="cached-p95">—</strong></div>
-                        <div class="metrics-row" role="row"><span>需求侧 P99（含投递欠账）</span><strong id="direct-p99">—</strong><strong id="cached-p99">—</strong></div>
-                        <div class="metrics-row" role="row"><span>Socket Errors</span><strong id="direct-timeouts">—</strong><strong id="cached-timeouts">—</strong></div>
-                        <div class="metrics-row" role="row"><span>Error Rate</span><strong id="direct-error-rate">—</strong><strong id="cached-error-rate">—</strong></div>
-                    </div>
-                    <div id="wrk2-summary" class="comparison-summary">运行期间保持未冻结；wrk2 退出并解析完整直方图后一次写入。</div>
-
-                    <div class="engineering-notes">
-                        <div><strong>两种延迟口径</strong><span>实际请求延迟从真正发出开始；需求侧延迟从计划投递时刻开始，并包含连接不足造成的发送欠账。</span></div>
-                        <div><strong>不混入应用快照</strong><span>SQL、连接池与缓存命中率只在上方 SSE 区域实时观察。</span></div>
-                        <div><strong>连接结算</strong><span>wrk2 -c 是 Runner 配置；Socket Errors 单独呈现连接层异常。</span></div>
-                    </div>
-                </section>
-                </details>
             </div>
 
             <details class="query-report-drawer">
                 <summary>
-                    <span><b>已完成实验与方案对比</b><small>查看已保存结果，并对比两种查询方案</small></span>
+                    <span><b>实验结果与方案对比</b><small>一轮先看结果，两轮完成后在同一张表中比较</small></span>
                     <i aria-hidden="true">查看</i>
                 </summary>
             <section class="results-panel lab-panel" aria-labelledby="results-heading">
                 <div class="panel-heading">
                     <div>
-                        <span>05 / IMMUTABLE RUN RESULTS</span>
-                        <h2 id="results-heading">已完成实验与方案对比</h2>
+                        <span>04 / IMMUTABLE RUN RESULTS</span>
+                        <h2 id="results-heading">实验结果与方案对比</h2>
                     </div>
                     <div class="result-heading-actions">
                         <span id="freeze-status" class="freeze-status" role="status" aria-live="polite">等待一轮测试结束</span>
-                        <button id="clear-comparison" class="clear-comparison-button" data-clear-comparison type="button">清空对比</button>
+                        <button id="clear-comparison" class="clear-comparison-button" data-clear-comparison type="button">清空结果</button>
                     </div>
-                </div>
-
-                <div class="frozen-result-cards">
-                    <article id="frozen-direct" class="frozen-result-card is-empty">
-                        <header><div><small>对照方案</small><strong>MySQL 直接查询</strong></div><span>待测试</span></header>
-                        <p class="frozen-result-context" data-result-context>完成直查测试后自动冻结</p>
-                        <dl>
-                            <div><dt>目标 / 实际速率</dt><dd data-result="ratePair">—</dd></div>
-                            <div><dt>目标完成率</dt><dd data-result="completionRate">—</dd></div>
-                            <div><dt>完成请求</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>wrk2 -c 配置</dt><dd data-result="connections">—</dd></div>
-                            <div><dt>实际请求 P50</dt><dd data-result="requestP50">—</dd></div>
-                            <div><dt>实际请求 P95</dt><dd data-result="requestP95">—</dd></div>
-                            <div><dt>需求侧 P50</dt><dd data-result="p50">—</dd></div>
-                            <div><dt>需求侧 P95</dt><dd data-result="p95">—</dd></div>
-                            <div><dt>Socket Errors</dt><dd data-result="socketErrors">—</dd></div>
-                            <div><dt>Error Rate</dt><dd data-result="errorRate">—</dd></div>
-                        </dl>
-                        <footer data-result-time>结果不会随实时指标变化</footer>
-                    </article>
-
-                    <article id="frozen-cached" class="frozen-result-card is-empty">
-                        <header><div><small>优化方案</small><strong>Redis 旁路缓存</strong></div><span>待测试</span></header>
-                        <p class="frozen-result-context" data-result-context>完成旁路缓存测试后自动冻结</p>
-                        <dl>
-                            <div><dt>目标 / 实际速率</dt><dd data-result="ratePair">—</dd></div>
-                            <div><dt>目标完成率</dt><dd data-result="completionRate">—</dd></div>
-                            <div><dt>完成请求</dt><dd data-result="requests">—</dd></div>
-                            <div><dt>wrk2 -c 配置</dt><dd data-result="connections">—</dd></div>
-                            <div><dt>实际请求 P50</dt><dd data-result="requestP50">—</dd></div>
-                            <div><dt>实际请求 P95</dt><dd data-result="requestP95">—</dd></div>
-                            <div><dt>需求侧 P50</dt><dd data-result="p50">—</dd></div>
-                            <div><dt>需求侧 P95</dt><dd data-result="p95">—</dd></div>
-                            <div><dt>Socket Errors</dt><dd data-result="socketErrors">—</dd></div>
-                            <div><dt>Error Rate</dt><dd data-result="errorRate">—</dd></div>
-                        </dl>
-                        <footer data-result-time>结果不会随实时指标变化</footer>
-                    </article>
                 </div>
 
                 <div id="frozen-comparison" class="frozen-comparison is-waiting">
@@ -609,15 +514,26 @@
                         <div id="compare-target-row" class="frozen-comparison-row" role="row"><span>目标速率</span><strong id="compare-target-direct">—</strong><strong id="compare-target-cached">—</strong><em id="compare-target-winner">等待</em></div>
                         <div id="compare-qps-row" class="frozen-comparison-row" role="row"><span>实际速率</span><strong id="compare-qps-direct">—</strong><strong id="compare-qps-cached">—</strong><em id="compare-qps-winner">等待</em></div>
                         <div id="compare-completion-row" class="frozen-comparison-row" role="row"><span>目标完成率</span><strong id="compare-completion-direct">—</strong><strong id="compare-completion-cached">—</strong><em id="compare-completion-winner">等待</em></div>
+                        <div id="compare-requests-row" class="frozen-comparison-row" role="row"><span>完成请求</span><strong id="compare-requests-direct">—</strong><strong id="compare-requests-cached">—</strong><em id="compare-requests-winner">等待</em></div>
                         <div id="compare-connections-row" class="frozen-comparison-row" role="row"><span>wrk2 -c 配置</span><strong id="compare-connections-direct">—</strong><strong id="compare-connections-cached">—</strong><em id="compare-connections-winner">等待</em></div>
+                        <div id="compare-duration-row" class="frozen-comparison-row" role="row"><span>实际时长</span><strong id="compare-duration-direct">—</strong><strong id="compare-duration-cached">—</strong><em id="compare-duration-winner">等待</em></div>
                         <div id="compare-request-p50-row" class="frozen-comparison-row" role="row"><span>实际请求 P50</span><strong id="compare-request-p50-direct">—</strong><strong id="compare-request-p50-cached">—</strong><em id="compare-request-p50-winner">等待</em></div>
                         <div id="compare-request-p95-row" class="frozen-comparison-row" role="row"><span>实际请求 P95</span><strong id="compare-request-p95-direct">—</strong><strong id="compare-request-p95-cached">—</strong><em id="compare-request-p95-winner">等待</em></div>
+                        <div id="compare-request-p99-row" class="frozen-comparison-row" role="row"><span>实际请求 P99</span><strong id="compare-request-p99-direct">—</strong><strong id="compare-request-p99-cached">—</strong><em id="compare-request-p99-winner">等待</em></div>
                         <div id="compare-p50-row" class="frozen-comparison-row" role="row"><span>需求侧 P50</span><strong id="compare-p50-direct">—</strong><strong id="compare-p50-cached">—</strong><em id="compare-p50-winner">等待</em></div>
                         <div id="compare-p95-row" class="frozen-comparison-row" role="row"><span>需求侧 P95</span><strong id="compare-p95-direct">—</strong><strong id="compare-p95-cached">—</strong><em id="compare-p95-winner">等待</em></div>
+                        <div id="compare-p99-row" class="frozen-comparison-row" role="row"><span>需求侧 P99</span><strong id="compare-p99-direct">—</strong><strong id="compare-p99-cached">—</strong><em id="compare-p99-winner">等待</em></div>
                         <div id="compare-timeout-row" class="frozen-comparison-row" role="row"><span>Socket Errors</span><strong id="compare-timeout-direct">—</strong><strong id="compare-timeout-cached">—</strong><em id="compare-timeout-winner">等待</em></div>
                         <div id="compare-error-row" class="frozen-comparison-row" role="row"><span>Error Rate</span><strong id="compare-error-direct">—</strong><strong id="compare-error-cached">—</strong><em id="compare-error-winner">等待</em></div>
                     </div>
                     <p>只有材料、目标速率、wrk2 -c 配置值和时长一致时才比较。实际请求延迟与需求侧延迟分别裁决；不会把连接数、QPS 或请求数换算成用户人数。</p>
+                </div>
+
+                <div id="wrk2-summary" class="comparison-summary">运行期间保持未冻结；wrk2 退出并解析完整直方图后一次写入。</div>
+
+                <div class="engineering-notes">
+                    <div><strong>两种延迟口径</strong><span>实际请求延迟从真正发出开始；需求侧延迟从计划投递时刻开始，并包含连接不足造成的发送欠账。</span></div>
+                    <div><strong>连接结算</strong><span>wrk2 -c 是 Runner 配置；Socket Errors 单独呈现连接层异常。</span></div>
                 </div>
 
                 <section id="query-result-analysis" class="query-result-analysis" aria-labelledby="query-result-analysis-title" hidden>
@@ -660,8 +576,31 @@ docker compose --profile loadtest run --rm --no-deps -e RATE=1500 -e DURATION=30
 docker compose --profile loadtest run --rm --no-deps -e RATE=1500 -e DURATION=30s -e THREADS=1 -e CONNECTIONS=500 -e TARGET_URL=http://app:5678/api/archives/4/cached -e SCRIPT=/opt/wrk2/scripts/read.lua wrk2</code></pre>
                     </details>
                 </section>
+
             </section>
             </details>
+
+            <section id="query-next-experiments" class="query-next-experiments" aria-labelledby="query-next-experiments-title" hidden>
+                <header>
+                    <small>NEXT · CACHE FAILURE MODES</small>
+                    <h3 id="query-next-experiments-title">缓存加进来以后，问题就结束了吗？</h3>
+                    <p>Cache Aside 降低了数据库读取压力，但缓存本身也会带来新的问题。接下来继续看两个典型场景。</p>
+                </header>
+                <div class="query-next-experiment-grid">
+                    <article>
+                        <small>HOT KEY</small>
+                        <h4>热点击穿</h4>
+                        <p>热点缓存突然失效，大量请求会不会同时回源 MySQL？</p>
+                        <button id="scenario-breakdown" type="button" aria-pressed="false">开始实验</button>
+                    </article>
+                    <article>
+                        <small>MISSING DATA</small>
+                        <h4>缓存穿透</h4>
+                        <p>如果一直查询不存在的数据，请求会不会反复打到 MySQL？</p>
+                        <button id="scenario-penetration" type="button" aria-pressed="false">开始实验</button>
+                    </article>
+                </div>
+            </section>
 
         </div>
     </main>
@@ -709,7 +648,7 @@ docker compose --profile loadtest run --rm --no-deps -e RATE=1500 -e DURATION=30
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260806-scenario-comparison-v1"></script>
-    <script src="/js/query-lab.js?v=20260827-query-briefing-v1"></script>
+    <script src="/js/query-lab.js?v=20260828-result-contrast-v2"></script>
 </body>
 
 </html>

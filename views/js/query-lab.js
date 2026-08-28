@@ -783,7 +783,7 @@
 
     function renderScenarioControls(task) {
         document.body.dataset.cacheScenario = state.scenario;
-        ["steady", "breakdown", "penetration"].forEach(function (scenario) {
+        ["breakdown", "penetration"].forEach(function (scenario) {
             var button = byId("scenario-" + scenario);
             var active = scenario === state.scenario;
             button.classList.toggle("is-active", active);
@@ -835,7 +835,7 @@
         ["mode-direct", "mode-cached"].forEach(function (id) {
             byId(id).disabled = locked || pathReadinessLocked || state.scenario !== "steady";
         });
-        ["steady", "breakdown", "penetration"].forEach(function (scenario) {
+        ["breakdown", "penetration"].forEach(function (scenario) {
             byId("scenario-" + scenario).disabled = locked || scenarioReadinessLocked;
         });
         ["protection-none", "protection-negative"].forEach(function (id) {
@@ -1167,85 +1167,6 @@
         return null;
     }
 
-    function renderFinalTaskMetrics(mode, result) {
-        var isCrowdResult = Boolean(result && result.entry === "crowd");
-        byId(mode + "-target-qps").textContent = isCrowdResult ?
-            formatResultQPS(resultTargetRate(result)) : "—";
-        byId(mode + "-total").textContent = isCrowdResult ?
-            formatNumber(resultMetric(result, "requests")) : "—";
-        byId(mode + "-actual-qps").textContent = isCrowdResult ?
-            formatResultQPS(resultMetric(result, "qps")) : "—";
-        byId(mode + "-completion-rate").textContent = isCrowdResult ?
-            formatCompletionRate(resultCompletionRate(result)) : "—";
-        byId(mode + "-connections").textContent = isCrowdResult ?
-            formatConnectionConfig(result) : "—";
-        byId(mode + "-duration").textContent = isCrowdResult ?
-            formatResultDuration(resultMetric(result, "durationSeconds")) : "—";
-        byId(mode + "-request-p50").textContent = isCrowdResult ?
-            formatResultLatency(resultMetric(result, "requestP50")) : "—";
-        byId(mode + "-request-p95").textContent = isCrowdResult ?
-            formatResultLatency(resultMetric(result, "requestP95")) : "—";
-        byId(mode + "-request-p99").textContent = isCrowdResult ?
-            formatResultLatency(resultMetric(result, "requestP99")) : "—";
-        byId(mode + "-p50").textContent = isCrowdResult ?
-            formatResultLatency(resultMetric(result, "p50")) : "—";
-        byId(mode + "-p95").textContent = isCrowdResult ?
-            formatResultLatency(resultMetric(result, "p95")) : "—";
-        byId(mode + "-p99").textContent = isCrowdResult ?
-            formatResultLatency(resultMetric(result, "p99")) : "—";
-        byId(mode + "-timeouts").textContent = isCrowdResult ?
-            (hasResultMetric(result, "socketErrors") ?
-                formatNumber(resultMetric(result, "socketErrors")) : "本轮未采集") : "—";
-        byId(mode + "-error-rate").textContent = isCrowdResult ?
-            wrk2ErrorRate(result).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + "%" : "—";
-    }
-
-    function renderFrozenCard(mode, result) {
-        var card = byId(mode === "cached" ? "frozen-cached" : "frozen-direct");
-        if (!result) {
-            card.classList.add("is-empty");
-            card.querySelector("header > span").textContent = "待测试";
-            card.querySelector("[data-result-context]").textContent = mode === "cached" ?
-                "完成旁路缓存测试后自动冻结" : "完成直查测试后自动冻结";
-            Array.prototype.forEach.call(card.querySelectorAll("[data-result]"), function (node) {
-                node.textContent = "—";
-            });
-            card.querySelector("[data-result-time]").textContent = "结果不会随实时指标变化";
-            return;
-        }
-        card.classList.remove("is-empty");
-        card.querySelector("header > span").textContent = "FROZEN";
-        var temperature = mode === "cached" ?
-            " · " + (result.cacheTemperature === "hot" ? "热缓存" : "冷缓存") : "";
-        var runKind = result.entry === "crowd" ?
-            "查询潮汐" + (result.expectedRate ? " · " + result.expectedRate + " req/s" : "") +
-            (result.expectedDurationSeconds ? " · " + result.expectedDurationSeconds + "s" : "") : "单次检索";
-        card.querySelector("[data-result-context]").textContent =
-            (result.materialName || "星髓") + temperature + " · " + runKind;
-        Array.prototype.forEach.call(card.querySelectorAll("[data-result]"), function (node) {
-            var key = node.dataset.result;
-            var value = resultMetric(result, key);
-            if (["p50", "p95", "requestP50", "requestP95"].indexOf(key) >= 0) {
-                node.textContent = formatResultLatency(value);
-            } else if (key === "ratePair") {
-                node.textContent = formatResultQPS(resultTargetRate(result)) + " / " +
-                    formatResultQPS(resultMetric(result, "qps"));
-            } else if (key === "completionRate") {
-                node.textContent = formatCompletionRate(resultCompletionRate(result));
-            } else if (key === "connections") {
-                node.textContent = formatConnectionConfig(result);
-            } else if (key === "socketErrors" && !hasResultMetric(result, key)) {
-                node.textContent = "本轮未采集";
-            } else if (key === "errorRate") {
-                node.textContent = wrk2ErrorRate(result).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + "%";
-            } else {
-                node.textContent = formatNumber(value);
-            }
-        });
-        card.querySelector("[data-result-time]").textContent = "冻结于 " +
-            new Date(result.frozenAt).toLocaleTimeString("zh-CN", { hour12: false });
-    }
-
     function setComparisonRow(name, directText, cachedText, directValue, cachedValue, preference, comparable, tieTolerance) {
         var row = byId("compare-" + name + "-row");
         byId("compare-" + name + "-direct").textContent = directText;
@@ -1315,14 +1236,35 @@
         return true;
     }
 
-    function resetFrozenComparison() {
-        ["target", "qps", "completion", "connections", "request-p50", "request-p95",
-            "p50", "p95", "timeout", "error"].forEach(function (name) {
+    function pendingResultValues(result) {
+        return {
+            target: result ? formatResultQPS(resultTargetRate(result)) : "—",
+            qps: result ? formatResultQPS(resultMetric(result, "qps")) : "—",
+            completion: result ? formatCompletionRate(resultCompletionRate(result)) : "—",
+            requests: result ? formatNumber(resultMetric(result, "requests")) : "—",
+            connections: result ? formatConnectionConfig(result) : "—",
+            duration: result ? formatResultDuration(resultMetric(result, "durationSeconds")) : "—",
+            "request-p50": result ? formatResultLatency(resultMetric(result, "requestP50")) : "—",
+            "request-p95": result ? formatResultLatency(resultMetric(result, "requestP95")) : "—",
+            "request-p99": result ? formatResultLatency(resultMetric(result, "requestP99")) : "—",
+            p50: result ? formatResultLatency(resultMetric(result, "p50")) : "—",
+            p95: result ? formatResultLatency(resultMetric(result, "p95")) : "—",
+            p99: result ? formatResultLatency(resultMetric(result, "p99")) : "—",
+            timeout: result ? (hasResultMetric(result, "socketErrors") ?
+                formatNumber(resultMetric(result, "socketErrors")) : "本轮未采集") : "—",
+            error: result ? wrk2ErrorRate(result).toFixed(2) + "%" : "—"
+        };
+    }
+
+    function renderPendingComparison(direct, cached) {
+        var directValues = pendingResultValues(direct);
+        var cachedValues = pendingResultValues(cached);
+        Object.keys(directValues).forEach(function (name) {
             var row = byId("compare-" + name + "-row");
             row.classList.remove("winner-direct", "winner-cached", "is-tie");
-            byId("compare-" + name + "-direct").textContent = "—";
-            byId("compare-" + name + "-cached").textContent = "—";
-            byId("compare-" + name + "-winner").textContent = "等待";
+            byId("compare-" + name + "-direct").textContent = directValues[name];
+            byId("compare-" + name + "-cached").textContent = cachedValues[name];
+            byId("compare-" + name + "-winner").textContent = direct || cached ? "等待另一轮" : "等待";
         });
     }
 
@@ -1330,9 +1272,14 @@
         var panel = byId("frozen-comparison");
         if (!direct || !cached) {
             panel.classList.add("is-waiting");
-            resetFrozenComparison();
-            byId("frozen-comparison-title").textContent = "还需要两种路径各完成一轮测试";
-            byId("frozen-overall-winner").textContent = "WAITING";
+            renderPendingComparison(direct, cached);
+            byId("frozen-comparison-title").textContent = direct ?
+                "MySQL Direct 已完成 · 等待 Redis Cache Aside" :
+                (cached ? "Redis Cache Aside 已完成 · 等待 MySQL Direct" : "等待第一轮实验结果");
+            byId("frozen-overall-winner").textContent = direct || cached ? "1 / 2 FROZEN" : "WAITING";
+            byId("wrk2-summary").textContent = direct || cached ?
+                "已完成路径的结果已冻结在当前列；另一轮完成后，这张表会原地补齐并给出判断。" :
+                "完成任一路径后，这张表会先展示本轮结果；两条路径都完成后再进行比较。";
             return;
         }
 
@@ -1353,6 +1300,10 @@
             formatResultQPS(resultTargetRate(cached)), fair, "同条件");
         setContextComparisonRow("connections", formatConnectionConfig(direct),
             formatConnectionConfig(cached), fair, "同条件");
+        setContextComparisonRow("requests", formatNumber(resultMetric(direct, "requests")),
+            formatNumber(resultMetric(cached, "requests")), fair, "随完成率解释");
+        setContextComparisonRow("duration", formatResultDuration(resultMetric(direct, "durationSeconds")),
+            formatResultDuration(resultMetric(cached, "durationSeconds")), fair, "同条件");
         setComparisonRow("qps", formatResultQPS(resultMetric(direct, "qps")),
             formatResultQPS(resultMetric(cached, "qps")), resultMetric(direct, "qps"),
             resultMetric(cached, "qps"), "higher", fair, qpsTieTolerance);
@@ -1361,8 +1312,10 @@
             resultCompletionRate(cached), "higher", fair, 0.5);
         setLatencyComparisonRow("request-p50", "requestP50", direct, cached, fair);
         setLatencyComparisonRow("request-p95", "requestP95", direct, cached, fair);
+        setLatencyComparisonRow("request-p99", "requestP99", direct, cached, fair);
         setLatencyComparisonRow("p50", "p50", direct, cached, fair);
         setLatencyComparisonRow("p95", "p95", direct, cached, fair);
+        setLatencyComparisonRow("p99", "p99", direct, cached, fair);
         if (hasSocketErrors) {
             setComparisonRow("timeout",
                 formatNumber(directSocketErrors) + "（" + directSocketRate.toFixed(2) + "/1k）",
@@ -1402,15 +1355,13 @@
     function renderFrozenResults() {
         var direct = latestWrk2Result("direct");
         var cached = latestWrk2Result("cached");
-        byId("query-result-analysis").hidden = !(direct && cached);
-        renderFinalTaskMetrics("direct", direct);
-        renderFinalTaskMetrics("cached", cached);
-        renderFrozenCard("direct", direct);
-        renderFrozenCard("cached", cached);
+        var mainExperimentCompleted = Boolean(direct && cached);
+        byId("query-result-analysis").hidden = !mainExperimentCompleted;
+        byId("query-next-experiments").hidden = !mainExperimentCompleted;
         renderFrozenComparison(direct, cached);
-        byId("wrk2-final-status").textContent = direct && cached ? "两条 wrk2 结果已冻结" :
+        byId("freeze-status").textContent = direct && cached ? "两条路径结果已冻结" :
             (direct ? "直接查询已冻结 · 等待旁路缓存" :
-                (cached ? "旁路缓存已冻结 · 等待直接查询" : "等待 wrk2 完成"));
+                (cached ? "旁路缓存已冻结 · 等待直接查询" : "等待第一轮测试结束"));
     }
 
     function completeResult(result) {
@@ -1419,7 +1370,6 @@
         state.pendingRun = null;
         state.crowdRun = null;
         renderFrozenResults();
-        byId("freeze-status").textContent = (result.mode === "cached" ? "旁路缓存" : "MySQL 直接查询") + " 本轮结果已冻结";
         showToast("本轮实验结果已冻结，可用于下一轮对比。", "success");
     }
 
@@ -4083,6 +4033,20 @@
         refreshLabConnectionPlan();
     }
 
+    function openCacheScenario(scenario) {
+        if (!latestWrk2Result("direct") || !latestWrk2Result("cached")) {
+            return;
+        }
+        if (state.loadtestTask && ["completed", "failed", "stopped"].indexOf(state.loadtestTask.status) >= 0) {
+            stopLoadtestConnections();
+            state.loadtestTaskId = "";
+            state.loadtestTask = null;
+            state.loadtestLastActiveStatus = "starting";
+        }
+        selectCacheScenario(scenario);
+        document.querySelector(".query-game-console").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
     function selectPenetrationProtection(protection) {
         if (state.scenario !== "penetration" || loadtestIsActive(state.loadtestTask) ||
             (protection !== "none" && protection !== "negative-cache")) {
@@ -4097,9 +4061,8 @@
     }
 
     function bindEvents() {
-        byId("scenario-steady").addEventListener("click", function () { selectCacheScenario("steady"); });
-        byId("scenario-breakdown").addEventListener("click", function () { selectCacheScenario("breakdown"); });
-        byId("scenario-penetration").addEventListener("click", function () { selectCacheScenario("penetration"); });
+        byId("scenario-breakdown").addEventListener("click", function () { openCacheScenario("breakdown"); });
+        byId("scenario-penetration").addEventListener("click", function () { openCacheScenario("penetration"); });
         byId("protection-none").addEventListener("click", function () { selectPenetrationProtection("none"); });
         byId("protection-negative").addEventListener("click", function () { selectPenetrationProtection("negative-cache"); });
         byId("mode-direct").addEventListener("click", function () {
