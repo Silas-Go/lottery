@@ -531,7 +531,6 @@
             byId("lab-load-errors").textContent = "—";
             byId("lab-load-hits").textContent = "—";
             byId("lab-load-fallbacks").textContent = "—";
-            renderLoadtestStages({ status: waitingStatus });
             renderLoadtestLogs([]);
             renderQueryTideStage(pendingTask);
         }
@@ -1477,65 +1476,6 @@
             stopped: ["任务已停止", "本轮没有形成完整结算。"]
         };
         return copies[status] || ["正在连接任务", "正在恢复 Runner 的任务状态。"];
-    }
-
-    function inferLoadtestFailureStatus(task) {
-        var messages = (Array.isArray(task && task.logs) ? task.logs : [])
-            .map(function (entry) { return entry.message || ""; })
-            .concat(task && task.errorMessage || "")
-            .join("\n");
-        if (/收集|指标解析|指标收集|wrk2 结束|结果/.test(messages)) {
-            return "collecting";
-        }
-        if (Number(task && task.metrics && task.metrics.actualRequests || 0) > 0 ||
-            Number(task && task.elapsedSeconds || 0) > 0 ||
-            /wrk2 已启动|wrk2 异常退出|子进程/.test(messages)) {
-            return "running";
-        }
-        if (/数据重置完成|wrk2 启动失败|启动阶段/.test(messages)) {
-            return "launching";
-        }
-        if (/重置/.test(messages)) {
-            return "resetting";
-        }
-        return state.loadtestLastActiveStatus || "starting";
-    }
-
-    function renderLoadtestStages(task) {
-        var status = task && task.status || "draft";
-        var failed = status === "failed" || status === "stopped";
-        var effectiveStatus = failed ? inferLoadtestFailureStatus(task) : status;
-        var completed = [];
-        var current = [];
-        if (effectiveStatus === "draft") {
-            current = ["intent"];
-        } else if (effectiveStatus === "waiting") {
-            completed = ["intent"];
-            current = ["task"];
-        } else if (effectiveStatus === "starting") {
-            completed = ["intent"];
-            current = ["task"];
-        } else if (effectiveStatus === "resetting") {
-            completed = ["intent"];
-            current = ["task"];
-        } else if (effectiveStatus === "launching") {
-            completed = ["intent", "task"];
-            current = ["connections"];
-        } else if (effectiveStatus === "running") {
-            completed = ["intent", "task"];
-            current = ["connections", "delivery", "backend"];
-        } else if (effectiveStatus === "collecting") {
-            completed = ["intent", "task", "connections", "delivery", "backend"];
-            current = ["result"];
-        } else if (effectiveStatus === "completed") {
-            completed = ["intent", "task", "connections", "delivery", "backend", "result"];
-        }
-        Array.prototype.forEach.call(byId("lab-loadtest-stages").children, function (item) {
-            var phase = item.dataset.loadStage;
-            item.classList.toggle("is-complete", completed.indexOf(phase) >= 0);
-            item.classList.toggle("is-current", current.indexOf(phase) >= 0);
-            item.classList.toggle("is-failed", failed && current.indexOf(phase) >= 0);
-        });
     }
 
     function renderLoadtestLogs(logs) {
@@ -3012,7 +2952,6 @@
             formatNumber(metrics.redisHits) : "—";
         byId("lab-load-fallbacks").textContent = hasObservedSample ?
             formatNumber(metrics.mysqlFallbacks) : "—";
-        renderLoadtestStages(task);
         renderLoadtestLogs(task.logs);
         renderQueryTideStage(task);
         renderScenarioObservation(task);
@@ -3078,7 +3017,6 @@
                 byId("lab-loadtest-title").textContent = "任务已不存在";
                 byId("lab-loadtest-copy").textContent = "Runner 未找到该任务，请返回店外重新配置。";
                 byId("lab-load-runner-state").textContent = "任务不存在";
-                renderLoadtestStages({ status: "draft" });
                 renderQueryTideStage({ status: "waiting", metrics: {} });
                 updateControlState();
                 return;

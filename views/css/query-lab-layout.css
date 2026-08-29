@@ -78,45 +78,6 @@
 #lab-stop-loadtest:hover:not(:disabled) { background: rgba(239, 123, 114, .15); }
 #lab-stop-loadtest:disabled { cursor: wait; opacity: .55; }
 
-.lab-loadtest-stages {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 1px;
-    margin: 0 16px;
-    padding: 0;
-    list-style: none;
-    background: var(--lab-line);
-}
-
-.lab-loadtest-stages li {
-    position: relative;
-    min-width: 0;
-    padding: 9px 8px 9px 20px;
-    background: rgba(6, 17, 27, .94);
-    color: #718994;
-    font-size: 9px;
-    font-weight: 800;
-}
-
-.lab-loadtest-stages li::before {
-    position: absolute;
-    top: 50%;
-    left: 8px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #52636b;
-    content: "";
-    transform: translateY(-50%);
-}
-
-.lab-loadtest-stages li.is-complete { color: #89bfa7; }
-.lab-loadtest-stages li.is-complete::before { background: var(--lab-green); }
-.lab-loadtest-stages li.is-current { color: #ecc88c; background: rgba(228, 173, 98, .08); }
-.lab-loadtest-stages li.is-current::before { background: var(--lab-amber); box-shadow: 0 0 0 4px rgba(228, 173, 98, .1); }
-.lab-loadtest-stages li.is-failed { color: #efaaa4; }
-.lab-loadtest-stages li.is-failed::before { background: var(--lab-red); box-shadow: 0 0 0 4px rgba(239, 123, 114, .1); }
-
 .lab-loadtest-metrics { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); margin: 0 16px; border: 1px solid var(--lab-line); }
 
 .lab-loadtest-metrics > span { display: grid; min-width: 0; gap: 5px; padding: 10px 9px; border-right: 1px solid var(--lab-line); }
@@ -150,8 +111,6 @@
     .lab-loadtest > header { grid-template-columns: minmax(0, 1fr) auto; }
     .lab-loadtest > header span { white-space: normal; }
     #lab-stop-loadtest { grid-column: 1 / -1; justify-self: start; }
-    .lab-loadtest-stages { grid-template-columns: 1fr; }
-    .lab-loadtest-stages li { padding-left: 22px; }
     .lab-loadtest-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .lab-loadtest-metrics > span,
     .lab-loadtest-metrics > span:nth-child(3n),

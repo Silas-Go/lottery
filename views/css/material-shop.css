@@ -804,43 +804,6 @@
 
 .market-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 
-.accepted-stamp {
-    position: absolute;
-    z-index: 40;
-    top: 34%;
-    right: 10%;
-    display: grid;
-    min-width: 260px;
-    padding: 18px 24px;
-    text-align: center;
-    border: 1px solid rgba(255, 230, 144, .65);
-    background: rgba(72, 50, 31, .88);
-    color: #ffe7a5;
-    box-shadow: 0 0 36px rgba(255, 203, 94, .38);
-    opacity: 0;
-    transform: translateY(8px) scale(.94);
-    transition: opacity .3s ease, transform .3s ease;
-}
-
-.accepted-stamp span { font-size: 10px; font-weight: 900; letter-spacing: .2em; }
-
-.accepted-stamp strong { margin-top: 6px; font: 700 21px/1.2 Georgia, "Songti SC", serif; }
-
-.slot-focus {
-    position: absolute;
-    z-index: 35;
-    top: 38%;
-    right: 10%;
-    width: 28%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    pointer-events: none;
-    background: radial-gradient(circle, rgba(255, 229, 127, .55), rgba(255, 214, 91, .12) 36%, transparent 70%);
-    opacity: 0;
-    transform: scale(.35);
-    transition: opacity .6s ease, transform .8s cubic-bezier(.4, 0, .2, 1);
-}
-
 .market-page[data-event-state="dialogue"] .dialogue-copy,
 .market-page[data-event-state="record_selected"] .record-selection,
 .market-page[data-event-state="crowd_preparing"] .record-selection,
@@ -868,88 +831,6 @@
 
 .market-page[data-event-state="crowd_armed"] .crowd-status > i { background: #6f965a; box-shadow: 0 0 0 5px rgba(111, 150, 90, .12); }
 
-.market-page.crowd-lab-handoff .market-preview-request-token,
-.market-page.crowd-lab-handoff .market-preview-response-token { opacity: 0 !important; animation: none !important; }
-
-.market-page.crowd-lab-handoff .crowd-config-column,
-.market-page.crowd-lab-handoff .market-mechanism { pointer-events: none; }
-
-.market-page.crowd-lab-handoff .task-plan-summary { box-shadow: inset 0 -3px #4a8b7d, 3px 3px 0 rgba(91, 62, 37, .12); }
-
-.market-task-order-scroll {
-    position: fixed;
-    z-index: 120;
-    display: grid;
-    min-width: 182px;
-    min-height: 38px;
-    grid-template-columns: 24px minmax(0, 1fr);
-    align-items: center;
-    gap: 7px;
-    padding: 5px 12px;
-    border: 2px solid #70491f;
-    opacity: 0;
-    color: #4b3018;
-    background:
-        linear-gradient(rgba(102, 64, 25, .08) 1px, transparent 1px),
-        #e1b458;
-    background-size: 8px 8px;
-    box-shadow:
-        inset 0 -7px #b67b31,
-        3px 3px 0 rgba(58, 39, 20, .35);
-    pointer-events: none;
-}
-
-.market-task-order-scroll::before,
-.market-task-order-scroll::after {
-    position: absolute;
-    top: -4px;
-    bottom: -4px;
-    width: 7px;
-    border: 2px solid #70491f;
-    background: #f0c76d;
-    content: "";
-}
-
-.market-task-order-scroll::before { left: -6px; }
-.market-task-order-scroll::after { right: -6px; }
-
-.market-task-order-scroll > i {
-    width: 18px;
-    height: 18px;
-    border: 2px solid #75401f;
-    background: #a94e2b;
-    box-shadow: inset 0 -4px #79341f;
-    transform: rotate(45deg);
-}
-
-.market-task-order-scroll > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-
-.market-task-order-scroll b { color: #603918; font: 900 8px/1 "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
-
-.market-task-order-scroll small { color: #51351f; font: 900 6px/1.25 "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
-
-.market-page.crowd-lab-handoff .market-launch-route::before {
-    border-color: rgba(152, 104, 40, .45);
-    background: repeating-linear-gradient(
-        90deg,
-        rgba(214, 167, 77, .72) 0 10px,
-        rgba(248, 226, 164, .28) 10px 15px
-    );
-}
-
-.market-page.is-task-order-flying .market-shop-door {
-    border-color: #9d6b2e;
-    box-shadow:
-        inset 0 10px #45645a,
-        0 0 0 4px rgba(224, 177, 77, .22),
-        0 0 12px rgba(224, 177, 77, .52);
-}
-
-.market-page.is-crowd-lab-departing .event-card,
-.market-page.is-crowd-lab-departing .market-topbar { opacity: 0; transform: translateY(-7px); transition: opacity .32s steps(4, end), transform .32s steps(4, end); }
-
-.market-page.is-crowd-lab-departing .market-scene { filter: brightness(.82) saturate(.86); opacity: .48; transition: filter .32s steps(4, end), opacity .32s steps(4, end); }
-
 .market-page[data-event-state="crowd_submitting"] .crowd-status > i {
     background: #b75c38;
     box-shadow: 0 0 0 5px rgba(183, 92, 56, .14);
@@ -959,20 +840,6 @@
 .market-page[data-event-state="crowd_submitting"] #record-card { visibility: hidden; }
 
 .market-page[data-event-state="crowd_submitting"] .market-scene { transform: scale(1.045) translate3d(-1%, 0, 0); }
-
-.market-page[data-event-state="inserting_record"] #record-card { visibility: hidden; }
-
-.market-page[data-event-state="inserting_record"] .archive-slot,
-.market-page[data-event-state="entering_lab"] .archive-slot { background: #f4ca64; box-shadow: inset 0 0 9px #fff3aa, 0 0 28px 12px rgba(255, 211, 100, .52); }
-
-.market-page[data-event-state="entering_lab"] .accepted-stamp { opacity: 1; transform: translateY(0) scale(1); }
-
-.market-page[data-event-state="entering_lab"] .slot-focus { opacity: 1; transform: scale(3.2); }
-
-.market-page[data-event-state="entering_lab"] .market-scene { transform: scale(1.16) translate3d(-2%, 1%, 0); filter: blur(5px) brightness(.52) saturate(.7); opacity: .22; }
-
-.market-page[data-event-state="entering_lab"] .event-card,
-.market-page[data-event-state="entering_lab"] .market-topbar { opacity: 0; transition: opacity .42s ease; }
 
 
 @keyframes sunlight {
@@ -1871,7 +1738,6 @@
     .visitor { left: 24%; bottom: 31%; transform: scale(.88); }
     .shopkeeper { right: 37%; bottom: 35%; transform: scale(.73); }
     .event-card { position: absolute; bottom: 20px; }
-    .accepted-stamp { top: 30%; right: 5%; }
 }
 
 @media (max-width: 650px) {
@@ -1893,7 +1759,6 @@
     .record-card { width: 150px; min-height: 108px; }
     .record-card > strong { margin-top: 10px; font-size: 20px; }
     .record-card > em { margin-top: 7px; }
-    .accepted-stamp { top: 26%; right: 4%; min-width: 220px; }
 }
 
 /* The material shop historically inherited these unscoped allegory selectors.

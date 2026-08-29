@@ -10,8 +10,8 @@
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260828-result-contrast-v2" />
-    <link rel="stylesheet" href="/css/query-lab.css?v=20260828-result-contrast-v2" />
+    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260828-remove-guild-v2" />
+    <link rel="stylesheet" href="/css/query-lab.css?v=20260828-remove-guild-v2" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
 
@@ -143,14 +143,6 @@
                                 <button id="lab-stop-loadtest" type="button" hidden>停止实验</button>
                             </div>
                         </header>
-                        <ol id="lab-loadtest-stages" class="lab-loadtest-stages" aria-label="压测任务流程">
-                            <li data-load-stage="intent"><i>1</i><span>配置意图</span></li>
-                            <li data-load-stage="task"><i>2</i><span>创建任务</span></li>
-                            <li data-load-stage="connections"><i>3</i><span>启用连接配置</span></li>
-                            <li data-load-stage="delivery"><i>4</i><span>发送请求</span></li>
-                            <li data-load-stage="backend"><i>5</i><span>系统处理</span></li>
-                            <li data-load-stage="result"><i>6</i><span>输出结果</span></li>
-                        </ol>
                         <div class="query-task-facts" aria-label="本轮任务稳定事实">
                             <section class="query-fact-lane is-intent">
                                 <header><small>INTENT</small><strong>实验意图</strong></header>
@@ -276,10 +268,6 @@
                             <span id="query-tide-badge" role="status" aria-live="polite">尚未启动</span>
                         </header>
                         <div class="query-tide-diagram">
-                            <article class="tide-guild-node">
-                                <div class="tide-guild-casters" aria-hidden="true"><i></i><i></i><i></i></div>
-                                <small>请求来源</small><strong>法师公会</strong>
-                            </article>
                             <article class="tide-generator-node">
                                 <div class="tide-scroll-maker" aria-hidden="true"><i></i><i></i><i></i></div>
                                 <small>产生 HTTP 请求</small><strong id="tide-target-rate">—</strong>
@@ -471,7 +459,7 @@
                         <section id="crowd-conversion" class="crowd-conversion" aria-labelledby="crowd-spread-title" hidden>
                             <small>QUERY RESULT BOUNDARY · REQUESTS ARE NOT PEOPLE</small>
                             <strong id="crowd-spread-title">本轮查询卷轴已经完成归档</strong>
-                            <p>本轮完成 <b id="crowd-scroll-count">0</b> 张查询卷轴；这是 HTTP 请求数量，不用于推导法师或购买者人数。</p>
+                            <p>本轮完成 <b id="crowd-scroll-count">0</b> 张查询卷轴；这是 HTTP 请求数量，不用于推导用户人数。</p>
                             <div>
                                 <span><small>实际处理速率</small><strong id="crowd-actual-rate">0 QPS</strong></span>
                                 <span><small>购买实验边界</small><strong>独立的 150 个唯一请求</strong></span>
@@ -648,7 +636,7 @@ docker compose --profile loadtest run --rm --no-deps -e RATE=1500 -e DURATION=30
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260806-scenario-comparison-v1"></script>
-    <script src="/js/query-lab.js?v=20260828-result-contrast-v2"></script>
+    <script src="/js/query-lab.js?v=20260828-remove-guild-v2"></script>
 </body>
 
 </html>

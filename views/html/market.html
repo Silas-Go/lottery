@@ -5,14 +5,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f2c77d" />
-    <meta name="description" content="进一步了解星髓的旁路缓存查询与库存一致性购买实验。" />
+    <meta name="description" content="进一步了解星髓的查询路径对比与库存一致性购买实验。" />
     <title>星髓实验详情 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <script src="/js/market-planner-bootstrap.js?v=20260805-planner-workbench-v1"></script>
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/material-shop.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/material-shop.css?v=20260828-direct-lab-entry-v1" />
     <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260827-pressure-model-v5" />
+    <link rel="stylesheet" href="/css/experiment-planner.css?v=20260827-briefing-v11" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -33,9 +33,9 @@
             <header class="planner-context">
                 <img src="/img/star-marrow-relic.png" alt="深蓝晶体中流动着金色星光的星髓" />
                 <div class="planner-context__copy planner-context__copy--query">
-                    <small>01 · CACHE-ASIDE READ</small>
-                    <h1>旁路缓存查询</h1>
-                    <p><strong>当前问题：</strong>缓存如何提升星髓档案的读取性能？</p>
+                    <h1>MySQL 直接查询 vs Redis 旁路缓存</h1>
+                    <p>同一查询压力下，两条查询路径的表现会差多少？</p>
+                    <p class="planner-context__summary">1,500 QPS · <code>-c 500</code> · 30s</p>
                 </div>
                 <div class="planner-context__copy planner-context__copy--purchase">
                     <small>02 · WRITE CONSISTENCY</small>
@@ -59,95 +59,68 @@
                 </div>
                 <div class="record-copy">
                     <div id="crowd-panel" class="crowd-panel">
-                        <header class="task-draft-header">
-                            <div>
-                                <small>EXPERIMENT BRIEFING · 星髓</small>
-                                <strong>实验前须知</strong>
-                                <p>本轮固定使用 1,500 QPS、<code>-c 500</code> 和 30 秒；进入实验室后选择查询路径并手动开始。</p>
-                            </div>
-                            <button id="leave-crowd-mode" type="button">返回实验总览</button>
-                        </header>
+                        <button id="leave-crowd-mode" type="button" hidden>返回实验总览</button>
 
                         <div class="crowd-workbench">
                             <section class="query-briefing" aria-labelledby="query-briefing-title">
-                                <header class="query-run-intro">
-                                    <span>PRESSURE MODEL</span>
-                                    <strong id="query-briefing-title">这轮压力怎么施加到系统</strong>
-                                    <p>wrk2 按目标速率计划请求，再用固定数量的 HTTP 持久连接把请求送到 Go API。</p>
-                                </header>
-
-                                <div class="query-core-concepts">
-                                    <article class="query-concept-card is-qps">
-                                        <header><span>01</span><div><small>核心概念</small><strong>1,500 QPS 是什么？</strong></div></header>
-                                        <div class="qps-pressure-visual" role="img" aria-label="一秒内均匀计划发送一千五百个请求到 Go API">
-                                            <div class="qps-time-window"><small>TIME WINDOW</small><strong>1 秒</strong><span>0s → 1s</span></div>
-                                            <div class="qps-request-stream">
-                                                <span aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-                                                <strong>均匀计划发送</strong><b>1,500 requests</b>
-                                            </div>
-                                            <i class="query-flow-arrow" aria-hidden="true">→</i>
-                                            <div class="query-api-node"><small>TARGET</small><strong>GO API</strong></div>
-                                        </div>
-                                        <ul class="query-concept-facts">
-                                            <li><b>目标</b><span>wrk2 每秒计划发送 1,500 个请求</span></li>
-                                            <li><b>不是</b><span>1,500 个用户，也不是服务端完成量</span></li>
-                                            <li><b>跟不上时</b><span>请求会等待、积压，实际吞吐可能明显低于 1,500 QPS</span></li>
-                                        </ul>
-                                    </article>
-
-                                    <article class="query-concept-card is-connections">
-                                        <header><span>02</span><div><small>核心概念</small><strong><code>-c 500</code> 是什么？</strong></div></header>
-                                        <div class="connection-pressure-visual" role="img" aria-label="wrk2 通过五百条 HTTP 1.1 持久连接向 Go API 发送请求">
-                                            <div class="query-runner-node"><small>LOAD GENERATOR</small><strong>wrk2</strong></div>
-                                            <i class="query-flow-arrow" aria-hidden="true">↓</i>
-                                            <div class="connection-bundle">
-                                                <span aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-                                                <strong>500 条 HTTP/1.1 connections</strong>
-                                                <small>Keep-Alive · 持续复用</small>
-                                            </div>
-                                            <i class="query-flow-arrow" aria-hidden="true">↓</i>
-                                            <div class="query-api-node"><small>TARGET</small><strong>GO API</strong></div>
-                                        </div>
-                                        <ul class="query-concept-facts">
-                                            <li><b>500 表示</b><span>连接数，不是 500 QPS，也不是 500 个用户</span></li>
-                                            <li><b>连接模型</b><span>HTTP/1.1 Keep-Alive；本实验不使用 HTTP/2 多路复用</span></li>
-                                            <li><b>近似理解</b><span>每条连接同一时刻主要承载一个在途请求</span></li>
-                                        </ul>
-                                    </article>
-                                </div>
-
-                                <p class="query-pressure-relation"><strong>QPS</strong> 决定想发多快，<strong><code>-c</code></strong> 决定用多少条连接承载这些请求。</p>
-
-                                <div class="query-run-conditions">
-                                    <article class="query-duration-card">
-                                        <header><span>03</span><div><small>持续时间</small><strong>每条路径 30 秒</strong></div></header>
-                                        <div><span>MySQL Direct</span><b>30s</b><i></i><span>Cache Aside</span><b>30s</b></div>
-                                    </article>
-                                    <article class="query-control-card">
-                                        <header><span>04</span><div><small>控制变量</small><strong>本轮只改变查询路径</strong></div></header>
-                                        <ul>
-                                            <li>相同查询对象</li><li>1,500 QPS</li><li><code>-c 500</code></li><li>30 秒</li>
-                                        </ul>
-                                        <p><b>唯一不同</b><span>MySQL Direct vs Redis Cache Aside</span></p>
-                                    </article>
-                                </div>
-
-                                <section class="query-briefing-paths" aria-labelledby="query-briefing-paths-title">
+                                <section class="query-pressure-model" aria-labelledby="query-briefing-title">
                                     <header>
-                                        <div><small>05 · COMPARISON</small><strong id="query-briefing-paths-title">本轮对比方案</strong></div>
-                                        <span>进入实验室后选择本轮路径</span>
+                                        <h2 id="query-briefing-title">本轮压力模型</h2>
+                                        <span><small>持续时间</small><strong>30s</strong></span>
                                     </header>
+                                    <div class="query-pressure-model__body">
+                                        <div class="query-load-flow" role="img" aria-label="wrk2 以每秒一千五百请求的目标速率，通过五百条 HTTP 1.1 持久连接向 Go API 发送请求">
+                                            <div class="query-load-runner"><strong>wrk2</strong></div>
+                                            <i aria-hidden="true">↓</i>
+                                            <div class="query-load-stage is-rate">
+                                                <small>目标请求速率</small>
+                                                <strong>1,500 QPS</strong>
+                                                <span>1,500 requests / second</span>
+                                            </div>
+                                            <i aria-hidden="true">↓</i>
+                                            <div class="query-load-stage is-connections">
+                                                <span class="query-connection-symbol" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                                                <strong>500 Connections</strong>
+                                                <small>HTTP/1.1 · Keep-Alive</small>
+                                            </div>
+                                            <i aria-hidden="true">↓</i>
+                                            <div class="query-load-api"><strong>Go API</strong></div>
+                                        </div>
+                                        <aside class="query-load-note">
+                                            <strong>1,500 QPS，通过 500 条连接承载</strong>
+                                            <small>1,500 ÷ 500 ≈ 3 req/s / connection</small>
+                                            <em>仅用于理解平均关系</em>
+                                        </aside>
+                                    </div>
+                                </section>
+
+                                <section class="query-experiment-conditions" aria-labelledby="query-conditions-title">
+                                    <header>
+                                        <h2 id="query-conditions-title">实验条件</h2>
+                                        <p><small>唯一变量</small><strong>查询路径</strong></p>
+                                    </header>
+                                    <dl>
+                                        <div><dt>查询对象</dt><dd>星髓详情</dd></div>
+                                        <div><dt>目标速率</dt><dd>1,500 QPS</dd></div>
+                                        <div><dt>连接数</dt><dd><code>-c 500</code></dd></div>
+                                        <div><dt>持续时间</dt><dd>30 秒</dd></div>
+                                    </dl>
+                                </section>
+
+                                <section class="query-route-compare" aria-labelledby="query-route-title">
+                                    <header><h2 id="query-route-title">本轮对比</h2></header>
                                     <div>
                                         <article>
-                                            <small>方案 A</small>
                                             <strong>MySQL Direct</strong>
-                                            <p><span>Request</span><i>→</i><span>Go API</span><i>→</i><span>MySQL</span><i>→</i><span>Response</span></p>
+                                            <p class="query-route-flow"><span>Request</span><i>→</i><span>Go API</span><i>→</i><span>MySQL</span><i>→</i><span>Response</span></p>
                                         </article>
                                         <article>
-                                            <small>方案 B</small>
                                             <strong>Redis Cache Aside</strong>
-                                            <p><span>Request</span><i>→</i><span>Go API</span><i>→</i><span>Redis</span><i>→</i><span>Response</span></p>
-                                            <em>缓存未命中时，再回源 MySQL。</em>
+                                            <p class="query-route-flow"><span>Request</span><i>→</i><span>Go API</span><i>→</i><span>Redis</span></p>
+                                            <div class="query-route-branches">
+                                                <p><b>HIT</b><i>→</i><span>Response</span></p>
+                                                <p><b>MISS</b><i>→</i><span>MySQL</span><i>→</i><span>回填缓存</span><i>→</i><span>Response</span></p>
+                                            </div>
                                         </article>
                                     </div>
                                 </section>
@@ -155,7 +128,7 @@
                                 <div class="crowd-confirmation-bar">
                                     <div class="crowd-status" role="status" aria-live="polite">
                                         <i></i>
-                                        <span><strong id="crowd-status-title">运行条件已固定</strong><small id="crowd-status-copy">进入后选择路径，再手动开始。</small></span>
+                                        <span><strong id="crowd-status-title">实验条件已固定</strong><small id="crowd-status-copy" hidden>MySQL Direct vs Redis Cache Aside</small></span>
                                         <time id="crowd-clock" hidden>00:00 / 00:30</time>
                                     </div>
                                     <div class="crowd-run-actions">
@@ -348,16 +321,10 @@ Connection: keep-alive</code></pre>
         </section>
     </main>
 
-    <template id="market-task-order-template">
-        <span class="market-task-order-scroll" aria-hidden="true">
-            <i></i>
-            <span><b>TASK ORDER</b><small></small></span>
-        </span>
-    </template>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260827-pressure-model-v5"></script>
+    <script src="/js/market.js?v=20260828-direct-lab-entry-v1"></script>
 </body>
 
 </html>

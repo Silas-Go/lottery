@@ -80,7 +80,7 @@
         document.body.dataset.eventState = next;
         if (next === "crowd_preparing" || next === "crowd_armed" || next === "crowd_submitting") {
             document.documentElement.dataset.planner = "query";
-        } else if (next === "purchase_preparing" || next === "entering_purchase_lab") {
+        } else if (next === "purchase_preparing") {
             document.documentElement.dataset.planner = "purchase";
         }
         var labels = {
@@ -91,8 +91,7 @@
             crowd_preparing: "查看查询实验",
             purchase_preparing: "查看购买实验",
             crowd_armed: "实验条件已确认",
-            crowd_submitting: "卷轴投递",
-            entering_purchase_lab: "进入购买实验室"
+            crowd_submitting: "卷轴投递"
         };
         byId("event-step").textContent = labels[next] || "事件";
     }
@@ -169,95 +168,6 @@
                 mechanism.classList.add("is-previewing");
                 marketPreviewTimer = window.setTimeout(stopMarketPreview, duration * 2 + 420);
             });
-        });
-    }
-
-    // 金色卷轴只表示“把本轮配置交给实验室”，不是 HTTP 请求。
-    // 它发生在任何 Runner 任务创建之前，蓝色请求卷轴仍只允许由实验室真实指标驱动。
-    function animateTaskOrderHandoff(handoff) {
-        return new Promise(function (resolve) {
-            var template = byId("market-task-order-template");
-            var launcher = document.querySelector(".market-launcher-visual");
-            var gate = document.querySelector(".market-shop-door");
-            if (!handoff || !template || !launcher || !gate) {
-                resolve();
-                return;
-            }
-            var token = template.content.firstElementChild.cloneNode(true);
-            var connections = Number(handoff.plannedConnections || 0);
-            var connectionCopy = connections > 0 ?
-                "-c " + connections.toLocaleString("zh-CN") :
-                "自动 -c 待锁定";
-            var pathCopy = handoff.sharedConditions ? "DIRECT / CACHE-ASIDE" :
-                (handoff.mode === "cached" ? "CACHE-ASIDE" : "MYSQL DIRECT");
-            token.querySelector("small").textContent =
-                Number(handoff.expectedRate || 0).toLocaleString("zh-CN") +
-                " req/s · " + connectionCopy + " · " + pathCopy;
-            document.body.appendChild(token);
-
-            var launcherBounds = launcher.getBoundingClientRect();
-            var gateBounds = gate.getBoundingClientRect();
-            var startX = launcherBounds.left + launcherBounds.width / 2 - token.offsetWidth / 2;
-            var startY = launcherBounds.top + launcherBounds.height / 2 - token.offsetHeight / 2;
-            var endX = gateBounds.left + gateBounds.width / 2 - token.offsetWidth / 2;
-            var endY = gateBounds.top + gateBounds.height / 2 - token.offsetHeight / 2;
-            var deltaX = endX - startX;
-            var deltaY = endY - startY;
-            token.style.left = startX + "px";
-            token.style.top = startY + "px";
-            document.body.classList.add("is-task-order-flying");
-
-            var settled = false;
-            function finish() {
-                if (settled) {
-                    return;
-                }
-                settled = true;
-                token.remove();
-                document.body.classList.remove("is-task-order-flying");
-                resolve();
-            }
-
-            if (reducedMotion || !token.animate) {
-                token.style.opacity = "1";
-                token.style.transform =
-                    "translate3d(" + deltaX + "px," + deltaY + "px,0) scale(.78)";
-                window.setTimeout(finish, reducedMotion ? 90 : 520);
-                return;
-            }
-            var animation = token.animate([
-                {
-                    opacity: 0,
-                    transform: "translate3d(0,0,0) scale(.9)"
-                },
-                {
-                    offset: .12,
-                    opacity: 1,
-                    transform: "translate3d(0,0,0) scale(1)"
-                },
-                {
-                    offset: .48,
-                    opacity: 1,
-                    transform: "translate3d(" + (deltaX * .46) + "px," +
-                        (deltaY * .46 - 18) + "px,0) scale(1)"
-                },
-                {
-                    offset: .82,
-                    opacity: 1,
-                    transform: "translate3d(" + (deltaX * .82) + "px," +
-                        (deltaY * .82 - 8) + "px,0) scale(.9)"
-                },
-                {
-                    opacity: 0,
-                    transform: "translate3d(" + deltaX + "px," + deltaY +
-                        "px,0) scale(.72)"
-                }
-            ], {
-                duration: 880,
-                easing: "steps(8, end)",
-                fill: "forwards"
-            });
-            animation.finished.then(finish, finish);
         });
     }
 
@@ -414,8 +324,8 @@
         renderMarketRequestPreview();
         renderMarketLifecycle(null);
         if (state === "crowd_preparing" && !activeTask) {
-            byId("crowd-status-title").textContent = "运行条件已固定";
-            byId("crowd-status-copy").textContent = "进入后选择路径，再手动开始。";
+            byId("crowd-status-title").textContent = "实验条件已固定";
+            byId("crowd-status-copy").textContent = "";
             byId("crowd-clock").hidden = true;
         }
     }
@@ -756,8 +666,8 @@
         }, 2000);
     }
 
-    async function enterCrowdLabView(handoff) {
-        // 新保存的计划必须优先于页面里残留的已完成任务；它只负责转场，
+    function enterCrowdLabView(handoff) {
+        // 新保存的计划必须优先于页面里残留的已完成任务；
         // 是否创建 Runner 任务必须由实验室内的显式开始按钮决定。
         var plan = handoff && !handoff.taskId ? handoff : null;
         var task = !plan && activeTask && activeTask.taskId ? activeTask : null;
@@ -766,41 +676,20 @@
         }
         stopMarketPreview();
         enteringCrowdLab = true;
-        // 当前实验条件进入的是观测现场，不是档案读取槽。此处只确认条件交接，
-        // 不播放请求卷轴，也不复用单次查验的插卡/接受印章动画。
-        setState("crowd_armed");
-        document.body.classList.add("crowd-lab-handoff");
-        byId("crowd-status-title").textContent = "实验条件已确认";
-        byId("crowd-status-copy").textContent = task ?
-            "正在进入实验室恢复任务观测。" :
-            "正在进入实验室建立观测；Runner 尚未创建，没有请求发出。";
-        byId("market-flow-status").textContent = task ? "恢复任务观测" : "等待实验室观测";
-        byId("market-announcer").textContent = task ?
-            "正在进入实验室恢复任务观测" :
-            "实验条件已确认，正在进入实验室建立观测，当前没有真实请求";
-        if (plan) {
-            await animateTaskOrderHandoff(plan);
-            byId("crowd-status-copy").textContent =
-                "实验条件已确认；即将进入实验室建立观测，Runner 仍未创建。";
-            byId("market-flow-status").textContent = "任务指令已送达";
+        var tier = task && task.tier || crowdTiers[crowdTierID];
+        var finalMode = task && task.connectionMode || connectionMode;
+        var query = "/lab?entry=crowd" +
+            "&mode=" + encodeURIComponent(task && task.mode || "direct") +
+            "&rate=" + encodeURIComponent(tier.rate) +
+            "&connectionMode=" + encodeURIComponent(finalMode);
+        if (task) {
+            query += "&task=" + encodeURIComponent(task.taskId);
         }
-        document.body.classList.add("is-crowd-lab-departing");
-        window.setTimeout(function () {
-            var tier = task && task.tier || crowdTiers[crowdTierID];
-            var finalMode = task && task.connectionMode || connectionMode;
-            var query = "/lab?entry=crowd" +
-                "&mode=" + encodeURIComponent(task && task.mode || "direct") +
-                "&rate=" + encodeURIComponent(tier.rate) +
-                "&connectionMode=" + encodeURIComponent(finalMode);
-            if (task) {
-                query += "&task=" + encodeURIComponent(task.taskId);
-            }
-            if (finalMode === "manual") {
-                query += "&connections=" + encodeURIComponent(
-                    task ? tier.connections : manualConnections);
-            }
-            window.location.assign(query);
-        }, reducedMotion ? 40 : 340);
+        if (finalMode === "manual") {
+            query += "&connections=" + encodeURIComponent(
+                task ? tier.connections : manualConnections);
+        }
+        window.location.assign(query);
     }
 
     async function startCrowdTest() {
@@ -961,8 +850,8 @@
         byId("start-crowd-test").textContent = "进入查询实验室";
         byId("enter-crowd-lab").hidden = true;
         byId("crowd-connection-current").textContent = "尚未创建";
-        byId("crowd-status-title").textContent = "运行条件已固定";
-        byId("crowd-status-copy").textContent = "进入后选择路径，再手动开始。";
+        byId("crowd-status-title").textContent = "实验条件已固定";
+        byId("crowd-status-copy").textContent = "";
         byId("crowd-clock").textContent = "00:00 / 00:30";
         byId("crowd-clock").hidden = true;
         byId("market-mechanism").dataset.faultLayer = "none";
@@ -994,12 +883,7 @@
         if (!selectedCode || state !== "purchase_preparing") {
             return;
         }
-        setState("entering_purchase_lab");
-        byId("market-announcer").textContent =
-            "正在前往" + materials[selectedCode].name + "购买实验室";
-        window.setTimeout(function () {
-            window.location.assign("/purchase-lab?intent=new");
-        }, reducedMotion ? 0 : 180);
+        window.location.assign("/purchase-lab?intent=new");
     }
 
     function bindEvents() {
@@ -1044,13 +928,8 @@
     // 让用户能够从已完成结果真正创建下一轮任务。
     window.addEventListener("pageshow", function (event) {
         enteringCrowdLab = false;
-        document.body.classList.remove("crowd-lab-handoff", "is-crowd-lab-departing");
         if (event.persisted) {
             closeTaskTracking();
-            if (state === "entering_purchase_lab") {
-                setState("purchase_preparing");
-                renderPurchasePlan();
-            }
             restoreActiveTask();
         }
     });
