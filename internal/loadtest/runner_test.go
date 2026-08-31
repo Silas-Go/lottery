@@ -68,6 +68,96 @@ func TestRunnerHTTPRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestRunnerHTTPManuallyEvictsCurrentHotKeyOnce(t *testing.T) {
+	evictedAt := time.Now().UTC()
+	startedAt := evictedAt.Add(-8420 * time.Millisecond)
+	app := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/internal/cache-experiments/evict" || request.Method != http.MethodPost {
+			http.NotFound(writer, request)
+			return
+		}
+		var input map[string]string
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil || input["token"] != "task-control-token-1234" {
+			http.Error(writer, "bad token", http.StatusBadRequest)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(archiveExperimentControlState{
+			Scenario: ExperimentCacheBreakdown, Protection: ProtectionNone,
+			CacheKey: "archive:material-detail:v2:4", Deleted: true, At: evictedAt.Format(time.RFC3339Nano),
+		})
+	}))
+	defer app.Close()
+
+	runner := &Runner{
+		records: map[string]*taskRecord{
+			"hot-task": {
+				Task: Task{
+					ID: "hot-task", Experiment: ExperimentCacheBreakdown, Status: StatusRunning,
+					StartedAt: &startedAt, Tier: TierConfig{Rate: 1500, Connections: 500, DurationSeconds: 30},
+					Metrics: TaskMetrics{KeyPresent: true, CurrentPositiveHits: 1400, CurrentHitRate: 100},
+				},
+				ControlToken: "task-control-token-1234", Subscribers: make(map[chan Event]struct{}),
+			},
+		},
+		order: []string{"hot-task"}, appBaseURL: app.URL,
+		statePath: filepath.Join(t.TempDir(), "tasks.json"), httpClient: app.Client(),
+	}
+	request := httptest.NewRequest(http.MethodPost, "/internal/loadtests/hot-task/cache-eviction", http.NoBody)
+	recorder := httptest.NewRecorder()
+	runner.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var task Task
+	if err := json.NewDecoder(recorder.Body).Decode(&task); err != nil {
+		t.Fatal(err)
+	}
+	if task.Metrics.EvictedAt == "" || task.Metrics.EvictedElapsedMS != 8420 || task.Metrics.KeyPresent {
+		t.Fatalf("manual eviction evidence missing: %+v", task.Metrics)
+	}
+
+	second := httptest.NewRecorder()
+	runner.Handler().ServeHTTP(second, httptest.NewRequest(http.MethodPost, "/internal/loadtests/hot-task/cache-eviction", http.NoBody))
+	if second.Code != http.StatusConflict {
+		t.Fatalf("expected repeat eviction conflict, got %d: %s", second.Code, second.Body.String())
+	}
+}
+
+func TestPrepareArchiveExperimentPublishesBackendOriginDelay(t *testing.T) {
+	app := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/internal/cache-experiments/prepare" || request.Method != http.MethodPost {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(archiveExperimentControlState{
+			Scenario: ExperimentCacheBreakdown, Protection: ProtectionKeyMutex,
+			ArchiveID: StarMarrowArchiveID, CacheKey: "archive:material-detail:v2:4",
+			KeyPresent: true, KeyPTTLMillis: 60_000, OriginDelayMS: 100,
+		})
+	}))
+	defer app.Close()
+
+	runner := &Runner{
+		records: map[string]*taskRecord{
+			"hot-task": {Task: Task{ID: "hot-task", Experiment: ExperimentCacheBreakdown}},
+		},
+		appBaseURL: app.URL, statePath: filepath.Join(t.TempDir(), "tasks.json"), httpClient: app.Client(),
+	}
+	task := Task{ID: "hot-task", Experiment: ExperimentCacheBreakdown, Protection: ProtectionKeyMutex}
+	if err := runner.prepareArchiveExperiment(context.Background(), task, "task-control-token-1234"); err != nil {
+		t.Fatal(err)
+	}
+	prepared, apiErr := runner.Get("hot-task")
+	if apiErr != nil {
+		t.Fatal(apiErr)
+	}
+	if prepared.OriginDelayMS != 100 || prepared.CacheKey != "archive:material-detail:v2:4" {
+		t.Fatalf("backend experiment config was not copied into the task: %+v", prepared)
+	}
+}
+
 func TestAutoConnectionsUseConservativeBaseline(t *testing.T) {
 	runner := &Runner{records: make(map[string]*taskRecord)}
 	expected := map[int]int{

@@ -10,7 +10,7 @@
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
     <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
-    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260828-remove-guild-v2" />
+    <link rel="stylesheet" href="/css/query-lab-layout.css?v=20260831-cache-failure-entry-v2" />
     <link rel="stylesheet" href="/css/query-lab.css?v=20260828-remove-guild-v2" />
     <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
 </head>
@@ -579,15 +579,14 @@ docker compose --profile loadtest run --rm --no-deps -e RATE=1500 -e DURATION=30
                         <small>HOT KEY</small>
                         <h4>热点击穿</h4>
                         <p>热点缓存突然失效，大量请求会不会同时回源 MySQL？</p>
-                        <button id="scenario-breakdown" type="button" aria-pressed="false">开始实验</button>
                     </article>
                     <article>
                         <small>MISSING DATA</small>
                         <h4>缓存穿透</h4>
                         <p>如果一直查询不存在的数据，请求会不会反复打到 MySQL？</p>
-                        <button id="scenario-penetration" type="button" aria-pressed="false">开始实验</button>
                     </article>
                 </div>
+                <a class="query-next-entry" href="/cache-failure-lab">进入缓存失守实验台 <span>两个场景 · 一个入口</span></a>
             </section>
 
         </div>
@@ -636,7 +635,7 @@ docker compose --profile loadtest run --rm --no-deps -e RATE=1500 -e DURATION=30
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260806-scenario-comparison-v1"></script>
-    <script src="/js/query-lab.js?v=20260828-remove-guild-v2"></script>
+    <script src="/js/query-lab.js?v=20260831-cache-failure-entry-v4"></script>
 </body>
 
 </html>

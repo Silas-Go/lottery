@@ -13,9 +13,12 @@ import (
 type archiveExperimentControlState struct {
 	Scenario      string `json:"scenario"`
 	Protection    string `json:"protection"`
+	ArchiveID     int    `json:"archiveId"`
 	MissingID     int    `json:"missingId"`
+	CacheKey      string `json:"cacheKey"`
 	KeyPresent    bool   `json:"keyPresent"`
 	KeyPTTLMillis int64  `json:"keyPttlMillis"`
+	OriginDelayMS int64  `json:"originDelayMs"`
 	Deleted       bool   `json:"deleted"`
 	At            string `json:"at"`
 }
@@ -39,9 +42,24 @@ func (r *Runner) prepareArchiveExperiment(ctx context.Context, task Task, token 
 	if task.Experiment == ExperimentCacheBreakdown && (!state.KeyPresent || state.KeyPTTLMillis <= 0) {
 		return fmt.Errorf("breakdown preparation did not create a hot cache key")
 	}
+	if task.Experiment == ExperimentCacheBreakdown && state.OriginDelayMS <= 0 {
+		return fmt.Errorf("breakdown preparation did not return the backend origin delay")
+	}
 	if task.Experiment == ExperimentCachePenetration && state.MissingID != CachePenetrationMissingID {
 		return fmt.Errorf("penetration preparation returned unexpected missing id %d", state.MissingID)
 	}
+	if state.CacheKey == "" {
+		return fmt.Errorf("cache experiment preparation did not return the real cache key")
+	}
+	r.mu.Lock()
+	if record := r.records[task.ID]; record != nil {
+		record.Task.CacheKey = state.CacheKey
+		record.Task.OriginDelayMS = state.OriginDelayMS
+		record.Task.Metrics.KeyPresent = state.KeyPresent
+		record.Task.Metrics.KeyPTTLMillis = state.KeyPTTLMillis
+		r.persistLocked()
+	}
+	r.mu.Unlock()
 	return nil
 }
 

@@ -401,6 +401,12 @@ func materialDetailCacheKey(id int) string {
 	return fmt.Sprintf("%s%d", materialDetailCachePrefix, id)
 }
 
+// MaterialDetailCacheKey 返回服务当前真实使用的 DTO 缓存 Key。
+// 实验台只展示后端生成的值，避免前端复制命名规则后与真实读路径漂移。
+func MaterialDetailCacheKey(id int) string {
+	return materialDetailCacheKey(id)
+}
+
 func materialDetailNegativeCacheKey(id int) string {
 	return fmt.Sprintf("%s%d", materialDetailNegativeCachePrefix, id)
 }

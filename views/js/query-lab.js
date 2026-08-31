@@ -782,12 +782,6 @@
 
     function renderScenarioControls(task) {
         document.body.dataset.cacheScenario = state.scenario;
-        ["breakdown", "penetration"].forEach(function (scenario) {
-            var button = byId("scenario-" + scenario);
-            var active = scenario === state.scenario;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-        });
         var penetration = state.scenario === "penetration";
         byId("penetration-protection").hidden = !penetration;
         byId("protection-none").classList.toggle("is-active", state.protection === "none");
@@ -833,9 +827,6 @@
         byId("query-archive").disabled = locked || observationPending;
         ["mode-direct", "mode-cached"].forEach(function (id) {
             byId(id).disabled = locked || pathReadinessLocked || state.scenario !== "steady";
-        });
-        ["breakdown", "penetration"].forEach(function (scenario) {
-            byId("scenario-" + scenario).disabled = locked || scenarioReadinessLocked;
         });
         ["protection-none", "protection-negative"].forEach(function (id) {
             byId(id).disabled = locked || scenarioReadinessLocked;
@@ -3971,20 +3962,6 @@
         refreshLabConnectionPlan();
     }
 
-    function openCacheScenario(scenario) {
-        if (!latestWrk2Result("direct") || !latestWrk2Result("cached")) {
-            return;
-        }
-        if (state.loadtestTask && ["completed", "failed", "stopped"].indexOf(state.loadtestTask.status) >= 0) {
-            stopLoadtestConnections();
-            state.loadtestTaskId = "";
-            state.loadtestTask = null;
-            state.loadtestLastActiveStatus = "starting";
-        }
-        selectCacheScenario(scenario);
-        document.querySelector(".query-game-console").scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-
     function selectPenetrationProtection(protection) {
         if (state.scenario !== "penetration" || loadtestIsActive(state.loadtestTask) ||
             (protection !== "none" && protection !== "negative-cache")) {
@@ -3999,8 +3976,6 @@
     }
 
     function bindEvents() {
-        byId("scenario-breakdown").addEventListener("click", function () { openCacheScenario("breakdown"); });
-        byId("scenario-penetration").addEventListener("click", function () { openCacheScenario("penetration"); });
         byId("protection-none").addEventListener("click", function () { selectPenetrationProtection("none"); });
         byId("protection-negative").addEventListener("click", function () { selectPenetrationProtection("negative-cache"); });
         byId("mode-direct").addEventListener("click", function () {

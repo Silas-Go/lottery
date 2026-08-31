@@ -14,20 +14,23 @@ const (
 	ArchiveExperimentCacheBreakdown   = "cache-breakdown"
 	ArchiveExperimentCachePenetration = "cache-penetration"
 	ArchiveProtectionNone             = "none"
+	ArchiveProtectionKeyMutex         = "key-mutex"
 	ArchiveProtectionNegativeCache    = "negative-cache"
 	ArchiveExperimentMissingID        = 900004
 )
 
 const (
-	archiveExperimentLease  = 90 * time.Second
-	archiveNegativeCacheTTL = 60 * time.Second
+	archiveExperimentLease           = 90 * time.Second
+	archiveNegativeCacheTTL          = 60 * time.Second
+	ArchiveCacheBreakdownOriginDelay = 100 * time.Millisecond
 )
 
 type archiveExperimentScope struct {
-	Token      string
-	Scenario   string
-	Protection string
-	ExpiresAt  time.Time
+	Token       string
+	Scenario    string
+	Protection  string
+	OriginDelay time.Duration
+	ExpiresAt   time.Time
 }
 
 // ArchiveExperimentPrepareRequest 只接受 Runner 生成的任务令牌和有限场景。
@@ -45,9 +48,12 @@ type ArchiveExperimentControlRequest struct {
 type ArchiveExperimentControlState struct {
 	Scenario      string `json:"scenario"`
 	Protection    string `json:"protection,omitempty"`
+	ArchiveID     int    `json:"archiveId,omitempty"`
 	MissingID     int    `json:"missingId,omitempty"`
+	CacheKey      string `json:"cacheKey,omitempty"`
 	KeyPresent    bool   `json:"keyPresent"`
 	KeyPTTLMillis int64  `json:"keyPttlMillis"`
+	OriginDelayMS int64  `json:"originDelayMs,omitempty"`
 	Deleted       bool   `json:"deleted,omitempty"`
 	At            string `json:"at"`
 }
@@ -63,8 +69,8 @@ func (s *ArchiveService) PrepareExperiment(input ArchiveExperimentPrepareRequest
 		return nil, archiveExperimentInvalid("缓存实验场景不受支持", nil)
 	}
 	if input.Scenario == ArchiveExperimentCacheBreakdown {
-		if input.Protection != "" {
-			return nil, archiveExperimentInvalid("热点击穿不接受穿透保护策略", nil)
+		if input.Protection != ArchiveProtectionNone && input.Protection != ArchiveProtectionKeyMutex {
+			return nil, archiveExperimentInvalid("热点击穿回源保护策略不受支持", nil)
 		}
 	} else if input.Protection != ArchiveProtectionNone && input.Protection != ArchiveProtectionNegativeCache {
 		return nil, archiveExperimentInvalid("缓存穿透保护策略不受支持", nil)
@@ -88,9 +94,14 @@ func (s *ArchiveService) PrepareExperiment(input ArchiveExperimentPrepareRequest
 
 	state := &ArchiveExperimentControlState{
 		Scenario: input.Scenario, Protection: input.Protection,
-		MissingID: ArchiveExperimentMissingID, At: now.Format(time.RFC3339Nano),
+		ArchiveID: database.StarMarrowMaterialID, MissingID: ArchiveExperimentMissingID,
+		At: now.Format(time.RFC3339Nano),
 	}
+	originDelay := time.Duration(0)
 	if input.Scenario == ArchiveExperimentCacheBreakdown {
+		originDelay = ArchiveCacheBreakdownOriginDelay
+		state.OriginDelayMS = originDelay.Milliseconds()
+		state.CacheKey = database.MaterialDetailCacheKey(database.StarMarrowMaterialID)
 		if err := database.DeleteMaterialDetailCache(database.StarMarrowMaterialID); err != nil {
 			return nil, archiveExperimentUnavailable("清理热点 Key 失败", err)
 		}
@@ -108,10 +119,11 @@ func (s *ArchiveService) PrepareExperiment(input ArchiveExperimentPrepareRequest
 		}
 		// 预热是准备动作，不计入任务；保留已经真实写入 Redis 的热 Key。
 		metrics.ResetArchiveRead()
-		metrics.ResetArchiveScenario(input.Scenario, "", "stable", 0, true, ttl)
+		metrics.ResetArchiveScenario(input.Scenario, input.Protection, "stable", 0, true, ttl)
 		state.KeyPresent = true
 		state.KeyPTTLMillis = ttl.Milliseconds()
 	} else {
+		state.CacheKey = database.MaterialDetailCacheKey(ArchiveExperimentMissingID)
 		phase := "unprotected"
 		if input.Protection == ArchiveProtectionNegativeCache {
 			phase = "protected"
@@ -123,7 +135,8 @@ func (s *ArchiveService) PrepareExperiment(input ArchiveExperimentPrepareRequest
 	s.experimentMu.Lock()
 	s.experiment = &archiveExperimentScope{
 		Token: input.Token, Scenario: input.Scenario, Protection: input.Protection,
-		ExpiresAt: time.Now().Add(archiveExperimentLease),
+		OriginDelay: originDelay,
+		ExpiresAt:   time.Now().Add(archiveExperimentLease),
 	}
 	s.experimentMu.Unlock()
 	return state, nil
@@ -155,8 +168,11 @@ func (s *ArchiveService) EvictExperiment(token string) (*ArchiveExperimentContro
 	now := time.Now()
 	metrics.RecordArchiveScenarioEvicted(now)
 	return &ArchiveExperimentControlState{
-		Scenario: scope.Scenario, KeyPresent: false, KeyPTTLMillis: ttl.Milliseconds(),
-		Deleted: true, At: now.Format(time.RFC3339Nano),
+		Scenario: scope.Scenario, Protection: scope.Protection, ArchiveID: database.StarMarrowMaterialID,
+		CacheKey:   database.MaterialDetailCacheKey(database.StarMarrowMaterialID),
+		KeyPresent: false, KeyPTTLMillis: ttl.Milliseconds(),
+		OriginDelayMS: scope.OriginDelay.Milliseconds(),
+		Deleted:       true, At: now.Format(time.RFC3339Nano),
 	}, nil
 }
 
@@ -186,9 +202,12 @@ func (s *ArchiveService) FinishExperiment(token string) (*ArchiveExperimentContr
 	}
 	state := &ArchiveExperimentControlState{
 		Scenario: scope.Scenario, Protection: scope.Protection,
-		MissingID: ArchiveExperimentMissingID, At: time.Now().Format(time.RFC3339Nano),
+		ArchiveID: database.StarMarrowMaterialID, MissingID: ArchiveExperimentMissingID,
+		OriginDelayMS: scope.OriginDelay.Milliseconds(),
+		At:            time.Now().Format(time.RFC3339Nano),
 	}
 	if scope.Scenario == ArchiveExperimentCacheBreakdown {
+		state.CacheKey = database.MaterialDetailCacheKey(database.StarMarrowMaterialID)
 		present, ttl, err := database.MaterialDetailCacheState(database.StarMarrowMaterialID)
 		if err != nil {
 			return nil, archiveExperimentUnavailable("检查热点 Key 恢复状态失败", err)
@@ -216,14 +235,23 @@ func (s *ArchiveService) ReadExperiment(token string) (*database.MaterialDetailD
 		return nil, ArchiveSourceCacheMiss, 0, appErr
 	}
 	if scope.Scenario == ArchiveExperimentCacheBreakdown {
-		return s.readBreakdownExperiment()
+		return s.readBreakdownExperiment(scope.Protection, scope.OriginDelay)
 	}
 	return s.readPenetrationExperiment(scope.Protection)
 }
 
-func (s *ArchiveService) readBreakdownExperiment() (*database.MaterialDetailDTO, ArchiveSource, int, *AppError) {
+func (s *ArchiveService) readBreakdownExperiment(protection string, originDelay time.Duration) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError) {
 	started := time.Now()
-	archive, source, queries, appErr, trace := s.readCached(database.StarMarrowMaterialID)
+	var archive *database.MaterialDetailDTO
+	var source ArchiveSource
+	var queries int
+	var appErr *AppError
+	var trace archiveCacheTrace
+	if protection == ArchiveProtectionKeyMutex {
+		archive, source, queries, appErr, trace = s.readCachedWithOriginDelay(database.StarMarrowMaterialID, originDelay)
+	} else {
+		archive, source, queries, appErr, trace = s.readCachedUnprotected(database.StarMarrowMaterialID, originDelay)
+	}
 	sample := metrics.ArchiveScenarioSample{
 		PositiveCacheHit: trace.InitialHit, RedisMiss: trace.InitialMiss,
 		Coalesced: trace.Coalesced, MySQLFallback: trace.MySQLFallback,

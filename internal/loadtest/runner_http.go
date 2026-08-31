@@ -126,6 +126,15 @@ func (r *Runner) handleTask(writer http.ResponseWriter, request *http.Request) {
 		writeRunnerJSON(writer, http.StatusOK, task)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "cache-eviction" && request.Method == http.MethodPost {
+		task, apiErr := r.EvictCache(request.Context(), taskID)
+		if apiErr != nil {
+			writeRunnerError(writer, apiErr)
+			return
+		}
+		writeRunnerJSON(writer, http.StatusOK, task)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "events" && request.Method == http.MethodGet {
 		r.streamEvents(writer, request, taskID)
 		return

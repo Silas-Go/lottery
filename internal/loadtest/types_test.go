@@ -135,7 +135,11 @@ func TestValidateControlledCacheScenarios(t *testing.T) {
 	valid := []CreateRequest{
 		{
 			Experiment: ExperimentCacheBreakdown, ArchiveID: StarMarrowArchiveID,
-			Mode: "cached", Rate: 300, ConnectionMode: ConnectionModeAuto,
+			Mode: "cached", Rate: 300, ConnectionMode: ConnectionModeAuto, Protection: ProtectionNone,
+		},
+		{
+			Experiment: ExperimentCacheBreakdown, ArchiveID: StarMarrowArchiveID,
+			Mode: "cached", Rate: 300, ConnectionMode: ConnectionModeAuto, Protection: ProtectionKeyMutex,
 		},
 		{
 			Experiment: ExperimentCachePenetration, ArchiveID: StarMarrowArchiveID,
@@ -157,6 +161,11 @@ func TestValidateControlledCacheScenarios(t *testing.T) {
 		{
 			Experiment: ExperimentCacheBreakdown, ArchiveID: StarMarrowArchiveID,
 			Mode: "cached", Rate: 300, ConnectionMode: ConnectionModeManual, Connections: 140,
+			Protection: ProtectionNone,
+		},
+		{
+			Experiment: ExperimentCacheBreakdown, ArchiveID: StarMarrowArchiveID,
+			Mode: "cached", Rate: 300, Protection: "redis-lock",
 		},
 		{
 			Experiment: ExperimentCachePenetration, ArchiveID: StarMarrowArchiveID,

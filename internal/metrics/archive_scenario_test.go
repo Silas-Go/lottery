@@ -92,3 +92,32 @@ func TestArchiveScenarioFreezesStableImpactAndRecoveredWindows(t *testing.T) {
 		t.Fatalf("impact comparison window did not preserve rate or latency: %+v", snapshot.Impact)
 	}
 }
+
+func TestArchiveScenarioReportsBackendRebuildWindow(t *testing.T) {
+	meter := useFreshArchiveScenarioMeter(t)
+	now := time.Now()
+	meter.active = true
+	meter.scenario = "cache-breakdown"
+	meter.evictedAt = now.Add(-115 * time.Millisecond)
+	meter.rebuiltAt = now
+
+	snapshot := SnapshotArchiveScenario()
+	if snapshot.EvictedAt == "" || snapshot.RebuiltAt == "" || snapshot.RebuildDurationMS != 115 {
+		t.Fatalf("rebuild window must come from backend event timestamps: %+v", snapshot)
+	}
+}
+
+func TestArchiveScenarioKeepsImpactOpenUntilSlowRebuildCompletes(t *testing.T) {
+	meter := useFreshArchiveScenarioMeter(t)
+	meter.active = true
+	meter.scenario = "cache-breakdown"
+	meter.evictedAt = time.Now().Add(-2 * time.Second)
+
+	RecordArchiveScenarioSample(ArchiveScenarioSample{
+		RedisMiss: true, MySQLFallback: true, CacheRebuilt: true, Duration: 2 * time.Second,
+	})
+	snapshot := SnapshotArchiveScenario()
+	if snapshot.Impact.Requests != 1 || snapshot.Impact.MySQLFallbacks != 1 || snapshot.Impact.CacheRebuilds != 1 {
+		t.Fatalf("slow rebuild must remain part of the real impact window: %+v", snapshot.Impact)
+	}
+}

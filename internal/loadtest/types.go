@@ -19,6 +19,7 @@ const (
 	SeckillStockConcurrency     = 600
 	CachePenetrationMissingID   = 900004
 	ProtectionNone              = "none"
+	ProtectionKeyMutex          = "key-mutex"
 	ProtectionNegativeCache     = "negative-cache"
 )
 
@@ -200,8 +201,11 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 			return TierConfig{}, "steady cache-aside read does not accept protection"
 		}
 	case ExperimentCacheBreakdown:
-		if request.Mode != "cached" || request.Protection != "" {
-			return TierConfig{}, "cache breakdown requires cached mode and no protection"
+		if request.Mode != "cached" {
+			return TierConfig{}, "cache breakdown requires cached mode"
+		}
+		if request.Protection != ProtectionNone && request.Protection != ProtectionKeyMutex {
+			return TierConfig{}, "cache breakdown protection must be none or key-mutex"
 		}
 		if request.Rate == 0 || request.Tier != "" {
 			return TierConfig{}, "cache breakdown requires the controlled rate protocol"
@@ -327,7 +331,7 @@ type TaskMetrics struct {
 	CacheHitRate          float64                    `json:"cacheHitRate"`
 	PoolPeak              int64                      `json:"poolPeak"`
 	PoolCapacity          int64                      `json:"poolCapacity"`
-	RedisMisses           int64                      `json:"redisMisses,omitempty"`
+	RedisMisses           int64                      `json:"redisMisses"`
 	CoalescedAfterMiss    int64                      `json:"coalescedAfterMiss,omitempty"`
 	CacheRebuilds         int64                      `json:"cacheRebuilds,omitempty"`
 	NegativeCacheHits     int64                      `json:"negativeCacheHits,omitempty"`
@@ -337,7 +341,7 @@ type TaskMetrics struct {
 	ExpectedNotFound      int64                      `json:"expectedNotFound,omitempty"`
 	CurrentRequests       int64                      `json:"currentRequests,omitempty"`
 	CurrentPositiveHits   int64                      `json:"currentPositiveHits,omitempty"`
-	CurrentRedisMisses    int64                      `json:"currentRedisMisses,omitempty"`
+	CurrentRedisMisses    int64                      `json:"currentRedisMisses"`
 	CurrentNegativeHits   int64                      `json:"currentNegativeHits,omitempty"`
 	CurrentMySQLFallbacks int64                      `json:"currentMySQLFallbacks,omitempty"`
 	CurrentHitRate        float64                    `json:"currentHitRate,omitempty"`
@@ -348,7 +352,9 @@ type TaskMetrics struct {
 	KeyPresent            bool                       `json:"keyPresent"`
 	KeyPTTLMillis         int64                      `json:"keyPttlMillis,omitempty"`
 	EvictedAt             string                     `json:"evictedAt,omitempty"`
+	EvictedElapsedMS      int64                      `json:"evictedElapsedMs,omitempty"`
 	RebuiltAt             string                     `json:"rebuiltAt,omitempty"`
+	RebuiltElapsedMS      int64                      `json:"rebuiltElapsedMs,omitempty"`
 	StableAt              string                     `json:"stableAt,omitempty"`
 	RebuildDurationMS     int64                      `json:"rebuildDurationMs,omitempty"`
 	RecoveryDurationMS    int64                      `json:"recoveryDurationMs,omitempty"`
@@ -390,6 +396,8 @@ type Task struct {
 	Mode                 string         `json:"mode"`
 	Protection           string         `json:"protection,omitempty"`
 	ProbeArchiveID       int            `json:"probeArchiveId,omitempty"`
+	CacheKey             string         `json:"cacheKey,omitempty"`
+	OriginDelayMS        int64          `json:"originDelayMs,omitempty"`
 	Tier                 TierConfig     `json:"tier"`
 	ConnectionMode       ConnectionMode `json:"connectionMode,omitempty"`
 	RequestedConnections int            `json:"requestedConnections,omitempty"`

@@ -347,6 +347,7 @@ GET /api/metrics/stream
 | POST | `/api/loadtests` | 创建白名单 Runner 任务 |
 | GET | `/api/loadtests/:id` | 获取任务权威快照 |
 | GET | `/api/loadtests/:id/events` | 订阅任务 SSE 和历史回放 |
+| POST | `/api/loadtests/:id/cache-eviction` | 热点击穿任务运行期间真实删除一次固定热点 Key |
 | POST | `/api/loadtests/:id/stop` | 停止任务并回收子进程 |
 
 `/internal/cache-experiments/*` 只供 Runner 控制热点击穿和缓存穿透场景，使用任务令牌校验，不是浏览器通用业务 API。

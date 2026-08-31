@@ -137,7 +137,7 @@ func RecordArchiveScenarioEvicted(at time.Time) {
 	meter.evictedAt = at
 	meter.rebuiltAt = time.Time{}
 	meter.stableAt = time.Time{}
-	// Runner 只有在连续两个完整秒都稳定命中后才会触发失效；冻结紧邻失效前的
+	// Runner 只允许页面在最近完整秒稳定命中后触发失效；冻结紧邻失效前的
 	// 最后一个完整秒，避免任务结束后把整轮平均值冒充稳态基线。
 	if bucket := meter.seconds[at.Unix()-1]; bucket != nil {
 		meter.stable = cloneArchiveScenarioBucket(bucket)
@@ -162,10 +162,10 @@ func RecordArchiveScenarioSample(sample ArchiveScenarioSample) {
 	}
 	applyArchiveScenarioSample(&meter.round, sample)
 	applyArchiveScenarioSample(bucket, sample)
-	// 冲击窗口严格取真实 DEL 后一秒。缓存通常会在毫秒级重建，因此这一秒既包含
-	// 失效后的 MISS，也包含重建后的 HIT，能保留页面当时看到的命中率跌落与恢复。
+	// 冲击窗口至少取真实 DEL 后一秒；如果故障注入让回源超过一秒，则持续到首次
+	// 真实缓存重建样本完成，避免把仍在回源中的请求误判成“没有发生冲击”。
 	if meter.scenario == "cache-breakdown" && !meter.evictedAt.IsZero() &&
-		now.Before(meter.evictedAt.Add(time.Second)) {
+		(meter.rebuiltAt.IsZero() || now.Before(meter.evictedAt.Add(time.Second))) {
 		applyArchiveScenarioSample(&meter.impact, sample)
 	}
 	if sample.CacheRebuilt {

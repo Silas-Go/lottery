@@ -79,6 +79,17 @@ func (s *LoadtestService) Stop(ctx context.Context, taskID string) (loadtest.Tas
 	return task, nil
 }
 
+// EvictCache 让 Runner 使用任务内部令牌删除本轮固定热点 Key。
+func (s *LoadtestService) EvictCache(ctx context.Context, taskID string) (loadtest.Task, *AppError) {
+	task, apiErr := s.client.EvictCache(ctx, taskID)
+	if apiErr != nil {
+		return loadtest.Task{}, loadtestAppError(apiErr)
+	}
+	slog.Warn("loadtest hot cache evicted", "task_id", taskID, "cache_key", task.CacheKey,
+		"elapsed_ms", task.Metrics.EvictedElapsedMS)
+	return task, nil
+}
+
 // OpenEvents 打开 Runner 的事件流并保留 Last-Event-ID。
 func (s *LoadtestService) OpenEvents(ctx context.Context, taskID, lastEventID string) (*http.Response, *AppError) {
 	response, apiErr := s.client.OpenEvents(ctx, taskID, lastEventID)

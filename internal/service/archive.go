@@ -57,8 +57,7 @@ func (s *ArchiveService) ReadDirect(id int) (*database.MaterialDetailDTO, Archiv
 }
 
 // ReadCached 执行 Cache-Aside：先读 Redis，未命中才回源 MySQL 并回填。
-// fillMu 只合并本进程同一时刻的冷缓存回源，防止第一波并发把一次 MISS 放大成缓存击穿；
-// 多实例生产环境应改用 singleflight/分布式互斥或逻辑过期等专门治理方案。
+// fillMu 只合并本进程同一时刻的冷缓存回源，防止第一波并发把一次 MISS 放大成缓存击穿。
 func (s *ArchiveService) ReadCached(id int) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError) {
 	if appErr := validateArchiveMaterialID(id); appErr != nil {
 		return nil, ArchiveSourceCacheMiss, 0, appErr
@@ -68,6 +67,12 @@ func (s *ArchiveService) ReadCached(id int) (*database.MaterialDetailDTO, Archiv
 }
 
 func (s *ArchiveService) readCached(id int) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError, archiveCacheTrace) {
+	return s.readCachedWithOriginDelay(id, 0)
+}
+
+// readCachedWithOriginDelay 保留公开 Cache-Aside 的原有保护顺序；originDelay 只由
+// 热点击穿实验传入。等待 Mutex 后 Double Check 已命中的请求会在延迟点之前返回。
+func (s *ArchiveService) readCachedWithOriginDelay(id int, originDelay time.Duration) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError, archiveCacheTrace) {
 	trace := archiveCacheTrace{}
 	start := time.Now()
 	metrics.RecordArchiveRequest(metrics.ArchivePathCached)
@@ -83,6 +88,7 @@ func (s *ArchiveService) readCached(id int) (*database.MaterialDetailDTO, Archiv
 		trace.CacheError = true
 		// 缓存是性能层，不是正确性依赖。Redis 故障时回源 MySQL，页面用指标展示这次降级。
 		metrics.RecordArchiveCacheError()
+		waitArchiveExperimentOrigin(originDelay)
 		archive, queries, appErr := s.readMySQL(id, metrics.ArchivePathCached)
 		trace.MySQLFallback = true
 		trace.SQLQueries = queries
@@ -112,6 +118,7 @@ func (s *ArchiveService) readCached(id int) (*database.MaterialDetailDTO, Archiv
 	}
 
 	metrics.RecordArchiveCacheMiss()
+	waitArchiveExperimentOrigin(originDelay)
 	archive, queries, appErr := s.readMySQL(id, metrics.ArchivePathCached)
 	trace.MySQLFallback = true
 	trace.SQLQueries = queries
@@ -128,6 +135,57 @@ func (s *ArchiveService) readCached(id int) (*database.MaterialDetailDTO, Archiv
 	}
 	metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), false)
 	return archive, ArchiveSourceCacheMiss, queries, nil, trace
+}
+
+// readCachedUnprotected 是热点击穿实验专用的 Cache-Aside 分支。
+// 它保留真实 Redis / MySQL / 回填链路，只跳过按 Key 互斥；公开 ReadCached 永远不会调用这里。
+func (s *ArchiveService) readCachedUnprotected(id int, originDelay time.Duration) (*database.MaterialDetailDTO, ArchiveSource, int, *AppError, archiveCacheTrace) {
+	trace := archiveCacheTrace{}
+	start := time.Now()
+	metrics.RecordArchiveRequest(metrics.ArchivePathCached)
+
+	archive, hit, cacheErr := database.GetMaterialDetailCache(id)
+	if cacheErr == nil && hit {
+		trace.InitialHit = true
+		metrics.RecordArchiveCacheHit()
+		metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), false)
+		return archive, ArchiveSourceCacheHit, 0, nil, trace
+	}
+	if cacheErr != nil {
+		trace.CacheError = true
+		metrics.RecordArchiveCacheError()
+		waitArchiveExperimentOrigin(originDelay)
+		archive, queries, appErr := s.readMySQL(id, metrics.ArchivePathCached)
+		trace.MySQLFallback = true
+		trace.SQLQueries = queries
+		metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), appErr != nil)
+		return archive, ArchiveSourceCacheError, queries, appErr, trace
+	}
+
+	trace.InitialMiss = true
+	metrics.RecordArchiveCacheMiss()
+	waitArchiveExperimentOrigin(originDelay)
+	archive, queries, appErr := s.readMySQL(id, metrics.ArchivePathCached)
+	trace.MySQLFallback = true
+	trace.SQLQueries = queries
+	if appErr != nil {
+		metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), true)
+		return nil, ArchiveSourceCacheMiss, queries, appErr, trace
+	}
+	if err := database.SetMaterialDetailCache(archive, metrics.ArchiveCacheTTL); err != nil {
+		trace.CacheRebuildFailed = true
+		metrics.RecordArchiveCacheError()
+	} else {
+		trace.CacheRebuilt = true
+	}
+	metrics.RecordArchiveLatency(metrics.ArchivePathCached, time.Since(start), false)
+	return archive, ArchiveSourceCacheMiss, queries, nil, trace
+}
+
+func waitArchiveExperimentOrigin(delay time.Duration) {
+	if delay > 0 {
+		time.Sleep(delay)
+	}
 }
 
 func validateArchiveMaterialID(id int) *AppError {

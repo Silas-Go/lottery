@@ -37,7 +37,7 @@ Direct 与 Cached 查询都能观察到真实库存变化。
 - `materials.stock` 是可变权威数据；应用启动补齐目录夹具时显式排除该列，只有购买事务或实验重置会修改它。
 - 组成关系只保存材料外键与用量，组成项名称仍来自 `materials`，避免关系表复制基础字段。
 - 缓存不可用时降级回源 MySQL，本次响应正确性不依赖 Redis。
-- 单进程按 material id 使用双检互斥合并冷缓存回源；多实例缓存击穿仍需要更完整的治理。
+- 当前 Go API 单实例按 material id 使用双检互斥合并冷缓存回源。
 - 用户购买状态不进入公共 DTO，避免 key 按 request id 膨胀；实验订单由 `purchase_lab_orders` 独立查询。
 - 购买写入会删除对应 DTO key：同步方案在提交后由当前请求重试 DEL，异步方案由 Outbox + RocketMQ 可靠失效。
 - 除购买库存外，当前材料详情没有编辑 API。未来价格、组成、交易聚合或评分发生写入时，也必须复用相同失效边界。
@@ -48,6 +48,11 @@ Direct 与 Cached 查询都能观察到真实库存变化。
 
 材料情报店的“查询潮汐”不再依赖用户复制终端命令。浏览器只调用主应用
 `/api/loadtests`，主应用再通过 Compose 内部地址访问常驻 `loadtest-runner:8090`：
+
+“缓存失守实验台”复用同一 Runner。热点击穿任务准备时真实预热固定 Key，运行后只允许浏览器通过
+`POST /api/loadtests/:id/cache-eviction` 触发一次任务级删除。Runner 使用内部令牌删除服务端固定的
+`archive:material-detail:v2:4`，并保存真实删除时间与相对压测时间；无保护分支只存在于该任务令牌链路，
+公开 `/api/archives/:id/cached` 始终保留按 Key 互斥。
 
 ```text
 Browser -> app:5678 -> loadtest-runner:8090 -> wrk2 child process

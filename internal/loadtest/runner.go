@@ -71,14 +71,16 @@ type RunnerOptions struct {
 }
 
 type taskRecord struct {
-	Task         Task
-	Events       []Event
-	NextEventID  int64
-	Cancel       context.CancelFunc
-	Command      *exec.Cmd
-	Done         chan struct{}
-	Subscribers  map[chan Event]struct{}
-	ControlToken string
+	Task             Task
+	Events           []Event
+	NextEventID      int64
+	Cancel           context.CancelFunc
+	Command          *exec.Cmd
+	Done             chan struct{}
+	Subscribers      map[chan Event]struct{}
+	ControlToken     string
+	EvictionInFlight bool
+	CacheEvicted     bool
 }
 
 type persistedRecord struct {
@@ -403,6 +405,86 @@ func (r *Runner) Get(id string) (Task, *APIError) {
 	return cloneTask(record.Task), nil
 }
 
+// EvictCache 在热点击穿任务运行期间执行一次真实 DEL。
+// 任务令牌只保存在 Runner，浏览器不能指定 Key，也不能重复注入。
+func (r *Runner) EvictCache(ctx context.Context, id string) (Task, *APIError) {
+	r.mu.Lock()
+	record := r.records[id]
+	if record == nil {
+		r.mu.Unlock()
+		return Task{}, apiError(http.StatusNotFound, CodeNotFound, "压测任务不存在", id)
+	}
+	if record.Task.Experiment != ExperimentCacheBreakdown || record.Task.Status != StatusRunning {
+		r.mu.Unlock()
+		return Task{}, apiError(http.StatusConflict, CodeAlreadyRunning, "当前任务不能删除热点缓存", string(record.Task.Status))
+	}
+	if record.CacheEvicted || record.EvictionInFlight || record.Task.Metrics.EvictedAt != "" {
+		r.mu.Unlock()
+		return Task{}, apiError(http.StatusConflict, CodeAlreadyRunning, "本轮热点缓存已经删除", id)
+	}
+	if !record.Task.Metrics.KeyPresent || record.Task.Metrics.CurrentPositiveHits <= 0 ||
+		record.Task.Metrics.CurrentRedisMisses != 0 || record.Task.Metrics.CurrentHitRate < 99 {
+		r.mu.Unlock()
+		return Task{}, apiError(http.StatusConflict, CodeAlreadyRunning, "热点 Key 尚未进入稳定命中状态", id)
+	}
+	record.EvictionInFlight = true
+	token := record.ControlToken
+	startedAt := record.Task.StartedAt
+	r.mu.Unlock()
+
+	state, err := r.evictArchiveExperiment(ctx, token)
+	if err != nil {
+		r.mu.Lock()
+		if current := r.records[id]; current != nil {
+			current.EvictionInFlight = false
+		}
+		r.mu.Unlock()
+		return Task{}, apiError(http.StatusBadGateway, CodeRunnerFailure, "热点 Key 删除失败", err.Error())
+	}
+
+	evictedAt, parseErr := time.Parse(time.RFC3339Nano, state.At)
+	if parseErr != nil {
+		evictedAt = time.Now().UTC()
+	}
+	elapsedMS := int64(0)
+	if startedAt != nil {
+		elapsedMS = evictedAt.Sub(*startedAt).Milliseconds()
+		if elapsedMS < 0 {
+			elapsedMS = 0
+		}
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	record = r.records[id]
+	if record == nil {
+		return Task{}, apiError(http.StatusNotFound, CodeNotFound, "压测任务不存在", id)
+	}
+	record.EvictionInFlight = false
+	record.CacheEvicted = true
+	record.Task.Metrics.KeyPresent = false
+	record.Task.Metrics.KeyPTTLMillis = 0
+	record.Task.Metrics.EvictedAt = state.At
+	record.Task.Metrics.EvictedElapsedMS = elapsedMS
+	record.Task.Metrics.ScenarioPhase = "evicted"
+	r.updateClockLocked(record, evictedAt.UTC())
+	message := "HOT KEY DELETED · " + formatExperimentOffset(elapsedMS)
+	r.appendLogLocked(record, "warning", message)
+	snapshot := record.Task.Metrics
+	r.publishLocked(record, EventCacheEvicted, message, &snapshot)
+	r.persistLocked()
+	return cloneTask(record.Task), nil
+}
+
+func formatExperimentOffset(elapsedMS int64) string {
+	if elapsedMS < 0 {
+		elapsedMS = 0
+	}
+	seconds := elapsedMS / 1000
+	hundredths := (elapsedMS % 1000) / 10
+	return fmt.Sprintf("%02d:%02d.%02d", seconds/60, seconds%60, hundredths)
+}
+
 // Stop 取消任务并等待 wrk2 进程退出；返回成功时子进程已经被回收。
 func (r *Runner) Stop(id string) (Task, *APIError) {
 	r.mu.Lock()
@@ -532,6 +614,7 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 		record.Command = command
 		record.Task.Status = StatusRunning
 		record.Task.StartedAt = &now
+		task.StartedAt = &now
 		r.updateClockLocked(record, now)
 		r.appendLogLocked(record, "info", "wrk2 已启动")
 		r.publishLocked(record, EventLoadtestStarted, "wrk2 已启动", nil)
@@ -544,8 +627,6 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	targetRateLogged := false
-	stableHitSamples := 0
-	evictionTriggered := false
 	rebuildReported := false
 	recoveryReported := false
 
@@ -580,33 +661,13 @@ func (r *Runner) runTask(taskContext context.Context, id string) {
 					r.emitStep(id, EventLog, "已达到目标速率", "success")
 				}
 				if task.Experiment == ExperimentCacheBreakdown {
-					if !evictionTriggered {
-						if metrics.CurrentRequests > 0 && metrics.CurrentPositiveHits > 0 &&
-							metrics.CurrentRedisMisses == 0 && metrics.CurrentHitRate >= 99 {
-							stableHitSamples++
-						} else {
-							stableHitSamples = 0
-						}
-						if stableHitSamples >= 2 {
-							state, injectErr := r.evictArchiveExperiment(taskContext, controlToken)
-							if injectErr != nil {
-								terminateProcess(command)
-								<-waitChannel
-								r.finish(id, StatusFailed, CodeRunnerFailure, "热点 Key 失效注入失败："+injectErr.Error(), EventFailed)
-								return
-							}
-							evictionTriggered = true
-							r.emitStep(id, EventCacheEvicted, "热点 Key 已真实删除："+state.At, "warning")
-						}
-					} else {
-						if !rebuildReported && metrics.CacheRebuilds > 0 && metrics.RebuiltAt != "" {
-							rebuildReported = true
-							r.emitStep(id, EventCacheRebuilt, "热点缓存已由真实 MySQL 回源重建", "success")
-						}
-						if !recoveryReported && metrics.RecoveryDurationMS > 0 && metrics.StableAt != "" {
-							recoveryReported = true
-							r.emitStep(id, EventCacheRecovered, "命中率已经恢复稳定", "success")
-						}
+					if !rebuildReported && metrics.CacheRebuilds > 0 && metrics.RebuiltAt != "" {
+						rebuildReported = true
+						r.emitStep(id, EventCacheRebuilt, "热点缓存已由真实 MySQL 回源重建", "success")
+					}
+					if !recoveryReported && metrics.RecoveryDurationMS > 0 && metrics.StableAt != "" {
+						recoveryReported = true
+						r.emitStep(id, EventCacheRecovered, "命中率已经恢复稳定", "success")
 					}
 				}
 			}
@@ -717,16 +778,20 @@ func (r *Runner) collectAndComplete(taskContext context.Context, id, output stri
 	}
 
 	if task.Experiment == ExperimentCacheBreakdown {
-		if metrics.EvictedAt == "" || metrics.CacheRebuilds != 1 || metrics.RebuiltAt == "" ||
+		if metrics.EvictedAt == "" || metrics.CacheRebuilds <= 0 || metrics.RebuiltAt == "" ||
 			metrics.StableAt == "" || metrics.RecoveryDurationMS <= 0 {
-			r.finish(id, StatusFailed, CodeRunnerFailure, "热点失效、重建与稳定恢复证据不完整", EventFailed)
+			r.finish(id, StatusFailed, CodeRunnerFailure, "本轮需要手动删除热点 Key，并形成重建与稳定恢复证据", EventFailed)
 			return
 		}
 		comparison := metrics.ScenarioComparison
 		if comparison == nil || comparison.Stable.Requests <= 0 || comparison.Impact.Requests <= 0 ||
 			comparison.Recovered.Requests <= 0 || comparison.Impact.RedisMisses <= 0 ||
-			comparison.Impact.CacheRebuilds != 1 {
+			comparison.Impact.CacheRebuilds <= 0 {
 			r.finish(id, StatusFailed, CodeRunnerFailure, "热点失效前、冲击与恢复对比窗口不完整", EventFailed)
+			return
+		}
+		if task.Protection == ProtectionKeyMutex && (metrics.CacheRebuilds != 1 || comparison.Impact.CacheRebuilds != 1) {
+			r.finish(id, StatusFailed, CodeRunnerFailure, "按 Key 互斥任务出现了不止一次真实缓存重建", EventFailed)
 			return
 		}
 	}
@@ -990,6 +1055,22 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 			RebuildDurationMS:     scenario.RebuildDurationMS,
 			RecoveryDurationMS:    scenario.RecoveryDurationMS,
 		}
+		if task.StartedAt != nil && scenario.EvictedAt != "" {
+			if evictedAt, err := time.Parse(time.RFC3339Nano, scenario.EvictedAt); err == nil {
+				metrics.EvictedElapsedMS = evictedAt.Sub(*task.StartedAt).Milliseconds()
+				if metrics.EvictedElapsedMS < 0 {
+					metrics.EvictedElapsedMS = 0
+				}
+			}
+		}
+		if task.StartedAt != nil && scenario.RebuiltAt != "" {
+			if rebuiltAt, err := time.Parse(time.RFC3339Nano, scenario.RebuiltAt); err == nil {
+				metrics.RebuiltElapsedMS = rebuiltAt.Sub(*task.StartedAt).Milliseconds()
+				if metrics.RebuiltElapsedMS < 0 {
+					metrics.RebuiltElapsedMS = 0
+				}
+			}
+		}
 		if task.Experiment == ExperimentCacheBreakdown {
 			metrics.ScenarioComparison = &ScenarioComparisonMetrics{
 				Stable:    archiveScenarioWindowMetrics(scenario.Stable),
@@ -1080,6 +1161,9 @@ func (r *Runner) updateProgress(id string, now time.Time, metrics TaskMetrics) {
 		return
 	}
 	metrics.TargetCompletionRate = targetCompletionRate(metrics.ActualQPS, record.Task.Tier.Rate)
+	if metrics.EvictedElapsedMS == 0 && record.Task.Metrics.EvictedElapsedMS > 0 {
+		metrics.EvictedElapsedMS = record.Task.Metrics.EvictedElapsedMS
+	}
 	record.Task.Metrics = metrics
 	r.updateClockLocked(record, now)
 	r.publishLocked(record, EventProgress, "压测运行中", nil)

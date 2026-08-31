@@ -87,6 +87,16 @@ func (h *LoadtestHandler) Stop(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, task)
 }
 
+// EvictCache 删除当前热点击穿任务正在访问的固定热点 Key。
+func (h *LoadtestHandler) EvictCache(ctx *gin.Context) {
+	task, appErr := h.service.EvictCache(ctx.Request.Context(), ctx.Param("id"))
+	if appErr != nil {
+		writeServiceError(ctx, appErr)
+		return
+	}
+	ctx.JSON(http.StatusOK, task)
+}
+
 // Events 逐块转发 Runner SSE，不在主应用缓冲整个响应。
 // 浏览器断开只会取消这条订阅，不会取消后台压测任务；再次连接可通过 Last-Event-ID 回放。
 func (h *LoadtestHandler) Events(ctx *gin.Context) {

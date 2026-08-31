@@ -22,6 +22,13 @@ func NewArchiveHandler(archive *service.ArchiveService) *ArchiveHandler {
 	return &ArchiveHandler{archive: archive}
 }
 
+// CacheFailureLab 从后端实验配置渲染故障注入值，页面不自行声明 origin delay。
+func (h *ArchiveHandler) CacheFailureLab(ctx *gin.Context) {
+	ctx.HTML(http.StatusOK, "cache-failure-lab.html", gin.H{
+		"ArchiveCacheBreakdownOriginDelayMS": service.ArchiveCacheBreakdownOriginDelay.Milliseconds(),
+	})
+}
+
 func (h *ArchiveHandler) ReadDirect(ctx *gin.Context) {
 	h.read(ctx, false)
 }

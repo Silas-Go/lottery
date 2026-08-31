@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6edcf" />
+    <meta name="description" content="在固定 wrk2 压力下观察热点击穿与缓存穿透的真实 Redis、MySQL 和延迟指标。" />
+    <title>缓存失守实验台 · Silas</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
+    <link rel="stylesheet" href="/css/base.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/lab-foundation.css?v=20260805-css-refactor-v1" />
+    <link rel="stylesheet" href="/css/experiment-header-nav.css?v=20260805-nav-v1" />
+    <link rel="stylesheet" href="/css/cache-failure-lab.css?v=20260831-clear-comparison-v1" />
+</head>
+
+<body class="lab-page cache-failure-page" data-scenario="breakdown" data-task-status="idle" data-origin-delay-ms="{{ .ArchiveCacheBreakdownOriginDelayMS }}">
+    <div class="lab-backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
+
+    <header class="lab-header experiment-shell-header">
+        <div class="experiment-brand-slot">
+            <a class="lab-brand" href="/" aria-label="返回实验总览">
+                <span>S</span>
+                <div><strong>SILAS</strong><small>CACHE FAILURE LAB</small></div>
+            </a>
+        </div>
+        <div class="current-material">
+            <small>CURRENT BENCH</small>
+            <strong id="header-scenario">热点缓存击穿</strong>
+        </div>
+        <div class="failure-connection" aria-live="polite">
+            <i></i><span id="connection-state">等待实验</span>
+        </div>
+        <nav class="experiment-return-nav" aria-label="缓存实验页面导航">
+            <a href="/lab"><span aria-hidden="true">←</span>返回查询实验</a>
+            <a href="/">返回实验总览</a>
+        </nav>
+    </header>
+
+    <main class="failure-main">
+        <section class="failure-bench" aria-labelledby="failure-title">
+            <header class="failure-hero">
+                <small>CACHE FAILURE BENCH</small>
+                <h1 id="failure-title">缓存失守实验台</h1>
+                <p>Redis 都加了，为什么请求还是会打到 MySQL？</p>
+                <div class="workload-strip" aria-label="固定压力条件">
+                    <strong>1500 QPS</strong><span>·</span><strong>-c 500</strong><span>·</span><strong>30s</strong><span>·</span><strong>Go API 单实例</strong>
+                </div>
+                <aside id="origin-injection" class="origin-injection" aria-label="热点缓存击穿实验故障注入">
+                    <div>
+                        <strong id="origin-delay-tag" class="origin-delay-tag">实验注入：回源 +{{ .ArchiveCacheBreakdownOriginDelayMS }}ms</strong>
+                        <details>
+                            <summary>为什么模拟慢回源？</summary>
+                            <p>当前本地环境回源很快。这里模拟线上数据库繁忙、网络延迟或复杂查询，用来放大缓存失效窗口。</p>
+                            <strong>实验目的：观察「回源越慢，缓存击穿窗口越大」。</strong>
+                        </details>
+                    </div>
+                    <p>本地回源过快，因此人为增加 {{ .ArchiveCacheBreakdownOriginDelayMS }}ms 回源耗时；这是实验故障注入，不是真实 MySQL 查询耗时。</p>
+                </aside>
+                <div class="scenario-tabs" role="tablist" aria-label="缓存失守场景">
+                    <button id="tab-breakdown" type="button" role="tab" aria-selected="true">热点缓存击穿</button>
+                    <button id="tab-penetration" type="button" role="tab" aria-selected="false">缓存穿透</button>
+                </div>
+            </header>
+
+            <section class="failure-run" aria-labelledby="round-title">
+                <div class="round-heading">
+                    <div><small>CONTROLLED RUN</small><h2 id="round-title">本轮实验</h2></div>
+                    <output id="round-status" class="round-status">等待开始</output>
+                </div>
+
+                <div class="hot-key-board">
+                    <dl>
+                        <div><dt id="subject-label">热点数据</dt><dd id="subject-value">ARC-004 / material id 4</dd></div>
+                        <div><dt>Cache Key</dt><dd><code id="cache-key">等待后端准备</code></dd></div>
+                        <div><dt>Redis 状态</dt><dd><span id="redis-state" class="redis-state is-idle">IDLE</span></dd></div>
+                        <div id="ttl-row"><dt>TTL</dt><dd id="ttl-value">--</dd></div>
+                    </dl>
+                </div>
+
+                <div class="protection-row">
+                    <strong id="protection-label">回源保护</strong>
+                    <div id="protection-options" class="protection-options" role="radiogroup" aria-label="回源保护">
+                        <button id="protection-none" class="is-active" type="button" role="radio" aria-checked="true"><i></i>无保护</button>
+                        <button id="protection-on" type="button" role="radio" aria-checked="false"><i></i><span id="protection-on-label">按 Key 互斥 + Double Check</span></button>
+                    </div>
+                    <small id="protection-note">仅作用于当前 Go 进程</small>
+                </div>
+                <p id="only-variable" class="only-variable">本轮唯一变量：回源保护</p>
+
+                <div class="request-path" aria-label="真实请求路径">
+                    <span>Request</span><b>→</b><span>Go API</span><b>→</b><span id="path-redis">Redis <small>HIT</small></span><b>→</b><span>MySQL</span>
+                </div>
+
+                <div class="primary-controls">
+                    <button id="start-experiment" class="start-experiment" type="button">开始实验</button>
+                    <div class="run-clock"><small>运行时间</small><strong><span id="elapsed-time">00:00</span> / 00:30</strong></div>
+                </div>
+
+                <div class="metric-grid" aria-live="polite">
+                    <div><small>目标 QPS</small><strong>1500</strong></div>
+                    <div><small>Actual QPS</small><strong id="actual-qps">--</strong></div>
+                    <div><small>Redis MISS</small><strong id="redis-misses">--</strong></div>
+                    <div class="is-key-metric"><small>MySQL 回源</small><strong id="mysql-fallbacks">--</strong></div>
+                    <div><small>SQL Queries</small><strong id="sql-queries">--</strong></div>
+                    <div><small>P95</small><strong id="p95">--</strong></div>
+                </div>
+
+                <div id="fault-control" class="fault-control">
+                    <button id="evict-cache" type="button" disabled><span aria-hidden="true">🔥</span> 删除热点缓存</button>
+                    <small id="fault-hint">压测运行并形成稳定 HIT 后可删除</small>
+                </div>
+                <div id="penetration-control" class="penetration-control" hidden>
+                    <small>固定不存在 ID</small><strong>900004</strong><span>持续请求同一个不存在的材料</span>
+                </div>
+
+                <section class="event-timeline" aria-labelledby="timeline-title">
+                    <div class="timeline-heading"><h3 id="timeline-title">事件时间线</h3><strong id="injection-time">尚未注入</strong></div>
+                    <div class="timeline-scale">
+                        <span>00:00</span>
+                        <div class="timeline-track"><i id="timeline-progress"></i><b id="eviction-marker" title="热点 Key 删除时间" hidden>🔥</b></div>
+                        <span>00:30</span>
+                    </div>
+                    <div id="rebuild-window" class="rebuild-window" hidden>
+                        <span><small>HOT KEY DELETED</small><strong id="rebuild-evicted-at">--</strong></span>
+                        <span><small>CACHE REBUILT</small><strong id="rebuild-completed-at">--</strong></span>
+                        <span class="is-window"><small>缓存重建窗口</small><strong id="rebuild-duration">--</strong></span>
+                    </div>
+                    <ol id="event-log" class="event-log"><li><time>--:--</time><span>等待真实任务事件</span></li></ol>
+                </section>
+
+                <section id="round-result" class="round-result" hidden>
+                    <div><small>ROUND RESULT</small><h3>本轮真实结果</h3></div>
+                    <dl id="round-result-values"></dl>
+                    <button id="next-protection" type="button"></button>
+                </section>
+
+                <section id="comparison" class="comparison" hidden>
+                    <header>
+                        <div><small>SAME LOAD · ONE VARIABLE</small><h3 id="comparison-title">两轮结果对比</h3></div>
+                        <button id="clear-comparison" type="button">清除对比结果</button>
+                    </header>
+                    <p id="comparison-conditions" class="comparison-conditions"></p>
+                    <small id="comparison-origin-note" class="comparison-origin-note"></small>
+                    <div class="comparison-table-wrap"><table><thead><tr><th>指标</th><th id="compare-left-label">无保护</th><th id="compare-right-label">按 Key 互斥 + Double Check</th></tr></thead><tbody id="comparison-body"></tbody></table></div>
+                </section>
+            </section>
+        </section>
+    </main>
+
+    <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
+    <script src="/js/cache-failure-lab.js?v=20260831-clear-comparison-v1"></script>
+</body>
+</html>

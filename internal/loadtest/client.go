@@ -64,6 +64,13 @@ func (c *Client) Stop(ctx context.Context, taskID string) (Task, *APIError) {
 	return output, apiErr
 }
 
+// EvictCache 请求 Runner 对当前热点击穿任务执行一次真实热点 Key 删除。
+func (c *Client) EvictCache(ctx context.Context, taskID string) (Task, *APIError) {
+	var output Task
+	apiErr := c.doJSON(ctx, http.MethodPost, taskPath(taskID)+"/cache-eviction", nil, &output)
+	return output, apiErr
+}
+
 // OpenEvents 打开 Runner SSE 流；返回的 Body 必须由 handler 在浏览器断开时关闭。
 func (c *Client) OpenEvents(ctx context.Context, taskID, lastEventID string) (*http.Response, *APIError) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+taskPath(taskID)+"/events", nil)

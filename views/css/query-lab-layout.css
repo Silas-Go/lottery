@@ -890,20 +890,22 @@
 .query-next-experiment-grid article > small { color: #75bdb1; font: 900 8px/1.2 "SFMono-Regular", Consolas, monospace; letter-spacing: .12em; }
 .query-next-experiment-grid h4 { margin: 0; color: #e4eddf; font-size: 15px; }
 .query-next-experiment-grid p { min-height: 34px; margin: 0; color: #a8b8b3; font-size: 10px; line-height: 1.65; }
-.query-next-experiment-grid button {
+.query-next-entry {
+    display: inline-flex;
+    align-items: center;
     justify-self: start;
-    margin-top: 4px;
-    padding: 9px 15px;
+    gap: 10px;
+    padding: 10px 16px;
     border: 1px solid #4d998d;
     color: #e9f5ee;
     background: #315f58;
     font-size: 10px;
     font-weight: 900;
-    cursor: pointer;
+    text-decoration: none;
 }
 
-.query-next-experiment-grid button:hover { background: #3c746b; }
-.query-next-experiment-grid button:disabled { cursor: not-allowed; opacity: .56; }
+.query-next-entry span { color: #b9d4cd; font-size: 8px; font-weight: 800; letter-spacing: .06em; }
+.query-next-entry:hover { background: #3c746b; }
 @keyframes route-flow {
     to { stroke-dashoffset: -20; }
 }

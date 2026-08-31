@@ -36,7 +36,7 @@ func New(handlers Handlers) *gin.Engine {
 	engine := gin.Default()
 
 	registerStaticAssets(engine)
-	registerPages(engine)
+	registerPages(engine, handlers)
 	registerAPIRoutes(engine, handlers)
 
 	return engine
@@ -50,7 +50,7 @@ func registerStaticAssets(engine *gin.Engine) {
 	engine.LoadHTMLGlob("views/html/*.html")
 }
 
-func registerPages(engine *gin.Engine) {
+func registerPages(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "market-street.html", nil)
 	})
@@ -69,6 +69,9 @@ func registerPages(engine *gin.Engine) {
 	})
 	engine.GET("/lab", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "query-lab.html", nil)
+	})
+	engine.GET("/cache-failure-lab", func(ctx *gin.Context) {
+		handlers.Archive.CacheFailureLab(ctx)
 	})
 	engine.GET("/purchase-lab", func(ctx *gin.Context) {
 		ctx.HTML(http.StatusOK, "purchase-lab.html", nil)
@@ -105,4 +108,5 @@ func registerAPIRoutes(engine *gin.Engine, handlers Handlers) {
 	engine.GET("/api/loadtests/:id", handlers.Loadtest.Get)
 	engine.GET("/api/loadtests/:id/events", handlers.Loadtest.Events)
 	engine.POST("/api/loadtests/:id/stop", handlers.Loadtest.Stop)
+	engine.POST("/api/loadtests/:id/cache-eviction", handlers.Loadtest.EvictCache)
 }
