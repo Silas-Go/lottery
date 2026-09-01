@@ -167,7 +167,9 @@
             connections: task.tier.connections,
             duration: task.tier.durationSeconds,
             archiveId: task.archiveId,
+            probeArchiveId: task.probeArchiveId || 0,
             originDelayMs: Number(task.originDelayMs) || 0,
+            negativeCacheHits: metrics.negativeCacheHits || 0,
             evictedElapsedMs: metrics.evictedElapsedMs || 0,
             rebuiltElapsedMs: metrics.rebuiltElapsedMs || 0,
             rebuildDurationMs: metrics.rebuildDurationMs || 0
@@ -329,8 +331,13 @@
         section.hidden = false;
         byId("compare-right-label").textContent = protectionLabel(protectedMode());
         var breakdown = state.scenario === "breakdown";
+        byId("scenario-cold-open").hidden = false;
+        byId("comparison-detail-eyebrow").textContent = "FULL EXPERIMENT DATA";
+        byId("comparison-detail-title").textContent = "完整实验数据";
+        renderScenarioColdOpen(left, right, breakdown);
         byId("comparison-conditions").textContent = "实验条件：" + left.targetQps + " QPS · -c " +
-            left.connections + " · " + left.duration + "s" + (breakdown ? " · 回源故障注入 +" + left.originDelayMs + "ms" : "");
+            left.connections + " · " + left.duration + "s" + (breakdown ?
+                " · 回源故障注入 +" + left.originDelayMs + "ms" : " · 不存在数据 material id " + left.probeArchiveId);
         byId("comparison-origin-note").textContent = breakdown ? "+" + left.originDelayMs + "ms 为实验注入，用于放大缓存重建窗口；不代表真实 MySQL 查询耗时。" : "";
         byId("comparison-origin-note").hidden = !breakdown;
         var rows = [
@@ -343,10 +350,91 @@
         ];
         if (breakdown) {
             rows.splice(4, 0, ["缓存重建窗口", formatInteger(left.rebuildDurationMs) + " ms", formatInteger(right.rebuildDurationMs) + " ms", false]);
+        } else {
+            rows.splice(4, 0, ["负缓存 HIT", formatInteger(left.negativeCacheHits), formatInteger(right.negativeCacheHits), false]);
         }
         byId("comparison-body").innerHTML = rows.map(function (row) {
             return "<tr" + (row[3] ? " class=\"is-key-row\"" : "") + "><td>" + row[0] + "</td><td>" + row[1] + "</td><td>" + row[2] + "</td></tr>";
         }).join("");
+    }
+
+    function renderScenarioColdOpen(left, right, breakdown) {
+        var leftFallbacks = Number(left.mysqlFallbacks);
+        var rightFallbacks = Number(right.mysqlFallbacks);
+        var leftValue = formatInteger(leftFallbacks);
+        var rightValue = formatInteger(rightFallbacks);
+        var impact = originReduction(leftFallbacks, rightFallbacks);
+
+        byId("scenario-cold-open").classList.toggle("has-wide-fallback", Math.max(leftValue.length, rightValue.length) >= 6);
+        byId("cold-target-qps").textContent = formatInteger(left.targetQps);
+        byId("cold-open-title").textContent = originResultTitle(leftFallbacks, rightFallbacks);
+        byId("cold-open-subtitle").textContent = breakdown ?
+            "只改变一个变量：是否开启回源保护" : "只改变一个变量：是否开启负缓存";
+        byId("cold-left-label").textContent = "无保护";
+        byId("cold-right-label").textContent = breakdown ? "回源保护" : "负缓存保护";
+        byId("cold-left-fallbacks").textContent = leftValue;
+        byId("cold-right-fallbacks").textContent = rightValue;
+        byId("cold-shift-from").textContent = leftValue;
+        byId("cold-shift-to").textContent = rightValue;
+        byId("cold-reduction").textContent = impact.value;
+        byId("cold-reduction").className = impact.tone;
+        byId("cold-reduction-note").textContent = impact.note;
+        byId("cold-primary-label").textContent = "SQL Queries";
+        byId("cold-left-sql").textContent = formatInteger(left.sqlQueries);
+        byId("cold-right-sql").textContent = formatInteger(right.sqlQueries);
+        byId("cold-secondary-label").textContent = breakdown ? "Cache MISS" : "负缓存 HIT";
+        byId("cold-left-misses").textContent = formatInteger(breakdown ? left.redisMisses : left.negativeCacheHits);
+        byId("cold-right-misses").textContent = formatInteger(breakdown ? right.redisMisses : right.negativeCacheHits);
+        byId("cold-load-profile").textContent = formatInteger(left.targetQps) + " QPS · -c" +
+            formatInteger(left.connections) + " · " + formatInteger(left.duration) + "s";
+        byId("cold-origin-tag").textContent = breakdown ?
+            "实验注入：回源 +" + formatInteger(left.originDelayMs) + "ms" :
+            "不存在数据：material id " + String(Math.round(Number(left.probeArchiveId)));
+        byId("cold-origin-tag").className = breakdown ? "is-injection" : "is-missing-data";
+    }
+
+    function originResultTitle(left, right) {
+        var leftValue = formatInteger(left);
+        var rightValue = formatInteger(right);
+        if (Number.isFinite(left) && Number.isFinite(right) && right < left) {
+            return leftValue + " 次回源，只剩 " + rightValue + " 次";
+        }
+        if (Number.isFinite(left) && Number.isFinite(right) && right === left) {
+            return leftValue + " 次回源，保护后仍为 " + rightValue + " 次";
+        }
+        return leftValue + " 次回源，保护后为 " + rightValue + " 次";
+    }
+
+    function originReduction(left, right) {
+        if (!Number.isFinite(left) || !Number.isFinite(right) || left <= 0) {
+            return { value: "—", note: "本轮没有可计算的回源降幅", tone: "is-neutral" };
+        }
+        var reduction = (left - right) / left * 100;
+        if (reduction > 0) {
+            return {
+                value: "↓ " + formatReductionPercent(reduction, right) + "%",
+                note: reduction >= 99 ? "重复回源几乎被全部挡住" :
+                    (reduction >= 50 ? "多数重复回源被挡住" : "真实回源次数减少"),
+                tone: "is-reduced"
+            };
+        }
+        if (reduction === 0) {
+            return { value: "持平", note: "本轮真实回源次数没有变化", tone: "is-neutral" };
+        }
+        return {
+            value: "↑ " + formatNumber(Math.abs(reduction), 1) + "%",
+            note: "本轮真实回源次数增加",
+            tone: "is-increased"
+        };
+    }
+
+    function formatReductionPercent(reduction, protectedFallbacks) {
+        if (protectedFallbacks <= 0) { return formatNumber(reduction, 1); }
+        for (var digits = 1; digits <= 6; digits += 1) {
+            var value = reduction.toFixed(digits);
+            if (Number(value) < 100) { return value; }
+        }
+        return "<100";
     }
 
     function clearComparison() {
@@ -413,7 +501,7 @@
         if (state.scenario === "breakdown") {
             return Number(left.originDelayMs) > 0 && Number(left.originDelayMs) === Number(right.originDelayMs);
         }
-        return true;
+        return Number(left.probeArchiveId) > 0 && Number(left.probeArchiveId) === Number(right.probeArchiveId);
     }
 
     function elapsedFromTimestamps(startedAt, at) {
