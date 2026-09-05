@@ -11,9 +11,9 @@
     var LIVE_RUN_TIMEOUT_MS = 5 * 60 * 1000;
     // 业务快照仍以 160ms 读取真实进度；教学回放是另一只时钟，必须给中文解释足够阅读时间。
     var REPLAY_STEP_MS = 6000;
-    var SETTLEMENT_REVEAL_MS = 2800;
     var ACTIVE_STATUSES = ["running", "waiting_outbox", "waiting_consumer"];
     var resultStore = window.SilasPurchaseLabResults;
+    var recentResults = {};
     var profiles = {
         4: { name: "星髓" }
     };
@@ -22,21 +22,21 @@
         "outbox-mq-invalidate": "Outbox + MQ 异步失效"
     };
     var stageNames = [
-        "Purchase Tasks 进入",
+        "购买任务进入",
         "MySQL 事务提交",
-        "Response 边界",
+        "响应边界",
         "缓存失效链路",
         "一致性结果"
     ];
-    // settlement 只负责“结算动画 -> 展开报告”的视觉节奏。
-    // 它不进入 executionMode，也不写回 trace，防止结果动画扩大实验状态机。
-    var settlement = {
-        requestId: null,
-        timer: null,
-        revealed: Object.create(null)
+    var replayStatusNames = {
+        waiting: "等待",
+        running: "进行中",
+        completed: "已完成",
+        failed: "失败"
     };
-    // HUD 只在真实状态或保存 trace 切换时滚动到新数值；动画不生成业务进度。
-    var metricAnimations = new WeakMap();
+    // 同一张结果表始终读取冻结记录；回放游标只控制上方执行图。
+    var resultsFocusRequestId = null;
+    var evidenceRecord = null;
     // executionMode 表示“真实执行 / 回放 / 暂停 / 结果”边界；replay 只保存前端游标。
     // 只有 startExperiment 会进入购买与重置接口，任何回放控制都不能复用该入口。
     var state = {
@@ -44,6 +44,9 @@
         profile: null,
         strategy: null,
         stock: null,
+        runObservedAt: null,
+        observationHalted: false,
+        inventoryObservation: { firstMismatch: null },
         liveRun: null,
         record: null,
         executionMode: "idle",
@@ -61,62 +64,101 @@
         return document.getElementById(id);
     }
 
+    // 仪表盘直接显示观测值，不在两个真实值之间插入动画数字。
     function setGameMetric(id, value) {
         var element = byId(id);
-        if (!element) {
-            return;
+        if (element) {
+            element.textContent = String(value === undefined || value === null ? "—" : value);
         }
-        var nextText = String(value === undefined || value === null ? "—" : value);
-        var nextMatch = nextText.match(/-?\d[\d,]*(?:\.\d+)?/);
-        var currentMatch = String(element.textContent || "").match(/-?\d[\d,]*(?:\.\d+)?/);
-        var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        var previousFrame = metricAnimations.get(element);
-        if (previousFrame) {
-            window.cancelAnimationFrame(previousFrame);
-            metricAnimations.delete(element);
-        }
-        element.classList.remove("is-counting");
-        if (!nextMatch || !currentMatch || reduced) {
-            element.textContent = nextText;
-            element.classList.add("is-counting");
-            window.setTimeout(function () {
-                element.classList.remove("is-counting");
-            }, reduced ? 0 : 420);
-            return;
-        }
+    }
 
-        var from = Number(currentMatch[0].replace(/,/g, ""));
-        var to = Number(nextMatch[0].replace(/,/g, ""));
-        if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) {
-            element.textContent = nextText;
-            return;
+    function renderInventoryMonitor() {
+        var live = state.executionMode === "executing";
+        var interrupted = state.executionMode === "error";
+        var record = live ? null : state.record;
+        var run = live || interrupted ? state.liveRun : record && record.run;
+        var replay = !!record && (state.executionMode === "replaying" || state.executionMode === "paused");
+        var evidence = replay ? stageEvidence(record, state.replay.index) : null;
+        var mysql = evidence ? evidence.mysql : (run ? run.finalMySQLStock : state.stock && state.stock.mysqlStock);
+        var redis = evidence ? evidence.redis : (run ? run.finalRedisStock : state.stock && state.stock.redisStock);
+        var probe = live || interrupted ? state.probe : (record ? record.probe : createProbeState());
+        var oldReads = Number(probe.oldReads || 0);
+        var known = mysql !== null && mysql !== undefined && Number.isFinite(Number(mysql));
+        var cached = redis !== null && redis !== undefined && Number.isFinite(Number(redis));
+        var mismatch = known && cached && Number(mysql) !== Number(redis);
+        var stale = live && (state.observationHalted || (state.runObservedAt && Date.now() - state.runObservedAt > 2000));
+        var failedProbe = live && probe.lastSampleFailed;
+        var observation = record ? record.inventoryObservation || {} : state.inventoryObservation;
+        // 物理缓存库存只来自 State/GetRun。查询样本 stock 可能是 MISS 后的回源结果，不能冒充 Redis 当前值。
+        if (live && mismatch && !stale && !observation.firstMismatch) {
+            observation.firstMismatch = {
+                mysql: mysql, redis: redis,
+                atMs: probe.startedAt ? Math.max(0, performance.now() - probe.startedAt) : 0
+            };
         }
-        var prefix = nextText.slice(0, nextMatch.index);
-        var suffix = nextText.slice(nextMatch.index + nextMatch[0].length);
-        var decimalPart = nextMatch[0].split(".")[1];
-        var decimals = decimalPart ? decimalPart.length : 0;
-        var startedAt = performance.now();
-        var duration = 520;
-        element.classList.add("is-counting");
+        var firstOld = (probe.samples || []).find(function (sample) { return sample.old === true; });
+        var hadIncident = oldReads > 0 || !!observation.firstMismatch;
+        var done = !!run && run.status === "completed" && !replay;
+        var tone = !known || stale || interrupted ? "unknown" :
+            (mismatch ? "mismatch" : (!cached ? "empty" :
+                (failedProbe ? "checking" : (hadIncident && done ? "recovered" : "consistent"))));
+        var label = {
+            unknown: interrupted ? "观测已中断" : (stale ? "快照待刷新" : "等待观测"),
+            mismatch: "库存不一致",
+            empty: "缓存未命中",
+            checking: "探针异常",
+            consistent: "库存一致",
+            recovered: "库存已恢复"
+        }[tone];
+        var panel = byId("inventory-monitor");
+        panel.dataset.state = tone;
+        setGameMetric("stage-mysql-stock", known ? formatNumber(mysql) : "—");
+        setGameMetric("stage-redis-stock", cached ? formatNumber(redis) : (known ? "未缓存" : "—"));
+        byId("stage-redis-stock").dataset.empty = String(!cached);
+        byId("inventory-symbol").textContent = tone === "mismatch" ? "≠" :
+            (tone === "consistent" || tone === "recovered" ? "=" : "…");
+        byId("inventory-status-text").textContent = label;
+        byId("inventory-delta").textContent = tone === "mismatch" ?
+            "库存差值 " + formatNumber(Number(redis) - Number(mysql)) :
+            (tone === "empty" ? "等待后续查询回填" :
+                (tone === "unknown" ? "尚无有效库存对照" :
+                    (tone === "checking" ? "等待有效样本复核" : "MySQL / Redis 已对齐")));
+        byId("inventory-source").textContent = replay ? "回放步骤快照 · 统计已冻结" :
+            (record ? "已冻结的实验结果" : (interrupted ? "最后一次库存快照 · 非实时" :
+                (live ? (stale ? "最后一次库存快照 · 等待刷新" :
+                    (run ? "实时库存快照 · 160 ms 更新" : "实验基线 · 正在准备")) : "当前库存快照 · 实验未开始")));
 
-        function draw(now) {
-            var progress = Math.min(1, (now - startedAt) / duration);
-            var stepped = Math.floor(progress * 10) / 10;
-            var current = from + (to - from) * stepped;
-            var formatted = decimals > 0 ?
-                current.toFixed(decimals) :
-                Math.round(current).toLocaleString("zh-CN");
-            element.textContent = prefix + formatted + suffix;
-            if (progress < 1) {
-                metricAnimations.set(element, window.requestAnimationFrame(draw));
-                return;
-            }
-            element.textContent = nextText;
-            element.classList.remove("is-counting");
-            metricAnimations.delete(element);
-        }
-
-        metricAnimations.set(element, window.requestAnimationFrame(draw));
+        byId("inventory-incident").hidden = !hadIncident;
+        byId("incident-title").textContent = tone === "mismatch" ? "检测到不一致" :
+            (tone === "recovered" ? "本轮曾出现不一致 · 现已恢复" :
+                (tone === "empty" ? "旧缓存已删除 · 等待回填" : "本轮不一致证据"));
+        var incident = observation.firstMismatch;
+        byId("incident-evidence").textContent = incident ?
+            "首次库存差异：MySQL " + stockText(incident.mysql) + " / Redis " + stockText(incident.redis) :
+            (firstOld ? "首次旧读：查询返回 " + stockText(firstOld.stock) +
+                "，当时 MySQL " + stockText(firstOld.authoritativeStock) : "");
+        var requested = Number(run && run.purchaseRequested || PURCHASE_COUNT);
+        var processed = run ? (run.purchaseProcessed === undefined ?
+            (run.criticalPathCompleted ? requested : 0) : Number(run.purchaseProcessed)) : 0;
+        byId("metric-requests").textContent = formatNumber(processed) + " / " + formatNumber(requested);
+        byId("metric-request-note").textContent = run ?
+            (run.criticalPathCompleted ? "请求已全部返回" : "后端持续处理") : "等待开始";
+        setGameMetric("game-success-count", formatNumber(run && run.purchaseSucceeded || 0));
+        byId("metric-sold-out").textContent = "售罄 " + formatNumber(run && run.soldOutRequests || 0) +
+            " · 幂等拦截 " + formatNumber(run && run.duplicateRequests || 0);
+        setGameMetric("game-old-read-count", formatNumber(oldReads));
+        byId("metric-inconsistency").dataset.incident = String(hadIncident);
+        byId("metric-probes").textContent = "有效探针 " + formatNumber(probe.completed) +
+            (Number(probe.errors) > 0 ? " · 错误 " + formatNumber(probe.errors) : "");
+        var recovery = interrupted ? "观测中断" : (!run ? "待观测" :
+            (run.status === "failed" || state.executionMode === "error" ? "执行失败" :
+                (stale || failedProbe ? "观测异常" :
+                    (mismatch ? "等待恢复" : (!cached ? "等待回填" :
+                        (done ? (hadIncident ? "已恢复" : "最终一致") :
+                            (replay ? "回放快照" : "持续观测")))))));
+        byId("metric-recovery").textContent = recovery;
+        var windowMS = live ? probeWindowMS() : Number(probe.maxStaleWindowMs || 0);
+        byId("metric-window").textContent = "最长旧读窗口 " + (windowMS > 0 ? formatMS(windowMS) : "—");
     }
 
     function clone(value) {
@@ -316,6 +358,36 @@
 
     function stockText(value) {
         return value === null || value === undefined ? "未缓存" : formatNumber(value);
+    }
+
+    function probeSourceName(source) {
+        var names = {
+            "redis-hit": "Redis 命中",
+            "redis-miss": "Redis 未命中",
+            "mysql-fallback": "MySQL 回源"
+        };
+        return names[String(source || "").toLowerCase()] || "未知来源";
+    }
+
+    function runtimeStatusName(status) {
+        var names = {
+            running: "运行中",
+            waiting_outbox: "等待 Outbox",
+            waiting_consumer: "等待消费者",
+            completed: "已完成",
+            failed: "失败",
+            pending: "待处理",
+            publishing: "发布中",
+            published: "已发布",
+            retry: "等待重试",
+            cancelled: "已取消",
+            "not-used": "未使用",
+            "waiting-publisher": "等待发布器",
+            "waiting-consumer": "等待消费者",
+            "publisher-retrying": "发布器重试中",
+            consumed: "已消费"
+        };
+        return names[String(status || "").toLowerCase()] || String(status || "—");
     }
 
     function showToast(message, tone) {
@@ -722,13 +794,13 @@
         var windowMS = probe === state.probe ? probeWindowMS() : Number(probe.maxStaleWindowMs || 0);
         byId("probe-stream").dataset.state = active ? "active" : (completed ? "completed" : "idle");
         byId("probe-live-state").textContent = active ?
-            ("正在采样 · " + completed + " completed") : (completed ? "采样已冻结" : "尚未采样");
+            ("正在采样 · 已完成 " + completed + " 次") : (completed ? "采样已冻结" : "尚未采样");
         setNode("node-probe", active ? "running" : (completed ? "success" : "idle"),
-            active ? "Stock Probe · sampling" : "Stock Probe", completed + " samples", "OLD " + oldReads);
+            active ? "库存探针 · 采样中" : "库存探针", completed + " 个样本", "旧读 " + oldReads);
         setNode("node-probe-redis", oldReads ? "retry" : (completed ? "success" : "idle"),
-            latest ? String(latest.source || "unknown").toUpperCase() : "Redis / MySQL Compare",
-            "HIT " + Number(probe.hits || 0),
-            "MISS " + (Number(probe.misses || 0) + Number(probe.fallbacks || 0)));
+            latest ? probeSourceName(latest.source) : "Redis / MySQL 对比",
+            "命中 " + Number(probe.hits || 0),
+            "未命中 " + (Number(probe.misses || 0) + Number(probe.fallbacks || 0)));
         byId("story-redis-stock").textContent = latest ? stockText(latest.stock) : "—";
         byId("probe-live-mysql").textContent = latest ? stockText(latest.authoritativeStock) : "—";
         byId("probe-live-old").textContent = latest ? (latest.old ? "观察到旧值" : "当前样本一致") : "未观察";
@@ -765,12 +837,15 @@
     }
 
     function modeLabel() {
+        if (state.executionMode === "result" && state.record && state.record.run.status === "failed") {
+            return "执行失败 · 结果快照";
+        }
         var labels = {
             idle: "准备实验",
-            executing: "正在真实执行",
+            executing: "正在运行 · 实时观测",
             replaying: "正在回放实验过程",
             paused: "回放已暂停",
-            result: "实验结果",
+            result: "实验已完成 · 结果快照",
             error: "真实执行失败"
         };
         return labels[state.executionMode] || labels.idle;
@@ -784,7 +859,9 @@
         byId("header-status").textContent = label;
         byId("running-phase").textContent = label;
         byId("running-material").textContent = state.profile ? state.profile.name : "—";
-        byId("running-strategy").textContent = strategyNames[state.strategy] || "—";
+        byId("running-strategy").textContent = strategyNames[state.strategy] || "尚未选择方案";
+        byId("running-strategy-code").textContent = state.strategy === "sync-invalidate" ? "A" :
+            (state.strategy === "outbox-mq-invalidate" ? "B" : "—");
         byId("execution-boundary-copy").textContent = state.executionDetail ||
             (busy ? "后端正在真实扣减库存并完成失效链路；此时尚未播放任何阶段。" :
                 "真实执行与回放相互分离；回放按钮只读取本轮 Trace。");
@@ -792,9 +869,9 @@
             ((state.replay.index + 1) + " / " + stageNames.length) : "— / " + stageNames.length;
         byId("timeline-mode").textContent = label;
         byId("start-purchase-run").disabled = busy || !state.strategy;
-        byId("start-purchase-run").textContent = busy ? "后端正在真实执行…" : "开始 150 个请求实验";
+        byId("start-purchase-run").textContent = busy ? "实验运行中…" : "开始实验";
         byId("prepare-action-hint").textContent = state.strategy ?
-            ("本轮将真实执行“" + strategyNames[state.strategy] + "”；完成后自动回放五个关键步骤。请先结束其他标签页中的查询压测。") :
+            "开始时重置实验库存；请勿同时运行查询压测。" :
             "请先选择一种缓存失效方案。";
         byId("replay-previous").disabled = !ready || busy || state.replay.index <= 0;
         byId("replay-next").disabled = !ready || busy || state.replay.index >= stageNames.length - 1;
@@ -802,15 +879,20 @@
         byId("replay-toggle").textContent = state.replay.playing ? "暂停" : "播放";
         byId("replay-toggle").setAttribute("aria-label", state.replay.playing ? "暂停回放" : "播放回放");
         byId("replay-toggle").setAttribute("aria-pressed", String(state.replay.playing));
+        document.querySelector(".purchase-replay-controls").hidden = !ready || busy;
+        byId("buyers-metric-label").textContent = ready && state.replay.index === 0 ? "时间点" : "进度";
+        byId("service-metric-label").textContent = ready && state.replay.index >= 1 ? "平均耗时" : "进度";
+        byId("mysql-metric-label").textContent = ready && state.replay.index >= 1 ? "提交耗时" : "进度";
         document.querySelectorAll(".purchase-strategy-card").forEach(function (button) {
             button.disabled = busy;
         });
-        byId("view-full-process").disabled = !ready || busy;
-        byId("run-other-strategy").disabled = !ready || busy;
-        byId("rerun-current-strategy").disabled = busy || !ready;
-        byId("open-technical-details").disabled = !ready;
+        var resultReady = !!(state.record || evidenceRecord);
+        byId("view-full-process").disabled = !resultReady || busy;
+        byId("run-other-strategy").disabled = !resultReady || busy;
+        byId("rerun-current-strategy").disabled = !resultReady || busy;
         document.body.dataset.purchaseStrategy = state.strategy || "unselected";
         document.body.dataset.purchaseStatus = state.executionMode;
+        renderInventoryMonitor();
     }
 
     function renderTimeline() {
@@ -838,7 +920,7 @@
             button.dataset.status = status;
             button.classList.toggle("is-current", ready && index === state.replay.index);
             button.disabled = !ready || state.executionMode === "executing" || index > state.replay.furthest;
-            button.querySelector("[data-step-status]").textContent = status;
+            button.querySelector("[data-step-status]").textContent = replayStatusNames[status] || status;
         });
     }
 
@@ -858,7 +940,7 @@
         var initialRedis = record && record.baseline ? record.baseline.redisStock :
             (state.stock && state.stock.redisStock);
         byId("allegory-status").textContent = record ? "等待回放" : "等待执行";
-        byId("topology-status").textContent = record ? "TRACE READY" : "IDLE";
+        byId("topology-status").textContent = record ? "链路已保存" : "待命";
         byId("story-redis-stock").textContent = stockText(initialRedis);
         setNode("node-buyers", "idle", "等待释放任务", "0 / 150", "150 × 1");
         setNode("node-service", "idle", "等待请求", "—", "—");
@@ -867,15 +949,15 @@
         setNode("node-sync-redis", "idle", "等待事务提交", "—", "—");
         setNode("node-outbox", state.strategy === "sync-invalidate" ? "unused" : "idle",
             state.strategy === "sync-invalidate" ? "同步方案不写入" : "等待事务", "同事务", "—");
-        setNode("node-worker", "idle", "等待 Outbox", "0", "—");
+        setNode("node-worker", "idle", "等待 Outbox 记录", "0", "—");
         setNode("node-mq", "idle", "等待发布", "0", "—");
         setNode("node-consumer", "idle", "等待消息", "0 / 150", "—");
-        setNode("node-async-redis", "idle", "等待缓存失效 Consumer", "1 key", "0 events");
+        setNode("node-async-redis", "idle", "等待缓存失效消费者", "1 个键", "0 条消息");
         ["edge-tasks-service", "edge-service-mysql", "edge-mysql-response", "edge-worker-mq",
             "edge-mq-consumer", "edge-consumer-redis"].forEach(function (edge) {
             setFlowEdge(edge, "idle");
         });
-        focusFlowNode(null, "critical", record ? "TRACE READY" : "等待执行", "等待 Purchase Tasks");
+        focusFlowNode(null, "critical", record ? "链路已保存" : "等待执行", "等待购买任务");
         renderProbeStream(record && record.probe, record ? "completed" : "idle");
         byId("purchase-fault-banner").hidden = true;
     }
@@ -889,12 +971,12 @@
         var response = traceStep(run, ["purchase_responded"]);
         var invalidation = traceStep(run, ["cache_invalidated", "delete_cache", "cache_invalidation_failed", "delete_cache_failed"]);
         var evidence = {
-            kicker: "STEP " + String(index + 1).padStart(2, "0") + " / 06",
+            kicker: "步骤 " + String(index + 1).padStart(2, "0") + " / " + String(stageNames.length).padStart(2, "0"),
             title: stageNames[index],
             summary: "",
             mysql: run.initialStock,
             redis: record.baseline ? record.baseline.redisStock : null,
-            message: state.strategy === "sync-invalidate" ? "未使用" : "等待 Outbox",
+            message: state.strategy === "sync-invalidate" ? "未使用" : "等待 Outbox 记录",
             duration: "—"
         };
         if (index === 0) {
@@ -912,26 +994,27 @@
             evidence.summary = response ? response.detail : "购买响应已全部收集。";
             evidence.mysql = response ? response.mysqlStock : run.finalMySQLStock;
             evidence.redis = response ? response.redisStock : run.finalRedisStock;
-            evidence.message = state.strategy === "sync-invalidate" ? "响应等待 Redis DEL" : "响应不等待后台删缓存";
+            evidence.message = state.strategy === "sync-invalidate" ? "响应等待 Redis 删除缓存" : "响应不等待后台删缓存";
             evidence.duration = formatMS(run.purchaseP99Ms);
         } else if (index === 3) {
             evidence.summary = state.strategy === "sync-invalidate" ?
                 (invalidation ? invalidation.detail : "同步 Redis DEL 已执行。") :
-                ("Outbox " + outbox.completed + " / " + outbox.total + " 已完成，MQ " + (run.mqStatus || "—") + "。");
+                ("Outbox " + outbox.completed + " / " + outbox.total + " 已完成，MQ " +
+                    runtimeStatusName(run.mqStatus) + "。");
             evidence.mysql = run.finalMySQLStock;
             evidence.redis = invalidation ? invalidation.redisStock : null;
             evidence.message = state.strategy === "sync-invalidate" ?
-                (invalidation && /failed/i.test(invalidation.action) ? "Redis DEL 失败" : "同步 DEL 完成") :
-                ("Outbox " + (run.outboxStatus || "—") + " / MQ " + (run.mqStatus || "—"));
+                (invalidation && /failed/i.test(invalidation.action) ? "Redis 删除失败" : "同步删除完成") :
+                ("Outbox " + runtimeStatusName(run.outboxStatus) + " / MQ " + runtimeStatusName(run.mqStatus));
             evidence.duration = formatMS(run.cacheInvalidationLatencyMs);
         } else if (index === 4) {
-            evidence.summary = "真实 Cached 探针完成 " + probe.completed + " 次，观察到 " + probe.oldReads + " 次旧库存读取。";
+            evidence.summary = "真实缓存探针完成 " + probe.completed + " 次，观察到 " + probe.oldReads + " 次旧库存读取。";
             evidence.mysql = run.finalMySQLStock;
             evidence.redis = run.finalRedisStock;
             evidence.message = state.strategy === "sync-invalidate" ? "未使用" : ("重试 " + Number(run.retryCount || 0) + " 次");
             evidence.duration = probe.maxStaleWindowMs > 0 ? formatMS(probe.maxStaleWindowMs) : "0 ms";
         } else {
-            evidence.kicker = run.status === "failed" ? "FAILED TRACE" : "RESULT TRACE";
+            evidence.kicker = run.status === "failed" ? "失败链路" : "结果链路";
             evidence.summary = run.status === "failed" ?
                 (run.errorMessage || "后端返回失败状态，已保留本轮证据。") :
                 ("成功购买 " + run.purchaseSucceeded + "，最终 MySQL 与 Redis " +
@@ -939,7 +1022,7 @@
             evidence.mysql = run.finalMySQLStock;
             evidence.redis = run.finalRedisStock;
             evidence.message = state.strategy === "sync-invalidate" ? "同步链路结束" :
-                ("Outbox " + (run.outboxStatus || "—") + " / MQ " + (run.mqStatus || "—"));
+                ("Outbox " + runtimeStatusName(run.outboxStatus) + " / MQ " + runtimeStatusName(run.mqStatus));
             evidence.duration = formatMS(run.purchaseP99Ms);
         }
         return evidence;
@@ -949,20 +1032,20 @@
         var run = record.run;
         var probe = record.probe || {};
         if (index === 0) {
-            return "执行解释：150 个唯一请求已进入 Purchase Service，事务开始并发推进。";
+            return "执行解释：150 个唯一请求已进入购买服务，事务开始并发推进。";
         }
         if (index === 1) {
-            return "执行解释：Inventory、Order 与可选 Outbox 已在 MySQL 事务边界内提交。";
+            return "执行解释：库存、订单与可选 Outbox 已在 MySQL 事务边界内提交。";
         }
         if (index === 2) {
             return record.strategy === "sync-invalidate" ?
-                "执行解释：Response 等待同步 Redis DEL，因此失效耗时属于请求关键路径。" :
-                "执行解释：Response 在 COMMIT 后结束；缓存失效转入独立异步阶段。";
+                "执行解释：响应等待同步删除缓存，因此失效耗时属于请求关键路径。" :
+                "执行解释：响应在事务提交后结束；缓存失效转入独立异步阶段。";
         }
         if (index === 3) {
             return record.strategy === "sync-invalidate" ?
-                "执行解释：Redis DEL 已在响应前完成，后续读取将按 Cache-Aside 回填。" :
-                "执行解释：Publisher 扫描 Outbox，经 MQ 与缓存失效 Consumer 推进到幂等 Redis DEL。";
+                "执行解释：Redis 删除缓存已在响应前完成，后续读取将按旁路缓存模式回填。" :
+                "执行解释：发布器扫描 Outbox，经 MQ 与缓存失效消费者推进到幂等删除缓存。";
         }
         if (index === 4) {
             return Number(probe.oldReads || 0) > 0 ?
@@ -979,13 +1062,13 @@
         }
         if (record.strategy === "sync-invalidate") {
             return consistent ?
-                "执行解释：最终状态一致；同步 DEL 的耗时计入了 Response。" :
+                "执行解释：最终状态一致；同步删除缓存的耗时计入了响应。" :
                 "执行解释：MySQL 已提交，但 Redis 尚未与权威库存一致。";
         }
         if (consistent) {
             return Number(run.retryCount || 0) > 0 ?
-                "执行解释：Publisher 经真实重试后完成失效，Redis 最终一致。" :
-                "执行解释：Response 先结束，异步链路随后完成 Redis DEL。";
+                "执行解释：发布器经真实重试后完成失效，Redis 最终一致。" :
+                "执行解释：响应先结束，异步链路随后完成 Redis 删除缓存。";
         }
         return "执行解释：请求关键路径已结束，缓存失效链路仍未收敛。";
     }
@@ -998,29 +1081,28 @@
         setGameMetric("game-success-count", index >= 2 ? formatNumber(record.run.purchaseSucceeded) : "0");
         setGameMetric("stage-mysql-stock", stockText(evidence.mysql));
         setGameMetric("stage-redis-stock", stockText(evidence.redis));
-        setGameMetric("game-old-read-count", index >= 4 ? formatNumber(record.probe.oldReads) : "0");
+        setGameMetric("game-old-read-count", formatNumber(record.probe.oldReads));
         byId("stage-message-state").textContent = evidence.message;
         setGameMetric("stage-duration", evidence.duration);
         byId("game-verdict-line").textContent = stageVerdict(record, index);
         byId("purchase-stock-summary").textContent =
             "回放快照 · MySQL " + stockText(evidence.mysql) + " · Redis " + stockText(evidence.redis);
-        byId("control-status").textContent = evidence.summary;
     }
 
     function applyRequestFrame(record) {
         var run = record.run;
         var request = traceStep(run, ["transaction_started"]);
-        byId("allegory-status").textContent = "Purchase Tasks 正在进入";
-        byId("topology-status").textContent = "REQUEST RECEIVED";
+        byId("allegory-status").textContent = "购买任务正在进入";
+        byId("topology-status").textContent = "已接收请求";
         setNode("node-buyers", "running", "150 个唯一请求正在释放", formatMS(request && request.atMs), "150 × 1");
-        setNode("node-service", "running", "购买 API 已接收", "—", "150 requests");
+        setNode("node-service", "running", "购买接口已接收", "—", "150 个请求");
         setNode("node-mysql", "waiting", "等待事务提交", "—", run.initialStock + " → ?");
         setFlowEdge("edge-tasks-service", "running");
-        focusFlowNode("node-service", "critical", "Purchase Service 正在编排", "请求关键路径正在推进");
+        focusFlowNode("node-service", "critical", "购买服务正在编排", "请求关键路径正在推进");
         setStepExplanation({
             phase: "replay-requests",
-            term: "Purchase Tasks 进入服务",
-            action: "一批唯一购买请求已经释放，并开始进入 Purchase Service。",
+            term: "购买任务进入服务",
+            action: "一批唯一购买请求已经释放，并开始进入购买服务。",
             reason: "独立 request_id 让每次购买都能验证并发、幂等与售罄判断。",
             evidence: "请求：" + run.purchaseRequested + " · TRACE：" + formatMS(request && request.atMs),
             next: "成功请求进入各自的 MySQL 事务。",
@@ -1034,17 +1116,17 @@
         var outbox = outboxSummary(run);
         setNode("node-buyers", "success", "150 个唯一请求已释放", "150 / 150", "150 × 1");
         setNode("node-service", "success", "购买结果已收集", formatMS(run.purchaseLatencyMs),
-            run.purchaseSucceeded + " success");
+            run.purchaseSucceeded + " 个成功");
         setNode("node-mysql", "success", "事务已提交", formatMS(transaction && transaction.durationMs),
             run.initialStock + " → " + run.finalMySQLStock);
         setFlowEdge("edge-tasks-service", "completed");
         setFlowEdge("edge-service-mysql", "completed");
         if (state.strategy === "outbox-mq-invalidate") {
-            setNode("node-outbox", "success", "订单与事件同事务提交", "同事务", outbox.total + " events");
+            setNode("node-outbox", "success", "订单与事件同事务提交", "同事务", outbox.total + " 条事件");
         } else {
-            setNode("node-outbox", "unused", "同步方案不写入", "—", "not used");
+            setNode("node-outbox", "unused", "同步方案不写入", "—", "未使用");
         }
-        focusFlowNode("node-mysql", "critical", "MySQL Transaction 已提交", "事务边界已确认");
+        focusFlowNode("node-mysql", "critical", "MySQL 事务已提交", "事务边界已确认");
         setStepExplanation({
             phase: "replay-transaction",
             term: state.strategy === "outbox-mq-invalidate" ?
@@ -1056,7 +1138,7 @@
             evidence: "成功：" + run.purchaseSucceeded + " · 库存：" + run.initialStock + " → " +
                 run.finalMySQLStock + (state.strategy === "outbox-mq-invalidate" ?
                     " · Outbox：" + outbox.total : ""),
-            next: "事务提交后到达 Response 边界。",
+            next: "事务提交后到达响应边界。",
             tone: "critical"
         });
     }
@@ -1064,30 +1146,30 @@
     function applyResponseFrame(record) {
         var run = record.run;
         setNode("node-service", "success", "响应已收集", formatMS(run.purchaseLatencyMs),
-            run.purchaseSucceeded + " success");
+            run.purchaseSucceeded + " 个成功");
         if (state.strategy === "sync-invalidate") {
             var failedStep = traceStep(run, ["cache_invalidation_failed", "delete_cache_failed"]);
             setNode("node-sync-redis", failedStep ? "failed" : "success",
                 failedStep ? "DEL 重试耗尽" : "Redis DEL 已完成",
-                formatMS(run.cacheInvalidationLatencyMs), failedStep ? "failed" : "cache deleted");
+                formatMS(run.cacheInvalidationLatencyMs), failedStep ? "失败" : "缓存已删除");
         }
         setNode("node-response", run.status === "failed" ? "failed" : "success", "购买响应已返回",
             formatMS(run.purchaseP99Ms), run.purchaseSucceeded + " / " + PURCHASE_COUNT);
         setFlowEdge("edge-mysql-response", run.status === "failed" ? "failed" : "completed");
-        focusFlowNode("node-response", "critical", "Response 边界已到达",
+        focusFlowNode("node-response", "critical", "响应边界已到达",
             state.strategy === "sync-invalidate" ? "同步 Redis DEL 已包含在关键路径" : "请求关键路径结束，异步阶段可以展开");
         setStepExplanation({
             phase: "replay-response",
-            term: "购买请求到达 Response 边界",
+            term: "购买请求到达响应边界",
             action: state.strategy === "sync-invalidate" ?
                 "Redis DEL 已包含在请求内，完成后购买结果才返回。" :
                 "MySQL 与 Outbox 已提交，购买结果先返回，后台链路继续。",
             reason: state.strategy === "sync-invalidate" ?
                 "同步方案用更长的请求路径换取更早的缓存失效。" :
                 "异步方案缩短请求路径，把删缓存交给可靠事件链。",
-            evidence: "成功：" + run.purchaseSucceeded + " · Response P99：" + formatMS(run.purchaseP99Ms),
+            evidence: "成功：" + run.purchaseSucceeded + " · 响应 P99：" + formatMS(run.purchaseP99Ms),
             next: state.strategy === "sync-invalidate" ?
-                "查看同步 DEL 与后续缓存回填。" : "Publisher 开始扫描 Outbox。",
+                "查看同步删除与后续缓存回填。" : "Outbox 发布器开始扫描记录。",
             tone: "critical"
         });
     }
@@ -1100,7 +1182,7 @@
             var invalidated = traceStep(run, ["cache_invalidated", "delete_cache"]);
             setNode("node-sync-redis", failedStep ? "failed" : "success",
                 failedStep ? "DEL 重试耗尽" : "Redis DEL 已完成",
-                formatMS(run.cacheInvalidationLatencyMs), invalidated ? "cache deleted" : "—");
+                formatMS(run.cacheInvalidationLatencyMs), invalidated ? "缓存已删除" : "—");
             focusFlowNode(null, "complete", failedStep ? "同步失效失败" : "同步请求链路已完成",
                 failedStep ? "检查 Redis DEL 失败证据" : "没有异步支线");
             setStepExplanation({
@@ -1110,40 +1192,40 @@
                     "Redis 旧副本未能成功删除，失败证据已经保留。" :
                     "请求已经删除" + currentMaterialName() + "的 Redis 查询副本。",
                 reason: "DEL 只删除查询副本，不删除 MySQL 中的真实库存。",
-                evidence: "平均 DEL：" + formatMS(run.cacheInvalidationLatencyMs) +
-                    " · Redis：" + (failedStep ? "删除失败" : "MISS"),
+                evidence: "平均删除耗时：" + formatMS(run.cacheInvalidationLatencyMs) +
+                    " · Redis：" + (failedStep ? "删除失败" : "未命中"),
                 next: failedStep ? "检查 Redis 错误与请求失败信息。" : "查看探针是否从 MySQL 回填最新值。",
                 tone: failedStep ? "error" : "complete"
             });
         } else {
             setNode("node-worker", outbox.retry ? "retry" : "success",
                 outbox.retry ? "发布失败，等待重试" : "凭证已认领发布",
-                String(run.retryCount || 0) + " retries", outbox.total + " events");
+                String(run.retryCount || 0) + " 次重试", outbox.total + " 条事件");
             setNode("node-mq", outbox.retry ? "retry" : "success",
                 outbox.retry ? "发布包含重试" : "消息已由 Broker 接收",
                 String(outbox.published + outbox.completed), run.mqStatus || "—");
             setNode("node-consumer", outbox.completed === outbox.total && outbox.total ? "success" : "running",
                 outbox.completed ? "幂等失效已执行" : "正在消费消息",
-                outbox.completed + " / " + (outbox.total || PURCHASE_COUNT) + " msgs",
-                outbox.completed ? "Redis DEL" : "—");
+                outbox.completed + " / " + (outbox.total || PURCHASE_COUNT) + " 条消息",
+                outbox.completed ? "Redis 删除缓存" : "—");
             setNode("node-async-redis", outbox.completed === outbox.total && outbox.total ? "success" : "running",
                 outbox.completed ? "缓存键已删除" : "等待幂等 DEL",
-                "1 key", outbox.completed + " / " + (outbox.total || PURCHASE_COUNT) + " events");
+                "1 个键", outbox.completed + " / " + (outbox.total || PURCHASE_COUNT) + " 条事件");
             setFlowEdge("edge-worker-mq", "completed");
             setFlowEdge("edge-mq-consumer", "completed");
             setFlowEdge("edge-consumer-redis", outbox.completed ? "completed" : "running");
             focusFlowNode(outbox.completed === outbox.total && outbox.total ? "node-async-redis" : "node-consumer",
-                "async", "异步失效链路", "Publisher → MQ → 缓存失效 Consumer → Redis DEL");
+                "async", "异步失效链路", "发布器 → MQ → 缓存失效消费者 → Redis 删除缓存");
             if (outbox.completed === outbox.total && outbox.total) {
                 renderCompletedAsyncExplanation(run, outbox, "replay");
             } else {
                 setStepExplanation({
                     phase: "replay-async-invalidation",
-                    term: "Outbox → RocketMQ → 缓存失效 Consumer → DEL",
+                    term: "Outbox → RocketMQ → 缓存失效消费者 → 删除缓存",
                     action: "缓存失效事件正沿独立消息链删除" + currentMaterialName() + "的查询副本。",
-                    reason: "专用 Consumer 不处理订单消息，失败时不 ACK，等待幂等重投。",
+                    reason: "专用消费者不处理订单消息，失败时不确认，等待幂等重投。",
                     evidence: "完成：" + outbox.completed + "/" + (outbox.total || PURCHASE_COUNT) +
-                        " · 重试：" + Number(run.retryCount || 0) + " · Key：1",
+                        " · 重试：" + Number(run.retryCount || 0) + " · 缓存键：1",
                     next: "全部确认后查看一致性探针。",
                     tone: "async"
                 });
@@ -1158,10 +1240,10 @@
         renderProbeStream(probe, "completed");
         byId("story-redis-stock").textContent = stockText(run.finalRedisStock);
         focusFlowNode("node-probe", state.strategy === "outbox-mq-invalidate" ? "async" : "critical",
-            "Consistency Probe 已冻结", probe.completed + " 个真实样本");
+            "一致性探针已冻结", probe.completed + " 个真实样本");
         setStepExplanation({
             phase: "replay-probe",
-            term: "Consistency Probe 检查缓存窗口",
+            term: "一致性探针检查缓存窗口",
             action: "探针持续比较 Redis 查询结果与 MySQL 真实库存。",
             reason: "最终一致不代表过程中没有旧读，必须观察整个失效窗口。",
             evidence: "样本：" + probe.completed + " · 旧读：" + probe.oldReads +
@@ -1237,7 +1319,7 @@
                 });
             }
         });
-        if (index === 3 && state.strategy === "outbox-mq-invalidate") {
+        if (index === 3 && record.strategy === "outbox-mq-invalidate") {
             var published = (record.run.outbox || []).filter(function (event) { return event.publishedAt; }).length;
             var invalidated = (record.run.outbox || []).filter(function (event) { return event.invalidatedAt; }).length;
             var retries = (record.run.outbox || []).reduce(function (total, event) {
@@ -1292,239 +1374,18 @@
         return events;
     }
 
-    function renderEventLog(record, index) {
-        var list = byId("story-event-log");
-        var events = stageEvents(record, index);
-        list.replaceChildren();
-        if (!events.length) {
-            var empty = document.createElement("li");
-            var emptyTime = document.createElement("time");
-            var emptyBody = document.createElement("span");
-            emptyTime.textContent = "TRACE";
-            emptyBody.textContent = "本阶段没有额外事件；页面不会补造动画或日志。";
-            empty.appendChild(emptyTime);
-            empty.appendChild(emptyBody);
-            list.appendChild(empty);
-            return;
-        }
-        events.slice(-6).forEach(function (event) {
-            var item = document.createElement("li");
-            item.className = event.failed ? "is-failed" : "";
-            var time = document.createElement("time");
-            var body = document.createElement("span");
-            var strong = document.createElement("strong");
-            time.textContent = event.clock;
-            strong.textContent = event.label;
-            body.appendChild(strong);
-            body.appendChild(document.createTextNode(" · " + event.detail));
-            item.appendChild(time);
-            item.appendChild(body);
-            list.appendChild(item);
-        });
-    }
-
-    function renderBattleEvidence(record) {
-        var run = record.run;
-        var probe = record.probe || {};
-        var evidence = byId("report-evidence");
-        var quality = probeEvidenceQuality(probe);
-        var chips = [
-            "P99 " + formatMS(run.purchaseP99Ms),
-            "旧读 " + formatNumber(probe.oldReads) + " 次",
-            "窗口 " + (Number(probe.maxStaleWindowMs) > 0 ? formatMS(probe.maxStaleWindowMs) : "0 ms"),
-            "最终库存 " + stockText(run.finalMySQLStock) + " / " + stockText(run.finalRedisStock),
-            "探针完成 " + quality.completed + " · 错误 " + quality.errors
-        ];
-        if (Number(run.retryCount) > 0) {
-            chips.push("Publisher 重试 " + formatNumber(run.retryCount) + " 次");
-        }
-        if (Number(probe.errors) > 0) {
-            chips.push("探针错误 " + formatNumber(probe.errors) + " 次");
-        }
-        evidence.replaceChildren();
-        chips.forEach(function (copy) {
-            var chip = document.createElement("span");
-            chip.textContent = copy;
-            evidence.appendChild(chip);
-        });
-    }
-
-    function shopkeeperVerdict(record) {
-        var run = record.run;
-        var probe = record.probe || {};
-        var p99 = formatMS(run.purchaseP99Ms);
-        var oldReads = Number(probe.oldReads || 0);
-        var staleWindow = Number(probe.maxStaleWindowMs || 0);
-        var retries = Number(run.retryCount || 0);
-        var consistent = currentConsistency(run);
-        var probeQuality = probeEvidenceQuality(probe);
-        if (run.status === "failed") {
-            return "这轮采购没有顺利结算。已经完成的账本动作仍然保留，但链路在“" +
-                (run.errorMessage || "未知步骤") + "”处留下了失败证据；应先展开工程证据，再决定是否重跑。";
-        }
-        if (record.strategy === "sync-invalidate") {
-            var syncOpening = "同步方案把 Redis DEL 放在请求关键路径，本轮 Response P99 为 " + p99 + "。";
-            var syncConsistency = !probeQuality.usable ?
-                "库存探针仅完成 " + probeQuality.completed + " 次并出现 " +
-                    probeQuality.errors + " 次错误，样本不足以评价旧读窗口。" :
-                (oldReads === 0 ?
-                "20 QPS 探针没有观察到旧库存读取，这只能说明本轮观测窗口内更新足够及时。" :
-                "探针仍读到 " + oldReads + " 次旧库存，最大不一致窗口为 " +
-                    formatMS(staleWindow) + "，需要检查同步删除耗时与查询并发。");
-            var syncEnding = consistent === true ?
-                "最终 MySQL 与 Redis 已经对齐；代价是每笔购买响应都要把缓存删除留在请求链内。" :
-                "最终库存尚未对齐，不能因为采用同步方案就假定一致性已经成立。";
-            return syncOpening + syncConsistency + syncEnding;
-        }
-        var asyncOpening = "异步方案在 MySQL COMMIT 后结束请求关键路径，本轮 Response P99 为 " + p99 + "。";
-        var asyncConsistency = !probeQuality.usable ?
-            "库存探针仅完成 " + probeQuality.completed + " 次并出现 " +
-                probeQuality.errors + " 次错误，不能据此声称没有短暂旧读。" :
-            (oldReads === 0 ?
-            "探针没有观察到旧读，异步链路在本轮负载下及时完成，但这不代表延迟窗口永远为零。" :
-            "异步失效完成前出现 " + oldReads + " 次旧读，最大不一致窗口为 " +
-                formatMS(staleWindow) + "。");
-        var asyncRecovery = retries > 0 ?
-            "消息链路经历 " + retries + " 次真实重试后" + (consistent ? "仍收敛到最终一致。" : "仍未收敛到最终一致。") :
-            (consistent ? "消息链路没有记录重试，并已收敛到最终一致。" : "消息链路没有记录重试，但最终库存仍未对齐。");
-        return asyncOpening + asyncConsistency + asyncRecovery;
-    }
-
-    function renderBattleOverview(record) {
-        var run = record.run;
-        var materialName = record.materialName || (state.profile && state.profile.name) || "材料";
-        var strategyName = strategyNames[record.strategy] || record.strategy || "—";
-        byId("report-document-number").textContent = "本轮实验结果";
-        byId("report-material-title").textContent = materialName;
-        byId("report-strategy-subtitle").textContent = strategyName;
-        byId("report-material").textContent = materialName;
-        byId("report-strategy").textContent = strategyName;
-        byId("report-participants").textContent = formatNumber(run.purchaseRequested) + " 个请求";
-        byId("report-success").textContent = formatNumber(run.purchaseSucceeded) + " 个";
-        byId("report-soldout").textContent = formatNumber(run.soldOutRequests) + " 个";
-        byId("report-initial-stock").textContent = formatNumber(run.initialStock);
-        // frozenAt 是 Outbox、缓存失效 Consumer 和最终探针都已收集后的前端结算时刻。
-        byId("report-executed-at").textContent = formatDateTime(record.frozenAt || run.executedAt);
-        var quality = probeEvidenceQuality(record.probe);
-        byId("report-probe-quality").textContent =
-            "完成 " + quality.completed + " 次 · 错误 " + quality.errors + " 次" +
-            (quality.usable ? "" : " · 证据不足");
-        byId("purchase-conclusion").textContent = shopkeeperVerdict(record);
-        renderBattleEvidence(record);
-    }
-
-    function clearSettlementTimer() {
-        if (settlement.timer) {
-            window.clearTimeout(settlement.timer);
-            settlement.timer = null;
-        }
-    }
-
-    function resetBattleReportVisual() {
-        clearSettlementTimer();
-        settlement.requestId = null;
-        var section = byId("purchase-main-results");
-        var placeholder = byId("battle-report-placeholder");
-        var progress = byId("battle-settlement");
-        var report = byId("battle-report-scroll");
-        section.dataset.reportState = "waiting";
-        placeholder.hidden = false;
-        progress.hidden = true;
-        report.setAttribute("aria-hidden", "true");
-        byId("shop-allegory-stage").classList.remove("is-settling");
-        byId("technical-details-panel").open = false;
-        byId("open-technical-details").textContent = "展开工程证据";
-    }
-
-    function prepareBattleReport(record) {
-        var requestId = record && record.run && record.run.requestId;
-        if (!requestId || settlement.requestId === requestId) {
-            return;
-        }
-        clearSettlementTimer();
-        settlement.requestId = requestId;
-        var section = byId("purchase-main-results");
-        var report = byId("battle-report-scroll");
-        byId("battle-report-placeholder").hidden = false;
-        byId("battle-settlement").hidden = true;
-        report.setAttribute("aria-hidden", "true");
-        section.dataset.reportState = "waiting";
-        byId("shop-allegory-stage").classList.remove("is-settling");
-        byId("technical-details-panel").open = false;
-        byId("open-technical-details").textContent = "展开工程证据";
-        if (settlement.revealed[requestId]) {
-            section.dataset.reportState = "revealed";
-            byId("battle-report-placeholder").hidden = true;
-            report.setAttribute("aria-hidden", "false");
-        }
-    }
-
-    function revealBattleReport(requestId) {
-        if (!requestId || settlement.requestId !== requestId) {
-            return;
-        }
-        clearSettlementTimer();
-        settlement.revealed[requestId] = true;
-        byId("purchase-main-results").dataset.reportState = "revealed";
-        byId("battle-report-placeholder").hidden = true;
-        byId("battle-settlement").hidden = true;
-        byId("battle-report-scroll").setAttribute("aria-hidden", "false");
-        byId("shop-allegory-stage").classList.remove("is-settling");
-        byId("result-status").textContent = "本轮结果已生成";
+    function showResults(record, focus) {
         renderSavedResults();
-    }
-
-    function suspendBattleSettlement() {
-        if (byId("purchase-main-results").dataset.reportState !== "settling") {
+        if (!record || !focus || resultsFocusRequestId === record.run.requestId) {
             return;
         }
-        clearSettlementTimer();
-        byId("purchase-main-results").dataset.reportState = "waiting";
-        byId("battle-report-placeholder").hidden = false;
-        byId("battle-settlement").hidden = true;
-        byId("battle-report-scroll").setAttribute("aria-hidden", "true");
-        byId("shop-allegory-stage").classList.remove("is-settling");
-    }
-
-    function settleBattleReport(record, animate) {
-        if (!record || !record.run) {
-            return;
-        }
-        prepareBattleReport(record);
-        renderResults(record);
-        var requestId = record.run.requestId;
-        if (settlement.revealed[requestId] || animate === false) {
-            revealBattleReport(requestId);
-            return;
-        }
-        clearSettlementTimer();
-        byId("purchase-main-results").dataset.reportState = "settling";
-        byId("battle-report-placeholder").hidden = true;
-        byId("battle-settlement").hidden = false;
-        byId("battle-report-scroll").setAttribute("aria-hidden", "true");
-        byId("shop-allegory-stage").classList.add("is-settling");
-        var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        settlement.timer = window.setTimeout(function () {
-            revealBattleReport(requestId);
-        }, reduced ? 80 : SETTLEMENT_REVEAL_MS);
-    }
-
-    function renderResults(record) {
-        var run = record.run;
-        var probe = record.probe;
-        var consistent = currentConsistency(run);
-        byId("result-p99").textContent = formatMS(run.purchaseP99Ms);
-        byId("result-old-reads").textContent = formatNumber(probe.oldReads) + " 次";
-        byId("result-stale-window").textContent = probe.maxStaleWindowMs > 0 ?
-            formatMS(probe.maxStaleWindowMs) : "0 ms";
-        byId("result-consistency").textContent = consistent === null ? "待回填" : (consistent ? "一致" : "不一致");
-        byId("result-consistency").className = consistent === true ? "is-good" : (consistent === false ? "is-bad" : "");
-        byId("result-stock-pair").textContent = "MySQL " + stockText(run.finalMySQLStock) +
-            " / Redis " + stockText(run.finalRedisStock);
-        byId("result-status").textContent = run.status === "failed" ?
-            "真实运行失败" : "本轮结果已保存";
-        renderBattleOverview(record);
-        renderTechnicalDetails(record);
+        resultsFocusRequestId = record.run.requestId;
+        window.requestAnimationFrame(function () {
+            byId("purchase-results").scrollIntoView({
+                behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+                block: "start"
+            });
+        });
     }
 
     function renderTechnicalDetails(record) {
@@ -1538,6 +1399,10 @@
             "cache_invalidation_failed",
             "delete_cache_failed"
         ]);
+        byId("evidence-context").textContent = strategyNames[record.strategy] + " · " +
+            formatDateTime(record.frozenAt || run.executedAt) + " · " + run.requestId;
+        byId("detail-p50").textContent = formatMS(run.purchaseP50Ms);
+        byId("detail-p95").textContent = formatMS(run.purchaseP95Ms);
         byId("detail-success").textContent = formatNumber(run.purchaseSucceeded);
         byId("detail-soldout").textContent = formatNumber(run.soldOutRequests);
         byId("detail-duplicates").textContent = formatNumber(run.duplicateRequests);
@@ -1594,9 +1459,6 @@
         }
         options = options || {};
         state.replay.index = Math.max(0, Math.min(stageNames.length - 1, Number(index)));
-        if (state.replay.index < stageNames.length - 1) {
-            suspendBattleSettlement();
-        }
         if (options.advance !== false) {
             state.replay.furthest = Math.max(state.replay.furthest, state.replay.index);
         }
@@ -1616,10 +1478,9 @@
             applyCompleteFrame(state.record);
         }
         renderStageReadout(state.record, state.replay.index);
-        renderEventLog(state.record, state.replay.index);
-        renderResults(state.record);
         renderTimeline();
         renderHeaderAndControls();
+        renderInventoryMonitor();
         persistReplayPosition();
     }
 
@@ -1630,7 +1491,7 @@
         setExecutionMode("result",
             "实验结果来自已经完成的真实执行；可点击任意已完成步骤回看，不会再次请求购买接口。");
         renderPlaybackFrame(stageNames.length - 1, { advance: true });
-        settleBattleReport(state.record, true);
+        showResults(state.record, true);
     }
 
     function scheduleReplayAdvance() {
@@ -1696,7 +1557,7 @@
         if (next === stageNames.length - 1) {
             setExecutionMode("result",
                 "实验结果来自已经完成的真实执行；单步到达结算页不会再次执行购买。");
-            settleBattleReport(state.record, true);
+            showResults(state.record, true);
         }
     }
 
@@ -1709,15 +1570,20 @@
         if (index === stageNames.length - 1) {
             setExecutionMode("result",
                 "正在查看已保存报告；此操作只读取本轮 trace。");
-            settleBattleReport(state.record, true);
+            showResults(state.record, true);
         }
     }
 
     function resetIdleVisuals() {
+        stopProbe();
         state.record = null;
         state.liveRun = null;
+        state.runObservedAt = null;
+        state.observationHalted = false;
+        state.inventoryObservation = { firstMismatch: null };
+        state.probe = createProbeState();
         clearReplayTimer();
-        resetBattleReportVisual();
+        byId("technical-details-panel").open = false;
         state.replay.index = 0;
         state.replay.furthest = -1;
         state.replay.playing = false;
@@ -1734,27 +1600,10 @@
         setGameMetric("stage-duration", "—");
         byId("game-verdict-line").textContent =
             "执行解释：选择一种方案，观察请求边界与缓存失效边界如何分离。";
-        byId("story-event-log").replaceChildren();
-        var item = document.createElement("li");
-        var time = document.createElement("time");
-        var body = document.createElement("span");
-        time.textContent = "READY";
-        body.textContent = "等待真实 run 快照；节点状态只由后端进度、Outbox 与探针样本驱动。";
-        item.appendChild(time);
-        item.appendChild(body);
-        byId("story-event-log").appendChild(item);
-        byId("control-status").textContent = "等待真实执行";
-        byId("result-p99").textContent = "—";
-        byId("result-old-reads").textContent = "—";
-        byId("result-stale-window").textContent = "—";
-        byId("result-consistency").textContent = "—";
-        byId("result-consistency").className = "";
-        byId("result-stock-pair").textContent = "MySQL — / Redis —";
-        byId("result-status").textContent = "等待实验";
-        byId("purchase-conclusion").textContent =
-            "每次运行都会签发一份独立实验报告；完成两个不同方案后，才会解锁手动生成的方案对比。";
         setExecutionMode("idle");
         renderIdleStepExplanation();
+        renderSavedResults();
+        renderInventoryMonitor();
     }
 
     function probeWindowMS() {
@@ -1839,6 +1688,7 @@
                 observedAtMs: Math.max(0, performance.now() - probe.startedAt)
             });
             probe.completed += 1;
+            probe.lastSampleFailed = false;
             probe.latest = sample;
             if (probe.samples.length < 1000) {
                 probe.samples.push(sample);
@@ -1862,14 +1712,21 @@
                 );
                 probe.staleOpenedAt = null;
             }
-            if (state.executionMode === "executing") {
+            if (state.executionMode === "executing" && probe === state.probe) {
                 setGameMetric("game-old-read-count", formatNumber(probe.oldReads));
             }
         } catch (_) {
             probe.errors += 1;
+            probe.lastSampleFailed = true;
         } finally {
             probe.inFlight -= 1;
-            renderProbeStream(probe, probe.active ? "active" : "completed");
+            // 已离开的实验，其迟到响应不能覆盖新一轮界面。
+            if (probe === state.probe) {
+                renderProbeStream(probe, probe.active ? "active" : "completed");
+                if (state.executionMode === "executing") {
+                    renderInventoryMonitor();
+                }
+            }
         }
     }
 
@@ -1901,6 +1758,7 @@
         if (!run) {
             return;
         }
+        state.runObservedAt = Date.now();
         var outbox = outboxSummary(run);
         var processed = Math.min(Number(run.purchaseProcessed || 0), Number(run.purchaseRequested || PURCHASE_COUNT));
         var requested = Number(run.purchaseRequested || PURCHASE_COUNT);
@@ -2013,6 +1871,7 @@
                 "执行解释：同步 Redis DEL 已计入购买响应耗时。");
         renderProbeStream(state.probe, state.probe.active ? "active" : "completed");
         renderLiveStepExplanation(run);
+        renderInventoryMonitor();
     }
 
     async function pollCriticalPath(id, isActive) {
@@ -2079,6 +1938,9 @@
             baseline: clone(baseline || {}),
             run: clone(run),
             probe: probe,
+            inventoryObservation: clone(state.inventoryObservation),
+            purchaseP50Ms: Number(run.purchaseP50Ms || 0),
+            purchaseP95Ms: Number(run.purchaseP95Ms || 0),
             purchaseP99Ms: Number(run.purchaseP99Ms || 0),
             purchaseLatencyMs: Number(run.purchaseLatencyMs || 0),
             invalidationLatencyMs: Number(run.cacheInvalidationLatencyMs || 0),
@@ -2098,6 +1960,9 @@
         if (!record || !record.run) {
             return record;
         }
+        if (record.run.status === "completed") {
+            recentResults[record.strategy] = record;
+        }
         return record.run.status === "completed" && resultStore ?
             resultStore.save(record) : record;
     }
@@ -2107,7 +1972,7 @@
         clearReplayTimer();
         state.record = clone(record);
         state.liveRun = clone(record.run);
-        prepareBattleReport(state.record);
+        evidenceRecord = state.record;
         setSelectedStrategy(record.strategy);
         state.replay.index = Math.max(0, Math.min(stageNames.length - 1, Number(options.index || 0)));
         state.replay.furthest = options.furthest === undefined ?
@@ -2120,6 +1985,7 @@
                 "真实执行已经完成，正在自动回放五个关键步骤。" :
                 "真实执行已经完成；可使用上一步、播放暂停和下一步回看 Trace。");
         renderPlaybackFrame(state.replay.index, { advance: true });
+        renderSavedResults();
         if (options.autoplay) {
             scheduleReplayAdvance();
         }
@@ -2155,8 +2021,7 @@
             next: "基线完成后释放 150 个购买请求。",
             tone: "critical"
         });
-        byId("control-status").textContent = "真实执行进行中；回放控制暂不可用。";
-        byId("result-status").textContent = "正在真实执行";
+        renderSavedResults();
         window.requestAnimationFrame(function () {
             var executionView = byId("execution-heading").closest(".purchase-execution-view");
             executionView.scrollIntoView({
@@ -2199,17 +2064,18 @@
             stopProbe();
             var record = buildRecord(run, baseline);
             var saved = saveRecord(record);
-            // 真实执行和教学回放使用两只时钟：结果返回后停在第一步，用户明确操作才继续。
-            loadReplayRecord(saved || record, { autoplay: true, index: 0, furthest: 0 });
+            // 完成后停在真实终态；历史步骤仅在用户点击回放时展示。
+            loadReplayRecord(saved || record, { autoplay: false, index: stageNames.length - 1, furthest: stageNames.length - 1 });
             showToast(run.status === "completed" ?
-                "真实执行已完成，已停在第一步；点击下一步继续。" :
-                "真实执行返回失败状态，已停在第一步查看证据。",
+                "实验完成，库存与 A/B 结果已冻结。" :
+                "本轮执行失败，已保留真实证据。",
             run.status === "completed" ? "success" : "error");
         } catch (error) {
             stopProbe();
             clearReplayTimer();
             state.replay.playing = false;
             if (error.runStillActive && state.liveRun) {
+                state.observationHalted = true;
                 renderLiveRunHUD(state.liveRun);
                 setExecutionMode("executing",
                     "页面已停止高频探针，但后端 run 仍在推进；这不是购买事务失败。请检查 Publisher / 缓存失效 Consumer 状态。");
@@ -2232,7 +2098,7 @@
                 action: "请求在取得完整 trace 前失败，页面已经停止推进。",
                 reason: "缺少真实证据时不能继续展示成功步骤。",
                 evidence: "错误：" + error.message,
-                next: "查看失败节点和本轮执行记录。",
+                next: "查看当前失败节点与错误信息。",
                 tone: "error",
                 final: true
             });
@@ -2292,172 +2158,233 @@
         return "证据不足";
     }
 
-    function renderComparisonBattle(sync, asyncRecord) {
-        var syncRun = sync.run;
-        var asyncRun = asyncRecord.run;
-        var syncProbe = sync.probe;
-        var asyncProbe = asyncRecord.probe;
-        var materialName = sync.materialName || asyncRecord.materialName ||
-            (state.profile && state.profile.name) || "材料";
-        byId("duel-title").textContent = materialName + "购买方案对比";
-
-        var speedWinner = lowerMetricWinner(
-            syncRun.purchaseP99Ms,
-            asyncRun.purchaseP99Ms,
-            false,
-            0.03
-        );
-        byId("compare-sync-p99").textContent = formatMS(syncRun.purchaseP99Ms);
-        byId("compare-async-p99").textContent = formatMS(asyncRun.purchaseP99Ms);
-        byId("compare-speed-winner").textContent = winnerLabel(speedWinner);
-
-        var syncOld = Number(syncProbe.oldReads || 0);
-        var asyncOld = Number(asyncProbe.oldReads || 0);
-        var consistencyWinner = "unknown";
-        if (!probesAreComparable(syncProbe, asyncProbe)) {
-            consistencyWinner = "unknown";
-        } else if (syncOld === asyncOld) {
-            consistencyWinner = lowerMetricWinner(
-                syncProbe.maxStaleWindowMs,
-                asyncProbe.maxStaleWindowMs,
-                true,
-                0.03
-            );
-        } else {
-            consistencyWinner = syncOld < asyncOld ? "sync" : "async";
-        }
-        byId("compare-sync-old").textContent = formatNumber(syncOld) + " 次";
-        byId("compare-async-old").textContent = formatNumber(asyncOld) + " 次";
-        byId("compare-sync-window").textContent = syncProbe.maxStaleWindowMs > 0 ?
-            formatMS(syncProbe.maxStaleWindowMs) : "0 ms";
-        byId("compare-async-window").textContent = asyncProbe.maxStaleWindowMs > 0 ?
-            formatMS(asyncProbe.maxStaleWindowMs) : "0 ms";
-        byId("compare-consistency-winner").textContent = winnerLabel(consistencyWinner);
-
-        var syncFailure = !!traceStep(syncRun, [
-            "cache_invalidation_failed",
-            "delete_cache_failed"
-        ]);
-        var asyncRetryCount = Number(asyncRun.retryCount || 0);
-        var asyncHasErrorEvidence = (asyncRun.outbox || []).some(function (event) {
-            return !!event.lastError || event.status === "retry";
-        });
-        var asyncFailure = asyncHasErrorEvidence && asyncRun.status !== "completed";
-        var asyncRecovered = (asyncRetryCount > 0 || asyncHasErrorEvidence) &&
-            asyncRun.status === "completed" && currentConsistency(asyncRun) === true;
-        var isolationWinner = "async";
-        var isolationMeasured = false;
-        if (syncFailure && !asyncFailure) {
-            isolationWinner = "async";
-            isolationMeasured = true;
-        } else if (asyncFailure && !syncFailure) {
-            isolationWinner = "sync";
-            isolationMeasured = true;
-        } else if (asyncRecovered && !syncFailure) {
-            isolationWinner = "async";
-            isolationMeasured = true;
-        } else if (syncFailure && asyncFailure) {
-            isolationWinner = "tie";
-            isolationMeasured = true;
-        }
-        byId("compare-sync-isolation").textContent = syncFailure ?
-            "请求链出现失效失败" : "Redis DEL 位于购买请求链";
-        byId("compare-async-isolation").textContent = asyncFailure ? "消息链未完成" :
-            (asyncRecovered ? "重试 " + asyncRetryCount + " 次后收敛" : "缓存失效移出购买请求链");
-        byId("compare-isolation-winner").textContent = isolationMeasured ?
-            winnerLabel(isolationWinner) : "本轮未实测";
-
-        var speedConclusion = speedWinner === "unknown" ? "响应 P99 缺少有效数据" :
-            (speedWinner === "tie" ? "两种方案的响应 P99 接近" :
-                winnerLabel(speedWinner) + "的响应 P99 更低");
-        var consistencyConclusion = consistencyWinner === "unknown" ?
-            "一致性探针证据不足，暂不判断" :
-            (consistencyWinner === "tie" ? "两种方案的一致性表现接近" :
-                winnerLabel(consistencyWinner) + "观察到更少旧读或更短窗口");
-        byId("comparison-conclusion").textContent =
-            speedConclusion + "；" + consistencyConclusion + "。同步方案链路更短，" +
-            "Outbox + MQ 则把缓存失效移出购买响应链。选择取决于业务更看重实现简单，还是响应延迟与故障恢复。";
+    function resultCell(value, note, tone) {
+        return { value: value, note: note || "", tone: tone || "" };
     }
 
-    function renderWaitingComparison(sync, asyncRecord) {
-        var syncRun = sync && sync.run;
-        var asyncRun = asyncRecord && asyncRecord.run;
-        var syncProbe = sync && sync.probe;
-        var asyncProbe = asyncRecord && asyncRecord.probe;
-        byId("duel-title").textContent = "购买方案对比";
-        byId("compare-sync-p99").textContent = syncRun ? formatMS(syncRun.purchaseP99Ms) : "等待实验";
-        byId("compare-async-p99").textContent = asyncRun ? formatMS(asyncRun.purchaseP99Ms) : "等待实验";
-        byId("compare-sync-old").textContent = syncProbe ? formatNumber(syncProbe.oldReads) + " 次" : "等待实验";
-        byId("compare-async-old").textContent = asyncProbe ? formatNumber(asyncProbe.oldReads) + " 次" : "等待实验";
-        byId("compare-sync-window").textContent = syncProbe ?
-            (syncProbe.maxStaleWindowMs > 0 ? formatMS(syncProbe.maxStaleWindowMs) : "0 ms") : "—";
-        byId("compare-async-window").textContent = asyncProbe ?
-            (asyncProbe.maxStaleWindowMs > 0 ? formatMS(asyncProbe.maxStaleWindowMs) : "0 ms") : "—";
-        byId("compare-sync-isolation").textContent = syncRun ? "Redis DEL 位于购买请求链" : "等待实验";
-        byId("compare-async-isolation").textContent = asyncRun ? "缓存失效移出购买请求链" : "等待实验";
-        byId("compare-speed-winner").textContent = "等待两种方案";
-        byId("compare-consistency-winner").textContent = "等待两种方案";
-        byId("compare-isolation-winner").textContent = "等待两种方案";
-        byId("comparison-conclusion").textContent = sync ?
-            "同步方案已有结果；完成一次 Outbox + MQ 实验后自动生成对比。" :
-            (asyncRecord ? "Outbox + MQ 已有结果；完成一次同步删除缓存实验后自动生成对比。" :
-                "两种方案各完成一次实验后，这里会直接生成对比。");
+    function resultRows() {
+        return [
+            {
+                title: "响应 P99", note: "成功购买的尾部延迟", metric: function (record) { return record.run.purchaseP99Ms; },
+                read: function (record) { return resultCell(formatMS(record.run.purchaseP99Ms)); }
+            },
+            {
+                title: "缓存失效耗时", note: "提交后到删除缓存 · 平均值",
+                metric: function (record) { return record.run.cacheInvalidationLatencyMs; },
+                read: function (record) { return resultCell(formatMS(record.run.cacheInvalidationLatencyMs)); }
+            },
+            {
+                title: "不一致样本", note: "旧读次数 / 有效探针样本",
+                read: function (record) {
+                    var probe = record.probe;
+                    return resultCell(formatNumber(probe.oldReads) + " / " + formatNumber(probe.completed) + " 次",
+                        probeEvidenceQuality(probe).usable ? "" : "样本不足，暂不判断");
+                }
+            },
+            {
+                title: "最长旧读窗口", note: "探针观测到的连续旧读时长", probe: true,
+                metric: function (record) { return record.probe.maxStaleWindowMs; },
+                read: function (record) {
+                    if (!probeEvidenceQuality(record.probe).usable) {
+                        return resultCell("证据不足", "探针样本或错误率未达要求");
+                    }
+                    return resultCell(record.probe.maxStaleWindowMs > 0 ?
+                        formatMS(record.probe.maxStaleWindowMs) : "未观测到");
+                }
+            },
+            {
+                title: "最终库存", note: "MySQL 与 Redis 是否对齐",
+                read: function (record) {
+                    var consistent = currentConsistency(record.run);
+                    return resultCell(consistent === null ? "未回填" : (consistent ? "已对齐" : "未对齐"),
+                        "MySQL " + stockText(record.run.finalMySQLStock) + " / Redis " + stockText(record.run.finalRedisStock),
+                        consistent === true ? "good" : "attention");
+                }
+            }
+        ];
+    }
+
+    function appendResultText(element, value, note) {
+        var strong = document.createElement("strong");
+        strong.textContent = value;
+        element.appendChild(strong);
+        if (note) {
+            var small = document.createElement("small");
+            small.textContent = note;
+            element.appendChild(small);
+        }
+    }
+
+    function renderResultTable(records) {
+        var head = byId("results-table-head");
+        var body = byId("results-table-body");
+        head.replaceChildren();
+        body.replaceChildren();
+        var header = document.createElement("tr");
+        var label = document.createElement("th");
+        label.scope = "col";
+        label.textContent = "观察指标";
+        header.appendChild(label);
+        records.forEach(function (record) {
+            var cell = document.createElement("th");
+            cell.scope = "col";
+            cell.dataset.strategy = record.strategy;
+            appendResultText(cell, record.strategy === "sync-invalidate" ? "A · 同步删除缓存" : "B · Outbox + MQ",
+                formatNumber(record.run.purchaseRequested) + " 请求 · " +
+                formatNumber(record.run.purchaseSucceeded) + " 成功" +
+                (record.run.status === "failed" ? " · 本轮失败" : ""));
+            header.appendChild(cell);
+        });
+        head.appendChild(header);
+        resultRows().forEach(function (row) {
+            var tr = document.createElement("tr");
+            var heading = document.createElement("th");
+            heading.scope = "row";
+            appendResultText(heading, row.title, row.note);
+            tr.appendChild(heading);
+            var comparable = records.length === 2 && records.every(function (record) {
+                return record.run.status === "completed";
+            }) && (!row.probe || probesAreComparable(records[0].probe, records[1].probe));
+            var winner = comparable && row.metric ?
+                lowerMetricWinner(row.metric(records[0]), row.metric(records[1]), !!row.probe, 0.03) : "unknown";
+            records.forEach(function (record, index) {
+                var cell = document.createElement("td");
+                var result = row.read(record);
+                var lower = (index === 0 && winner === "sync") || (index === 1 && winner === "async");
+                cell.dataset.tone = result.tone || (lower ? "good" : "");
+                appendResultText(cell, result.value, result.note);
+                tr.appendChild(cell);
+            });
+            body.appendChild(tr);
+        });
+    }
+
+    function renderResultVerdict(records) {
+        var current = state.record || records[records.length - 1];
+        var failed = records.find(function (record) { return record.run.status === "failed"; });
+        var title = byId("results-verdict-title");
+        var copy = byId("results-verdict");
+        if (failed) {
+            title.textContent = "这轮没有完成";
+            copy.textContent = failed.run.errorMessage || "链路留下失败证据，请展开工程证据查看原因。";
+        } else if (records.length === 1) {
+            title.textContent = current.strategy === "sync-invalidate" ? "先删缓存，再返回响应" : "响应先返回，缓存随后失效";
+            copy.textContent = current.strategy === "sync-invalidate" ?
+                "Redis DEL 留在购买请求内，响应需要等待删缓存完成。" :
+                "购买响应在事务提交后结束，Outbox + MQ 继续完成删缓存。";
+            copy.textContent += currentConsistency(current.run) === true ?
+                "本轮最终库存已对齐。" : "本轮最终库存尚未对齐，请查看工程证据。";
+        } else {
+            var speed = lowerMetricWinner(records[0].run.purchaseP99Ms, records[1].run.purchaseP99Ms, false, 0.03);
+            title.textContent = speed === "unknown" ? "本轮响应数据不足" :
+                (speed === "tie" ? "本轮响应 P99 接近" : "本轮 " + winnerLabel(speed) + " 的 P99 更低");
+            var comparable = probesAreComparable(records[0].probe, records[1].probe);
+            var windowWinner = comparable ? lowerMetricWinner(
+                records[0].probe.maxStaleWindowMs, records[1].probe.maxStaleWindowMs, true, 0.03) : "unknown";
+            var observation = windowWinner === "unknown" ?
+                (records.every(function (record) { return probeEvidenceQuality(record.probe).usable; }) ?
+                    "两轮采样量不同，旧读窗口按各自实测展示。" : "旧读窗口的证据不足以比较。") :
+                (windowWinner === "tie" ? "两轮观测到的旧读窗口接近。" : winnerLabel(windowWinner) + "的旧读窗口更短。");
+            copy.textContent = observation + "同步实现简单；异步把删缓存移出响应链，但需要 Outbox、MQ 和重试机制。";
+        }
+
+        var qualityNotes = records.filter(function (record) {
+            return !probeEvidenceQuality(record.probe).usable;
+        }).map(function (record) {
+            var quality = probeEvidenceQuality(record.probe);
+            return strategyNames[record.strategy] + "：有效样本 " + quality.completed + "，错误 " + quality.errors;
+        });
+        byId("results-quality").textContent = qualityNotes.length ?
+            "探针证据不足 · " + qualityNotes.join("；") :
+            (records.some(function (record) { return Number(record.probe.oldReads) === 0; }) ?
+                "20 QPS 探针实测；未观测到旧读，不代表旧读窗口不存在。" :
+                "20 QPS 探针实测 · 旧读次数受采样时长影响，请结合窗口与最终库存判断。");
+    }
+
+    function selectResultEvidence(record) {
+        evidenceRecord = record;
+        renderTechnicalDetails(record);
+        document.querySelectorAll("[data-evidence-strategy]").forEach(function (button) {
+            button.setAttribute("aria-pressed", String(button.dataset.evidenceStrategy === record.strategy));
+        });
     }
 
     function renderSavedResults() {
-        var saved = resultStore ? resultStore.list() : {};
-        var sync = saved["sync-invalidate"];
-        var asyncRecord = saved["outbox-mq-invalidate"];
-        if (sync && Number(sync.materialId) !== state.materialId) {
-            sync = null;
+        // 存储被禁用时，同一页面仍保留两轮真实结果用于比较。
+        var saved = Object.assign({}, resultStore ? resultStore.list() : {}, recentResults);
+        // 失败轮也应显示自己的证据，不能被同方案上一次成功结果覆盖。
+        if (state.record && state.record.run) {
+            saved[state.record.strategy] = state.record;
         }
-        if (asyncRecord && Number(asyncRecord.materialId) !== state.materialId) {
-            asyncRecord = null;
+        var records = ["sync-invalidate", "outbox-mq-invalidate"].map(function (strategy) {
+            return saved[strategy];
+        }).filter(function (record) {
+            return record && Number(record.materialId) === state.materialId && record.run && record.probe &&
+                (record.run.status === "completed" || record.run.status === "failed");
+        });
+        var panel = byId("purchase-results");
+        panel.hidden = !records.length || state.executionMode === "executing";
+        if (!records.length) {
+            evidenceRecord = null;
+            return;
         }
-        if (sync && asyncRecord) {
-            byId("comparison-readiness").textContent = "两种方案均已完成，可以直接比较。";
-            byId("comparison-selection-summary").textContent =
-                "同步方案：最近一次结果 · 异步方案：最近一次结果";
-            renderComparisonBattle(sync, asyncRecord);
-        } else if (sync) {
-            byId("comparison-readiness").textContent = "同步方案已完成，还需运行一次 Outbox + MQ。";
-            byId("comparison-selection-summary").textContent =
-                "同步方案：已有结果 · 异步方案：等待结果";
-            renderWaitingComparison(sync, null);
-        } else if (asyncRecord) {
-            byId("comparison-readiness").textContent = "Outbox + MQ 已完成，还需运行一次同步删除缓存。";
-            byId("comparison-selection-summary").textContent =
-                "同步方案：等待结果 · 异步方案：已有结果";
-            renderWaitingComparison(null, asyncRecord);
-        } else {
-            byId("comparison-readiness").textContent = "两种方案各完成一次实验后即可查看。";
-            byId("comparison-selection-summary").textContent =
-                "同步方案：等待结果 · 异步方案：等待结果";
-            renderWaitingComparison(null, null);
-        }
+        panel.dataset.resultCount = String(records.length);
+        byId("purchase-results").dataset.failed = String(records.some(function (record) { return record.run.status === "failed"; }));
+        byId("results-status").textContent = records.some(function (record) { return record.run.status === "failed"; }) ?
+            "含失败记录" : (records.length === 2 ? "两种方案已完成" : "已完成一种方案");
+        byId("results-context").textContent = records.length === 2 ?
+            "星髓 · 每种方案最近一次实测 · 相同指标直接对照" :
+            "星髓 · " + strategyNames[records[0].strategy] + " · 运行另一方案后在此对比";
+        renderResultTable(records);
+        renderResultVerdict(records);
+
+        var choices = byId("evidence-strategies");
+        choices.replaceChildren();
+        choices.hidden = records.length < 2;
+        records.forEach(function (record) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.dataset.evidenceStrategy = record.strategy;
+            button.textContent = strategyNames[record.strategy];
+            button.addEventListener("click", function () { selectResultEvidence(record); });
+            choices.appendChild(button);
+        });
+        var selected = records.find(function (record) {
+            return evidenceRecord && record.run.requestId === evidenceRecord.run.requestId;
+        }) || state.record || records[records.length - 1];
+        selectResultEvidence(selected);
+        byId("run-other-strategy").textContent = records.length === 1 ?
+            (records[0].strategy === "sync-invalidate" ? "运行 Outbox + MQ，看看差别" : "运行同步方案，看看差别") :
+            "再跑另一方案";
+        renderHeaderAndControls();
     }
 
     function runOtherStrategy() {
-        var next = state.strategy === "sync-invalidate" ?
+        var current = evidenceRecord || state.record;
+        var next = current && current.strategy === "sync-invalidate" ?
             "outbox-mq-invalidate" : "sync-invalidate";
         setSelectedStrategy(next);
-        resetIdleVisuals();
         startExperiment();
     }
 
-    function viewFullProcess() {
-        if (!state.record) {
-            return;
+    function rerunCurrentStrategy() {
+        var current = evidenceRecord || state.record;
+        if (current) {
+            setSelectedStrategy(current.strategy);
+            startExperiment();
         }
-        pauseReplay("已回到完整过程的第一步；可点击时间线或使用前后步继续回看。");
-        state.replay.furthest = stageNames.length - 1;
-        renderPlaybackFrame(0, { advance: false });
     }
 
-    function openTechnicalDetails() {
-        var details = byId("technical-details-panel");
-        details.open = !details.open;
-        byId("open-technical-details").textContent = details.open ? "收起工程证据" : "展开工程证据";
+    function viewFullProcess() {
+        var record = evidenceRecord || state.record;
+        if (!record) {
+            return;
+        }
+        loadReplayRecord(record, { autoplay: false, index: 0, furthest: stageNames.length - 1 });
+        byId("execution-heading").closest(".purchase-execution-view").scrollIntoView({
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+            block: "start"
+        });
     }
 
     function bindEvents() {
@@ -2477,16 +2404,14 @@
         byId("replay-next").addEventListener("click", function () { stepReplay(1); });
         byId("view-full-process").addEventListener("click", viewFullProcess);
         byId("run-other-strategy").addEventListener("click", runOtherStrategy);
-        byId("rerun-current-strategy").addEventListener("click", startExperiment);
-        byId("open-technical-details").addEventListener("click", openTechnicalDetails);
+        byId("rerun-current-strategy").addEventListener("click", rerunCurrentStrategy);
         byId("technical-details-panel").addEventListener("toggle", function () {
-            byId("open-technical-details").textContent =
-                byId("technical-details-panel").open ? "收起工程证据" : "展开工程证据";
+            byId("technical-details-panel").querySelector("summary i").textContent =
+                byId("technical-details-panel").open ? "收起" : "展开";
         });
         window.addEventListener("beforeunload", function () {
             stopProbe();
             clearReplayTimer();
-            clearSettlementTimer();
             persistReplayPosition();
         });
     }
@@ -2526,7 +2451,7 @@
         setExecutionMode(restoredIndex === stageNames.length - 1 ? "result" : "paused",
             "已从本页会话恢复上次回放位置；没有调用购买接口。");
         if (restoredIndex === stageNames.length - 1) {
-            settleBattleReport(state.record, false);
+            showResults(state.record, false);
         }
         return true;
     }
