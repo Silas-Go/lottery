@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/css/material-shop.css?v=20260828-direct-lab-entry-v1" />
     <link rel="stylesheet" href="/css/world-style.css?v=20260805-css-refactor-v1" />
     <link rel="stylesheet" href="/css/experiment-planner.css?v=20260827-briefing-v11" />
+    <link rel="stylesheet" href="/css/purchase-guide.css?v=20260906-guide-v1" />
 </head>
 
 <body class="market-page" data-event-state="dialogue">
@@ -38,9 +39,9 @@
                     <p class="planner-context__summary">1,500 QPS · <code>-c 500</code> · 30s</p>
                 </div>
                 <div class="planner-context__copy planner-context__copy--purchase">
-                    <small>02 · WRITE CONSISTENCY</small>
-                    <h1>库存一致性购买</h1>
-                    <p><strong>当前问题：</strong>数据库库存与 Redis 查询副本如何最终收敛？</p>
+                    <small>02 · 库存一致性购买 / 实验导览</small>
+                    <h1>MySQL 已经扣了库存，Redis 为什么还显示有货？</h1>
+                    <p>同一份库存，对照两种缓存失效路径：响应前删除，还是交给后台处理？</p>
                 </div>
             </header>
 
@@ -234,85 +235,56 @@ Connection: keep-alive</code></pre>
 
                     </div>
 
-                    <div id="purchase-plan-panel" class="purchase-plan-panel">
-                        <header class="task-draft-header">
-                            <div>
-                                <small>PURCHASE EXPERIMENT · 星髓</small>
-                                <strong>进一步了解购买实验</strong>
-                                <p>对比两条缓存失效路径，再进入实验室观察响应边界与最终一致性窗口。</p>
-                            </div>
-                            <button id="leave-purchase-mode" type="button">返回实验总览</button>
-                        </header>
-
-                        <ol class="task-lifecycle" aria-label="购买实验流程">
-                            <li class="is-current"><i>01</i><span>实验详情</span></li>
-                            <li><i>02</i><span>实验执行</span></li>
-                            <li><i>03</i><span>结果报告</span></li>
-                        </ol>
-
-                        <div class="task-contract-strip purchase-plan-summary" role="status" aria-live="polite" aria-label="购买实验条件概览">
-                            <div class="is-path"><small>对比对象</small><strong>同步删除缓存 vs Outbox + MQ</strong></div>
-                            <div class="is-intent"><small>购买批次</small><strong>150 个唯一请求</strong></div>
-                            <div class="is-config"><small>服务端并发</small><strong>12 个事务槽</strong></div>
-                            <div class="is-fact"><small>任务状态</small><strong>尚未执行</strong></div>
-                        </div>
-
-                        <div class="purchase-plan-workbench">
-                            <section class="purchase-plan-config-sheet task-intent-panel" aria-labelledby="purchase-plan-strategy-heading">
-                                <header>
-                                    <span>INVALIDATION PATH</span>
-                                    <strong id="purchase-plan-strategy-heading">对比两种缓存失效路径</strong>
-                                </header>
-                                <p class="purchase-path-helper">点击路径查看右侧解说，不决定本轮运行方案。</p>
-                                <div class="query-path-options purchase-path-options" role="group" aria-label="查看缓存失效路径解说">
-                                    <button class="is-active" type="button" aria-pressed="true" data-purchase-explainer="sync-invalidate">
-                                        <small>PATH A</small>
-                                        <strong>同步删除缓存</strong>
-                                        <span>COMMIT → Redis DEL → Response</span>
-                                    </button>
-                                    <button type="button" aria-pressed="false" data-purchase-explainer="outbox-mq-invalidate">
-                                        <small>PATH B</small>
-                                        <strong>Outbox + MQ</strong>
-                                        <span>TX + Outbox → Response · MQ → DEL</span>
-                                    </button>
-                                </div>
-                                <aside class="purchase-outbox-rationale" aria-labelledby="purchase-outbox-rationale-title">
-                                    <header>
-                                        <small>ARCHITECTURE NOTE</small>
-                                        <strong id="purchase-outbox-rationale-title">为什么需要 Outbox？</strong>
-                                    </header>
-                                    <p><strong>事务边界：</strong>库存更新发生在 MySQL，缓存失效发生在 Redis。两者属于不同系统，无法放进同一个本地事务。</p>
-                                    <p><strong>失败窗口：</strong>如果 MySQL 已经提交，但 Redis 删除失败，数据库库存已经变化，缓存却仍可能保留旧值，并且系统可能失去后续补偿依据。</p>
-                                    <p><strong>可靠补偿：</strong>Outbox 会在更新库存的同一事务中，额外写入一条“缓存需要失效”的可靠记录。事务成功后，后台任务再通过消息队列执行缓存删除；即使首次失败，也能依据 Outbox 记录持续重试，使缓存最终恢复一致。</p>
+                    <div id="purchase-plan-panel" class="purchase-plan-panel purchase-guide">
+                        <section class="guide-paths" aria-label="两种缓存失效路径">
+                            <article class="guide-path guide-path-a" aria-labelledby="guide-path-a-title">
+                                <header><span class="guide-path-letter">A</span><h2 id="guide-path-a-title">同步删除缓存</h2><small>请求内完成</small></header>
+                                <ol class="guide-request-flow" aria-label="方案 A 请求路径">
+                                    <li>MySQL 提交</li><li class="guide-delete-step">Redis DEL</li><li>返回响应</li>
+                                </ol>
+                                <p class="guide-tradeoff">响应等待删缓存；Redis 的耗时和失败会进入请求链。</p>
+                                <aside class="guide-boundary">
+                                    <strong>这里的失败意味着什么？</strong>
+                                    <p>库存事务已经提交，删缓存失败不会自动回滚库存，仍需重试失效。</p>
                                 </aside>
-                                <p class="purchase-plan-fixed-copy">购买批次固定为 150 个唯一 request_id；这里对比失效路径，不把批次数伪装成 req/s。</p>
-                            </section>
+                            </article>
+                            <article class="guide-path guide-path-b" aria-labelledby="guide-path-b-title">
+                                <header><span class="guide-path-letter">B</span><h2 id="guide-path-b-title">Outbox + MQ</h2><small>后台完成失效</small></header>
+                                <ol class="guide-request-flow guide-request-flow-b" aria-label="方案 B 请求路径">
+                                    <li>事务 + Outbox 提交</li><li>返回响应</li>
+                                </ol>
+                                <div class="guide-async-branch">
+                                    <small>事务提交后，后台继续</small>
+                                    <p>Outbox 发布器 <span>→</span> MQ <span>→</span> 消费者 <span>→</span> Redis DEL</p>
+                                </div>
+                                <p class="guide-tradeoff">响应不等待删缓存；要观察旧读窗口及后台恢复。</p>
+                                <aside class="guide-boundary">
+                                    <strong>为什么需要 Outbox？</strong>
+                                    <p>库存更新与待失效事件一起提交，让后续失效和重试有可靠记录。</p>
+                                </aside>
+                            </article>
+                        </section>
 
-                            <aside id="purchase-plan-preview" class="purchase-plan-preview" aria-labelledby="purchase-plan-preview-heading">
-                                <small>PATH EXPLAINER</small>
-                                <strong id="purchase-plan-preview-heading">方案解说 · 同步删除缓存</strong>
-                                <code id="purchase-plan-route-code">MySQL COMMIT → Redis DEL → Response</code>
-                                <p id="purchase-plan-route-copy">顾客响应会等待库存牌删除完成，路径更直接，但 Redis 位于购买请求链路中。</p>
-                                <dl>
-                                    <div><dt>初始库存</dt><dd>100</dd></div>
-                                    <div><dt>观察探针</dt><dd>20 QPS</dd></div>
-                                    <div><dt>购买发送方式</dt><dd>批次放行</dd></div>
-                                </dl>
-                            </aside>
-                        </div>
+                        <section class="guide-observe" aria-labelledby="guide-observe-title">
+                            <h2 id="guide-observe-title">进实验室，重点看这三件事</h2>
+                            <ol>
+                                <li><span>01</span><div><strong>响应有多快？</strong><small>购买响应 P99</small></div></li>
+                                <li><span>02</span><div><strong>旧库存持续多久？</strong><small>不一致样本 · 最长旧读窗口</small></div></li>
+                                <li><span>03</span><div><strong>最终是否恢复一致？</strong><small>MySQL / Redis 库存 · 恢复状态</small></div></li>
+                            </ol>
+                        </section>
 
-                        <div class="crowd-confirmation-bar purchase-plan-confirmation">
-                            <div class="crowd-status" role="status" aria-live="polite">
-                                <i></i>
-                                <span>
-                                    <strong id="purchase-plan-status-title">准备进入实验室</strong>
-                                    <small id="purchase-plan-status-copy">进入实验室后，再选择本轮运行方案并手动开始。</small>
-                                </span>
+                        <footer class="guide-footer">
+                            <div class="guide-conditions">
+                                <strong>固定实验条件 <small>两种方案使用同一组条件</small></strong>
+                                <ul aria-label="固定实验条件">
+                                    <li><b>100</b> 件库存</li><li><b>150</b> 次购买</li>
+                                    <li>最多 <b>12</b> 并发</li><li><b>20 QPS</b> 探针</li>
+                                </ul>
+                                <p>进入后选方案、手动开始；不要与查询压测同时运行。</p>
                             </div>
-                            <div class="crowd-run-actions">
-                                <button id="confirm-purchase-plan" class="event-primary" type="button">进入购买实验室</button>
-                            </div>
-                        </div>
+                            <button id="confirm-purchase-plan" class="guide-enter" type="button">进入实验室 <span aria-hidden="true">→</span></button>
+                        </footer>
                     </div>
 
                 </div>
@@ -324,7 +296,7 @@ Connection: keep-alive</code></pre>
     <div id="market-toast" class="market-toast" role="status" aria-live="polite"></div>
     <div id="market-announcer" class="sr-only" aria-live="assertive"></div>
     <script src="/js/experiment-state.js?v=20260720-material-detail"></script>
-    <script src="/js/market.js?v=20260828-direct-lab-entry-v1"></script>
+    <script src="/js/market.js?v=20260906-guide-v1"></script>
 </body>
 
 </html>

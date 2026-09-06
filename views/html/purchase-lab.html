@@ -3,25 +3,28 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f3f5f7" />
+    <meta name="theme-color" content="#f6edcf" />
     <meta name="description" content="对照同步删缓存与 Outbox + MQ，实时观察库存一致性、旧读与恢复。" />
     <title>缓存一致性购买实验 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260905-dashboard-v1" />
+    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260906-six-stages-v2" />
 </head>
 <body class="purchase-page purchase-focus" data-purchase-strategy="unselected" data-purchase-status="idle">
     <header class="purchase-lab-header">
-        <div>
-            <span class="lab-eyebrow">SILAS / TECHNICAL LAB</span>
-            <h1 id="purchase-title">缓存一致性购买实验</h1>
+        <div class="purchase-heading">
+            <a class="purchase-brand-mark" href="/" aria-label="返回实验总览">S</a>
+            <div>
+                <span class="lab-eyebrow">SILAS / STAR MARROW LABS</span>
+                <h1 id="purchase-title">缓存一致性购买实验</h1>
+            </div>
         </div>
         <nav aria-label="购买实验页面导航">
-            <a href="/material-shop?experiment=purchase">实验配置</a>
+            <a href="/material-shop?experiment=purchase">← 实验导览</a>
             <a href="/">实验总览</a>
         </nav>
     </header>
     <main class="purchase-main">
-        <section id="purchase-empty" class="lab-empty" hidden><h2>未载入实验</h2><p>请返回实验配置。</p></section>
+        <section id="purchase-empty" class="lab-empty" hidden><h2>未载入实验</h2><p>请返回实验导览。</p></section>
         <div id="purchase-content" hidden>
             <section class="purchase-strategy-picker" aria-labelledby="strategy-heading">
                 <div class="purchase-setup-heading">
@@ -50,7 +53,7 @@
                     </div>
                     <div class="purchase-replay-controls" aria-label="回放控制">
                         <a id="jump-to-results" href="#purchase-results">A/B 结果 ↓</a>
-                        <span id="replay-position">— / 5</span>
+                        <span id="replay-position">— / 6</span>
                         <button id="replay-previous" type="button" disabled aria-label="回放上一步">上一步</button>
                         <button id="replay-toggle" type="button" disabled aria-label="播放回放">回放</button>
                         <button id="replay-next" type="button" disabled aria-label="回放下一步">下一步</button>
@@ -169,13 +172,14 @@
                     </div>
 
 
-                <section id="purchase-timeline-panel" class="purchase-timeline-panel" aria-label="回放阶段">
-                    <ol id="purchase-timeline" class="purchase-timeline" aria-label="五步实验时间线">
+                <section id="purchase-timeline-panel" class="purchase-timeline-panel" aria-label="实时执行与回放阶段">
+                    <ol id="purchase-timeline" class="purchase-timeline" aria-label="六步实验时间线">
                         <li><button type="button" data-replay-step="0" disabled><span>01</span><strong>请求进入</strong><small data-step-status>等待</small></button></li>
-                        <li><button type="button" data-replay-step="1" disabled><span>02</span><strong>事务提交</strong><small data-step-status>等待</small></button></li>
-                        <li><button type="button" data-replay-step="2" disabled><span>03</span><strong>返回响应</strong><small data-step-status>等待</small></button></li>
-                        <li><button type="button" data-replay-step="3" disabled><span>04</span><strong>缓存失效</strong><small data-step-status>等待</small></button></li>
-                        <li><button type="button" data-replay-step="4" disabled><span>05</span><strong>一致性结果</strong><small data-step-status>等待</small></button></li>
+                        <li><button type="button" data-replay-step="1" disabled><span>02</span><strong>MySQL 事务提交</strong><small data-step-status>等待</small></button></li>
+                        <li><button type="button" data-replay-step="2" disabled><span>03</span><strong>Redis 缓存失效</strong><small data-step-status>等待</small></button></li>
+                        <li><button type="button" data-replay-step="3" disabled><span>04</span><strong>返回响应</strong><small data-step-status>等待</small></button></li>
+                        <li><button type="button" data-replay-step="4" disabled><span>05</span><strong>查询回源 / 缓存重建</strong><small data-step-status>等待</small></button></li>
+                        <li><button type="button" data-replay-step="5" disabled><span>06</span><strong>一致性结果</strong><small data-step-status>等待</small></button></li>
                     </ol>
                 </section>
 
@@ -287,6 +291,7 @@
     </div>
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
-    <script src="/js/purchase-lab.js?v=20260905-dashboard-v1"></script>
+    <script src="/js/purchase-stages.js?v=20260906-six-stages-v1"></script>
+    <script src="/js/purchase-lab.js?v=20260906-six-stages-v2"></script>
 </body>
 </html>

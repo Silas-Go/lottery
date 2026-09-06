@@ -151,7 +151,7 @@ X-SQL-Queries: 0 | 1..4
 
 ## 实验二：库存一致性购买
 
-配置入口：`/material-shop?experiment=purchase`
+实验导览：`/material-shop?experiment=purchase`，并排解释两条路径、观察指标与固定条件；进入实验室后再选方案并手动开始。
 
 实验室：`/purchase-lab`
 

@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    var REPLAY_POSITION_KEY = "silas.cache-aside.purchase-replay-position.v2";
+    var REPLAY_POSITION_KEY = "silas.cache-aside.purchase-replay-position.v3";
     // 旧版多报告归档只用于启动时清理；当前每种方案只保留最近一次结果。
     var REPORT_ARCHIVE_KEY = "silas.cache-aside.purchase-report-archive.v1";
     var PURCHASE_COUNT = 150;
@@ -21,18 +21,20 @@
         "sync-invalidate": "同步删除缓存",
         "outbox-mq-invalidate": "Outbox + MQ 异步失效"
     };
-    var stageNames = [
-        "购买任务进入",
-        "MySQL 事务提交",
-        "响应边界",
-        "缓存失效链路",
-        "一致性结果"
-    ];
+    var stageModel = window.SilasPurchaseStages;
+    var stageNames = stageModel.order("").map(function (id) { return stageModel.names[id]; });
+    function stageId(index) { return stageModel.order(state.strategy)[index]; }
+    function stageState(record, index, live) {
+        var model = stageModel.inspect(record, live);
+        return model.stages[model.ids[index]];
+    }
+
     var replayStatusNames = {
         waiting: "等待",
         running: "进行中",
         completed: "已完成",
-        failed: "失败"
+        failed: "失败",
+        unobserved: "未观测"
     };
     // 同一张结果表始终读取冻结记录；回放游标只控制上方执行图。
     var resultsFocusRequestId = null;
@@ -48,6 +50,8 @@
         observationHalted: false,
         inventoryObservation: { firstMismatch: null },
         liveRun: null,
+        liveBaseline: null,
+        liveStage: -1,
         record: null,
         executionMode: "idle",
         executionDetail: "",
@@ -98,7 +102,7 @@
         }
         var firstOld = (probe.samples || []).find(function (sample) { return sample.old === true; });
         var hadIncident = oldReads > 0 || !!observation.firstMismatch;
-        var done = !!run && run.status === "completed" && !replay;
+        var done = !!run && run.status === "completed" && !replay && !live;
         var tone = !known || stale || interrupted ? "unknown" :
             (mismatch ? "mismatch" : (!cached ? "empty" :
                 (failedProbe ? "checking" : (hadIncident && done ? "recovered" : "consistent"))));
@@ -113,7 +117,7 @@
         var panel = byId("inventory-monitor");
         panel.dataset.state = tone;
         setGameMetric("stage-mysql-stock", known ? formatNumber(mysql) : "—");
-        setGameMetric("stage-redis-stock", cached ? formatNumber(redis) : (known ? "未缓存" : "—"));
+        setGameMetric("stage-redis-stock", cached ? formatNumber(redis) : (redis === null ? "未缓存" : "—"));
         byId("stage-redis-stock").dataset.empty = String(!cached);
         byId("inventory-symbol").textContent = tone === "mismatch" ? "≠" :
             (tone === "consistent" || tone === "recovered" ? "=" : "…");
@@ -123,7 +127,16 @@
             (tone === "empty" ? "等待后续查询回填" :
                 (tone === "unknown" ? "尚无有效库存对照" :
                     (tone === "checking" ? "等待有效样本复核" : "MySQL / Redis 已对齐")));
-        byId("inventory-source").textContent = replay ? "回放步骤快照 · 统计已冻结" :
+        if (replay && stageId(state.replay.index) !== "result") {
+            var currentStage = stageId(state.replay.index);
+            panel.dataset.state = currentStage === "invalidate" && evidence.status === "completed" ? "empty" : "unknown";
+            byId("inventory-status-text").textContent = currentStage === "invalidate" && evidence.status === "completed" ?
+                "旧缓存已删除" : (currentStage === "rebuild" && evidence.status === "completed" ? "缓存已重建" : "阶段证据");
+            byId("inventory-symbol").textContent = "…";
+            byId("inventory-delta").textContent = currentStage === "rebuild" ? "最终一致性留到第 06 步检查" :
+                (currentStage === "invalidate" ? "DEL 动作后态 · 不代表当前库存快照" : "批次 Trace 采样值 · 非逐笔事务快照");
+        }
+        byId("inventory-source").textContent = replay ? "阶段事件证据 · 下方统计为全轮冻结值" :
             (record ? "已冻结的实验结果" : (interrupted ? "最后一次库存快照 · 非实时" :
                 (live ? (stale ? "最后一次库存快照 · 等待刷新" :
                     (run ? "实时库存快照 · 160 ms 更新" : "实验基线 · 正在准备")) : "当前库存快照 · 实验未开始")));
@@ -181,6 +194,7 @@
             maxStaleWindowMs: 0,
             latest: null,
             samples: [],
+            lastMiss: null,
             startedAt: null
         };
     }
@@ -196,7 +210,8 @@
             strategy : "";
         return {
             strategy: validStrategy,
-            fresh: Boolean(validStrategy && query.get("intent") === "new")
+            // 从导览新进入时先选方案；历史对比仍保留，但不能把用户直接带进旧回放。
+            fresh: query.get("intent") === "new"
         };
     }
 
@@ -615,95 +630,18 @@
         });
     }
 
-    function renderLiveStepExplanation(run) {
-        if (!run) {
-            renderIdleStepExplanation();
-            return;
-        }
-        if (run.status === "failed") {
-            setStepExplanation({
-                phase: "live-failed",
-                term: "真实执行失败",
-                action: "真实链路返回失败，页面停在已经取得的证据。",
-                reason: "未完成的节点不能用动画补成成功，必须等待重试或人工处理。",
-                evidence: "状态：failed · " + (run.errorMessage || "查看错误详情"),
-                next: "查看失败节点和最近关键日志。",
-                tone: "error",
-                final: true
-            });
-            return;
-        }
-        var processed = Number(run.purchaseProcessed || 0);
-        var requested = Number(run.purchaseRequested || PURCHASE_COUNT);
-        var succeeded = Number(run.purchaseSucceeded || 0);
-        if (!run.criticalPathCompleted) {
-            if (processed === 0) {
-                setStepExplanation({
-                    phase: "live-requests",
-                    term: "购买请求进入 Purchase Service",
-                    action: "一批唯一购买请求正在进入服务，准备争抢同一种材料库存。",
-                    reason: "每个请求都使用独立 request_id，才能验证并发与幂等。",
-                    evidence: "请求：" + requested + " · 已处理：0",
-                    next: "成功请求会进入独立的 MySQL 事务。",
-                    tone: "critical"
-                });
-            } else {
-                setStepExplanation({
-                    phase: "live-transactions",
-                    term: state.strategy === "outbox-mq-invalidate" ?
-                        "MySQL 事务：库存、订单与 Outbox" : "MySQL 事务：库存与订单",
-                    action: state.strategy === "outbox-mq-invalidate" ?
-                        "成功事务正在同时扣库存、写订单和缓存失效待办。" :
-                        "成功事务正在同时扣库存并写入订单。",
-                    reason: "这些写入必须一起提交或一起回滚，避免账本与待办分离。",
-                    evidence: "已处理：" + processed + "/" + requested + " · 成功：" + succeeded,
-                    next: "全部事务收集后到达 Response 边界。",
-                    tone: "critical"
-                });
-            }
-            return;
-        }
-        if (state.strategy === "sync-invalidate") {
-            setStepExplanation({
-                phase: "live-sync-delete",
-                term: "同步 Redis DEL 后返回 Response",
-                action: "购买请求已在返回前删除 Redis 查询副本。",
-                reason: "把旧副本先删掉，后续查询才不会继续读取旧库存。",
-                evidence: "成功：" + succeeded + " · P99：" + formatMS(run.purchaseP99Ms) +
-                    " · Redis：" + stockText(run.finalRedisStock),
-                next: "查询遇到 MISS 后从 MySQL 回填最新副本。",
-                tone: run.status === "completed" ? "complete" : "critical"
-            });
-            return;
-        }
-
-        var outbox = outboxSummary(run);
-        var total = outbox.total || succeeded;
-        var brokerAccepted = outbox.published + outbox.completed;
-        if (total > 0 && outbox.completed === total) {
-            renderCompletedAsyncExplanation(run, outbox, "live");
-        } else if (brokerAccepted > outbox.completed) {
-            setStepExplanation({
-                phase: "live-cache-consumer",
-                term: "RocketMQ → 缓存失效 Consumer → Redis DEL",
-                action: "缓存失效 Consumer 正在校验通知、删除缓存并 ACK。",
-                reason: "它与订单 Consumer 分开，因此不会排在创建、取消订单消息后面。",
-                evidence: "MQ 接收：" + brokerAccepted + "/" + total + " · DEL 完成：" +
-                    outbox.completed + "/" + total,
-                next: "全部消息确认后，检查最终一致性。",
-                tone: "async"
-            });
-        } else {
-            setStepExplanation({
-                phase: "live-outbox-publisher",
-                term: "Outbox Publisher 等待扫描",
-                action: "购买结果已经返回，Publisher 正在扫描待发布的缓存失效事件。",
-                reason: "后台扫描让请求无需等待 MQ，同时保留失败后的重试凭证。",
-                evidence: "Outbox：" + total + " · 已发布：" + brokerAccepted + " · 扫描周期：1s",
-                next: "事件发布到 RocketMQ 后交给缓存失效 Consumer。",
-                tone: "async"
-            });
-        }
+    function renderStageExplanation(record, index, live) {
+        var stage = stageState(record, index, live);
+        setStepExplanation({
+            phase: (live ? "live-" : "replay-") + stage.id + "-" + stage.status,
+            term: String(index + 1).padStart(2, "0") + " · " + stage.title,
+            action: stage.summary,
+            reason: stage.id === "invalidate" ? "DEL 只删除旧副本，不负责回源或重建。" :
+                (stage.id === "rebuild" ? "只认删除之后的真实 MISS 与 SET 结果；缺少证据就保留未观测。" :
+                    "各阶段只读取后端 Trace、Outbox 和真实查询样本。"),
+            tone: stage.status === "failed" ? "error" : (stage.id === "rebuild" ? "probe" : "critical"),
+            final: stage.id === "result"
+        });
     }
 
     function currentConsistency(run) {
@@ -857,7 +795,9 @@
         var label = modeLabel();
         byId("header-strategy").textContent = strategyNames[state.strategy] || "请选择方案";
         byId("header-status").textContent = label;
-        byId("running-phase").textContent = label;
+        var activeIndex = busy ? state.liveStage : (ready ? state.replay.index : -1);
+        byId("running-phase").textContent = label + (activeIndex >= 0 ?
+            " · " + (activeIndex + 1) + "/6 " + stageNames[activeIndex] : "");
         byId("running-material").textContent = state.profile ? state.profile.name : "—";
         byId("running-strategy").textContent = strategyNames[state.strategy] || "尚未选择方案";
         byId("running-strategy-code").textContent = state.strategy === "sync-invalidate" ? "A" :
@@ -865,8 +805,8 @@
         byId("execution-boundary-copy").textContent = state.executionDetail ||
             (busy ? "后端正在真实扣减库存并完成失效链路；此时尚未播放任何阶段。" :
                 "真实执行与回放相互分离；回放按钮只读取本轮 Trace。");
-        byId("replay-position").textContent = ready ?
-            ((state.replay.index + 1) + " / " + stageNames.length) : "— / " + stageNames.length;
+        byId("replay-position").textContent = activeIndex >= 0 ?
+            ((activeIndex + 1) + " / " + stageNames.length) : "— / " + stageNames.length;
         byId("timeline-mode").textContent = label;
         byId("start-purchase-run").disabled = busy || !state.strategy;
         byId("start-purchase-run").textContent = busy ? "实验运行中…" : "开始实验";
@@ -882,7 +822,8 @@
         document.querySelector(".purchase-replay-controls").hidden = !ready || busy;
         byId("buyers-metric-label").textContent = ready && state.replay.index === 0 ? "时间点" : "进度";
         byId("service-metric-label").textContent = ready && state.replay.index >= 1 ? "平均耗时" : "进度";
-        byId("mysql-metric-label").textContent = ready && state.replay.index >= 1 ? "提交耗时" : "进度";
+        byId("mysql-metric-label").textContent = activeIndex >= 0 && stageId(activeIndex) === "rebuild" ? "查询耗时" :
+            (ready && state.replay.index >= 1 ? "提交耗时" : "进度");
         document.querySelectorAll(".purchase-strategy-card").forEach(function (button) {
             button.disabled = busy;
         });
@@ -896,36 +837,30 @@
     }
 
     function renderTimeline() {
-        var ready = !!(state.record && state.record.run);
-        var failed = ready && state.record.run.status === "failed";
-        var invalidationFailed = ready && !!traceStep(
-            state.record.run,
-            ["cache_invalidation_failed", "delete_cache_failed"]
-        );
+        var live = state.executionMode === "executing";
+        var record = live ? liveRecord() : state.record;
+        var model = stageModel.inspect(record, live);
+        var selected = live ? state.liveStage : state.replay.index;
         document.querySelectorAll("[data-replay-step]").forEach(function (button) {
             var index = Number(button.dataset.replayStep);
-            var status = "waiting";
-            if (ready && index <= state.replay.furthest) {
-                status = index === state.replay.index && state.replay.playing ? "running" : "completed";
-            }
-            if (ready && index === state.replay.index && index > state.replay.furthest) {
-                status = "running";
-            }
-            if (failed && index === stageNames.length - 1 && index <= state.replay.furthest) {
-                status = "failed";
-            }
-            if (invalidationFailed && index === 3 && index <= state.replay.furthest) {
-                status = "failed";
-            }
+            var stage = model.stages[model.ids[index]];
+            var status = record ? stage.status : "waiting";
+            // 回放的“已访问”不是业务的“已完成”；失败或未观测不能被 furthest 覆盖。
+            if (!live && index > state.replay.furthest) { status = "waiting"; }
+            button.querySelector("strong").textContent = stage.title;
+            button.dataset.stage = stage.id;
             button.dataset.status = status;
-            button.classList.toggle("is-current", ready && index === state.replay.index);
-            button.disabled = !ready || state.executionMode === "executing" || index > state.replay.furthest;
+            button.classList.toggle("is-current", !!record && index === selected);
+            button.setAttribute("aria-current", record && index === selected ? "step" : "false");
+            button.disabled = live || !record || index > state.replay.furthest;
             button.querySelector("[data-step-status]").textContent = replayStatusNames[status] || status;
+            button.title = stage.title + " · " + (replayStatusNames[status] || status);
         });
     }
 
     function setSelectedStrategy(strategy) {
         state.strategy = strategy;
+        stageNames = stageModel.order(strategy).map(function (id) { return stageModel.names[id]; });
         document.querySelectorAll(".purchase-strategy-card").forEach(function (button) {
             var active = button.dataset.strategy === strategy;
             button.classList.toggle("is-active", active);
@@ -945,6 +880,7 @@
         setNode("node-buyers", "idle", "等待释放任务", "0 / 150", "150 × 1");
         setNode("node-service", "idle", "等待请求", "—", "—");
         setNode("node-mysql", "idle", "等待事务", "0 / 150", stockText(initialMySQL) + " → —");
+        byId("node-mysql").querySelector("header strong").textContent = "MySQL 事务";
         setNode("node-response", "idle", "等待返回", "—", "—");
         setNode("node-sync-redis", "idle", "等待事务提交", "—", "—");
         setNode("node-outbox", state.strategy === "sync-invalidate" ? "unused" : "idle",
@@ -963,114 +899,16 @@
     }
 
     function stageEvidence(record, index) {
-        var run = record.run;
-        var probe = record.probe;
-        var outbox = outboxSummary(run);
-        var request = traceStep(run, ["transaction_started"]);
-        var transaction = traceStep(run, ["transaction_committed", "update_mysql", "idempotent_order"]);
-        var response = traceStep(run, ["purchase_responded"]);
-        var invalidation = traceStep(run, ["cache_invalidated", "delete_cache", "cache_invalidation_failed", "delete_cache_failed"]);
-        var evidence = {
-            kicker: "步骤 " + String(index + 1).padStart(2, "0") + " / " + String(stageNames.length).padStart(2, "0"),
-            title: stageNames[index],
-            summary: "",
-            mysql: run.initialStock,
-            redis: record.baseline ? record.baseline.redisStock : null,
-            message: state.strategy === "sync-invalidate" ? "未使用" : "等待 Outbox 记录",
-            duration: "—"
-        };
-        if (index === 0) {
-            evidence.summary = request ? request.detail : "150 个唯一 request_id 已进入购买服务。";
-            evidence.mysql = request ? request.mysqlStock : run.initialStock;
-            evidence.redis = request ? request.redisStock : evidence.redis;
-            evidence.duration = formatMS(request && request.durationMs);
-        } else if (index === 1) {
-            evidence.summary = transaction ? transaction.detail : "订单与库存条件扣减已经提交。";
-            evidence.mysql = transaction ? transaction.mysqlStock : run.finalMySQLStock;
-            evidence.redis = transaction ? transaction.redisStock : evidence.redis;
-            evidence.message = state.strategy === "sync-invalidate" ? "未使用" : (outbox.total + " 条事件同事务写入");
-            evidence.duration = formatMS(transaction && transaction.durationMs);
-        } else if (index === 2) {
-            evidence.summary = response ? response.detail : "购买响应已全部收集。";
-            evidence.mysql = response ? response.mysqlStock : run.finalMySQLStock;
-            evidence.redis = response ? response.redisStock : run.finalRedisStock;
-            evidence.message = state.strategy === "sync-invalidate" ? "响应等待 Redis 删除缓存" : "响应不等待后台删缓存";
-            evidence.duration = formatMS(run.purchaseP99Ms);
-        } else if (index === 3) {
-            evidence.summary = state.strategy === "sync-invalidate" ?
-                (invalidation ? invalidation.detail : "同步 Redis DEL 已执行。") :
-                ("Outbox " + outbox.completed + " / " + outbox.total + " 已完成，MQ " +
-                    runtimeStatusName(run.mqStatus) + "。");
-            evidence.mysql = run.finalMySQLStock;
-            evidence.redis = invalidation ? invalidation.redisStock : null;
-            evidence.message = state.strategy === "sync-invalidate" ?
-                (invalidation && /failed/i.test(invalidation.action) ? "Redis 删除失败" : "同步删除完成") :
-                ("Outbox " + runtimeStatusName(run.outboxStatus) + " / MQ " + runtimeStatusName(run.mqStatus));
-            evidence.duration = formatMS(run.cacheInvalidationLatencyMs);
-        } else if (index === 4) {
-            evidence.summary = "真实缓存探针完成 " + probe.completed + " 次，观察到 " + probe.oldReads + " 次旧库存读取。";
-            evidence.mysql = run.finalMySQLStock;
-            evidence.redis = run.finalRedisStock;
-            evidence.message = state.strategy === "sync-invalidate" ? "未使用" : ("重试 " + Number(run.retryCount || 0) + " 次");
-            evidence.duration = probe.maxStaleWindowMs > 0 ? formatMS(probe.maxStaleWindowMs) : "0 ms";
-        } else {
-            evidence.kicker = run.status === "failed" ? "失败链路" : "结果链路";
-            evidence.summary = run.status === "failed" ?
-                (run.errorMessage || "后端返回失败状态，已保留本轮证据。") :
-                ("成功购买 " + run.purchaseSucceeded + "，最终 MySQL 与 Redis " +
-                    (currentConsistency(run) ? "一致。" : "仍不一致。"));
-            evidence.mysql = run.finalMySQLStock;
-            evidence.redis = run.finalRedisStock;
-            evidence.message = state.strategy === "sync-invalidate" ? "同步链路结束" :
-                ("Outbox " + runtimeStatusName(run.outboxStatus) + " / MQ " + runtimeStatusName(run.mqStatus));
-            evidence.duration = formatMS(run.purchaseP99Ms);
-        }
-        return evidence;
+        var stage = stageState(record, index, false);
+        return Object.assign({}, stage, {
+            kicker: "步骤 " + String(index + 1).padStart(2, "0") + " / 06",
+            message: replayStatusNames[stage.status],
+            duration: stage.evidence ? formatMS(stage.evidence.durationMs || stage.evidence.latencyMs) : "—"
+        });
     }
 
     function stageVerdict(record, index) {
-        var run = record.run;
-        var probe = record.probe || {};
-        if (index === 0) {
-            return "执行解释：150 个唯一请求已进入购买服务，事务开始并发推进。";
-        }
-        if (index === 1) {
-            return "执行解释：库存、订单与可选 Outbox 已在 MySQL 事务边界内提交。";
-        }
-        if (index === 2) {
-            return record.strategy === "sync-invalidate" ?
-                "执行解释：响应等待同步删除缓存，因此失效耗时属于请求关键路径。" :
-                "执行解释：响应在事务提交后结束；缓存失效转入独立异步阶段。";
-        }
-        if (index === 3) {
-            return record.strategy === "sync-invalidate" ?
-                "执行解释：Redis 删除缓存已在响应前完成，后续读取将按旁路缓存模式回填。" :
-                "执行解释：发布器扫描 Outbox，经 MQ 与缓存失效消费者推进到幂等删除缓存。";
-        }
-        if (index === 4) {
-            return Number(probe.oldReads || 0) > 0 ?
-                "执行解释：探针观察到旧值；最终一致不代表过程中没有不一致窗口。" :
-                "执行解释：本轮探针未观察到旧值，但单次实验不能证明任何时序都安全。";
-        }
-        if (run.status === "failed") {
-            return "执行解释：链路未完整结束，应先检查失败 trace 与重试状态。";
-        }
-        var consistent = currentConsistency(run);
-        if (Number(run.soldOutRequests || 0) > 0 && consistent) {
-            return "执行解释：成功 " + run.purchaseSucceeded + "，售罄 " +
-                run.soldOutRequests + "；未超卖，Redis 最终追平 MySQL。";
-        }
-        if (record.strategy === "sync-invalidate") {
-            return consistent ?
-                "执行解释：最终状态一致；同步删除缓存的耗时计入了响应。" :
-                "执行解释：MySQL 已提交，但 Redis 尚未与权威库存一致。";
-        }
-        if (consistent) {
-            return Number(run.retryCount || 0) > 0 ?
-                "执行解释：发布器经真实重试后完成失效，Redis 最终一致。" :
-                "执行解释：响应先结束，异步链路随后完成 Redis 删除缓存。";
-        }
-        return "执行解释：请求关键路径已结束，缓存失效链路仍未收敛。";
+        return stageState(record, index, false).summary;
     }
 
     function renderStageReadout(record, index) {
@@ -1078,7 +916,7 @@
         byId("stage-kicker").textContent = evidence.kicker;
         byId("stage-title").textContent = evidence.title;
         byId("stage-summary").textContent = evidence.summary;
-        setGameMetric("game-success-count", index >= 2 ? formatNumber(record.run.purchaseSucceeded) : "0");
+        setGameMetric("game-success-count", formatNumber(record.run.purchaseSucceeded));
         setGameMetric("stage-mysql-stock", stockText(evidence.mysql));
         setGameMetric("stage-redis-stock", stockText(evidence.redis));
         setGameMetric("game-old-read-count", formatNumber(record.probe.oldReads));
@@ -1086,7 +924,7 @@
         setGameMetric("stage-duration", evidence.duration);
         byId("game-verdict-line").textContent = stageVerdict(record, index);
         byId("purchase-stock-summary").textContent =
-            "回放快照 · MySQL " + stockText(evidence.mysql) + " · Redis " + stockText(evidence.redis);
+            "阶段证据 · MySQL " + stockText(evidence.mysql) + " · Redis " + stockText(evidence.redis);
     }
 
     function applyRequestFrame(record) {
@@ -1115,7 +953,7 @@
         var transaction = traceStep(run, ["transaction_committed", "update_mysql", "idempotent_order"]);
         var outbox = outboxSummary(run);
         setNode("node-buyers", "success", "150 个唯一请求已释放", "150 / 150", "150 × 1");
-        setNode("node-service", "success", "购买结果已收集", formatMS(run.purchaseLatencyMs),
+        setNode("node-service", "running", "MySQL 提交已确认，响应待后续步骤", "—",
             run.purchaseSucceeded + " 个成功");
         setNode("node-mysql", "success", "事务已提交", formatMS(transaction && transaction.durationMs),
             run.initialStock + " → " + run.finalMySQLStock);
@@ -1138,7 +976,7 @@
             evidence: "成功：" + run.purchaseSucceeded + " · 库存：" + run.initialStock + " → " +
                 run.finalMySQLStock + (state.strategy === "outbox-mq-invalidate" ?
                     " · Outbox：" + outbox.total : ""),
-            next: "事务提交后到达响应边界。",
+            next: state.strategy === "sync-invalidate" ? "先删除旧缓存，再返回响应。" : "返回响应后，后台继续失效。",
             tone: "critical"
         });
     }
@@ -1183,7 +1021,7 @@
             setNode("node-sync-redis", failedStep ? "failed" : "success",
                 failedStep ? "DEL 重试耗尽" : "Redis DEL 已完成",
                 formatMS(run.cacheInvalidationLatencyMs), invalidated ? "缓存已删除" : "—");
-            focusFlowNode(null, "complete", failedStep ? "同步失效失败" : "同步请求链路已完成",
+            focusFlowNode("node-sync-redis", "critical", failedStep ? "同步失效失败" : "旧缓存已删除，响应尚未展示",
                 failedStep ? "检查 Redis DEL 失败证据" : "没有异步支线");
             setStepExplanation({
                 phase: failedStep ? "replay-sync-invalidation-failed" : "replay-sync-invalidation",
@@ -1234,27 +1072,32 @@
         byId("story-redis-stock").textContent = "未缓存";
     }
 
-    function applyProbeFrame(record) {
-        var run = record.run;
-        var probe = record.probe;
-        renderProbeStream(probe, "completed");
-        byId("story-redis-stock").textContent = stockText(run.finalRedisStock);
-        focusFlowNode("node-probe", state.strategy === "outbox-mq-invalidate" ? "async" : "critical",
-            "一致性探针已冻结", probe.completed + " 个真实样本");
-        setStepExplanation({
-            phase: "replay-probe",
-            term: "一致性探针检查缓存窗口",
-            action: "探针持续比较 Redis 查询结果与 MySQL 真实库存。",
-            reason: "最终一致不代表过程中没有旧读，必须观察整个失效窗口。",
-            evidence: "样本：" + probe.completed + " · 旧读：" + probe.oldReads +
-                " · 最大窗口：" + formatMS(probe.maxStaleWindowMs),
-            next: "汇总响应速度、旧读和最终库存。",
-            tone: "probe"
-        });
+    function applyRebuildFrame(record) {
+        var stage = stageModel.inspect(record, false).stages.rebuild;
+        var sample = stage.evidence;
+        var completed = stage.status === "completed";
+        renderProbeStream(record.probe, "completed");
+        setNode("node-mysql", "success", "Cache MISS 后回源读取",
+            sample ? formatMS(sample.latencyMs) : "—", sample ? "读取库存 " + stockText(sample.stock) : "—");
+        byId("node-mysql").querySelector("header strong").textContent = "MySQL 回源查询";
+        setNode("node-probe", completed ? "success" : "failed", "Cache MISS → MySQL 回源",
+            sample ? formatMS(sample.latencyMs) : "—", sample ? "读取库存 " + stockText(sample.stock) : "无证据");
+        setNode("node-probe-redis", completed ? "success" : "failed",
+            completed ? "Redis SET 已确认" : "Redis SET 失败", sample ? stockText(sample.stock) : "—",
+            completed ? "新副本已写入" : "不能确认缓存重建");
+        byId("story-redis-stock").textContent = completed ? stockText(sample.stock) : "未确认回填";
+        focusFlowNode("node-mysql", "complete", "查询回源 / 缓存重建", stage.summary);
+        byId("topology-status").textContent = completed ? "MISS → MySQL → Redis SET" : "CACHE REBUILD FAILED";
     }
 
     function applyCompleteFrame(record) {
         var run = record.run;
+        var transaction = traceStep(run, ["transaction_committed", "update_mysql", "idempotent_order"]);
+        if (transaction) {
+            byId("node-mysql").querySelector("header strong").textContent = "MySQL 事务";
+            setNode("node-mysql", "success", "事务已提交", formatMS(transaction.durationMs),
+                stockText(run.initialStock) + " → " + stockText(transaction.mysqlStock));
+        }
         byId("allegory-status").textContent = run.status === "failed" ? "实验失败" : "实验结果";
         byId("topology-status").textContent = String(run.status || "completed").toUpperCase();
         focusFlowNode(null, "complete", run.status === "failed" ? "实验失败" : "实验完成",
@@ -1301,75 +1144,38 @@
     }
 
     function stageEvents(record, index) {
-        var actionsByStage = [
-            ["transaction_started"],
-            ["transaction_committed", "update_mysql", "idempotent_order", "sold_out", "outbox_created", "write_outbox"],
-            ["purchase_responded"],
-            ["cache_invalidated", "delete_cache", "cache_invalidation_failed", "delete_cache_failed"],
-            ["query_material"]
-        ];
-        var events = [];
-        (record.run.trace || []).forEach(function (step) {
-            if (actionsByStage[index].indexOf(step.action) >= 0) {
-                events.push({
-                    clock: "+" + (formatMS(step.atMs) === "—" ? "0 ms" : formatMS(step.atMs)),
-                    label: step.label || step.action,
-                    detail: step.detail || "",
-                    failed: /failed/i.test(step.action)
-                });
-            }
+        var stage = stageState(record, index, false);
+        var actions = {
+            request: ["transaction_started"],
+            transaction: ["transaction_committed", "update_mysql", "idempotent_order", "sold_out", "outbox_created", "write_outbox"],
+            response: ["purchase_responded"],
+            invalidate: ["cache_invalidated", "delete_cache", "cache_invalidation_failed", "delete_cache_failed"],
+            rebuild: [], result: ["query_material"]
+        };
+        var events = (record.run.trace || []).filter(function (step) {
+            return actions[stage.id].indexOf(step.action) >= 0;
+        }).map(function (step) {
+            return { clock: "+" + (formatMS(step.atMs) === "—" ? "0 ms" : formatMS(step.atMs)),
+                label: step.label || step.action, detail: step.detail || "", failed: /failed/i.test(step.action) };
         });
-        if (index === 3 && record.strategy === "outbox-mq-invalidate") {
-            var published = (record.run.outbox || []).filter(function (event) { return event.publishedAt; }).length;
-            var invalidated = (record.run.outbox || []).filter(function (event) { return event.invalidatedAt; }).length;
-            var retries = (record.run.outbox || []).reduce(function (total, event) {
-                return total + Number(event.retryCount || 0);
-            }, 0);
-            events.push({
-                clock: "TRACE",
-                label: "OUTBOX / MQ EVIDENCE",
-                detail: published + " 条已发布，" + invalidated + " 条已失效，真实重试 " + retries + " 次。",
-                failed: retries > 0
+        if (stage.id === "invalidate" && record.strategy === "outbox-mq-invalidate") {
+            (record.run.outbox || []).forEach(function (event) {
+                events.push({ clock: event.invalidatedAt || event.publishedAt || "OUTBOX",
+                    label: "OUTBOX / MQ · " + event.status,
+                    detail: event.eventId + (event.invalidatedAt ? " · DEL 已确认" : " · 未确认 DEL"),
+                    failed: !!event.lastError });
             });
         }
-        if (index === 4) {
-            var probe = record.probe;
-            events.push({
-                clock: "PROBE",
-                label: "QUERY PROBE SUMMARY",
-                detail: probe.completed + " 个真实样本 · HIT " + probe.hits + " · MISS/FALLBACK " +
-                    (probe.misses + probe.fallbacks) + " · OLD " + probe.oldReads + "。",
-                failed: probe.errors > 0
-            });
-            var stale = (probe.samples || []).find(function (sample) { return sample.old; });
-            var latest = probe.latest;
-            if (stale) {
-                events.push({
-                    clock: "+" + formatMS(stale.observedAtMs),
-                    label: "OLD STOCK OBSERVED",
-                    detail: stale.source + " 返回 " + stale.stock + "，当时 MySQL 为 " + stale.authoritativeStock + "。",
-                    failed: true
-                });
-            }
-            if (latest) {
-                events.push({
-                    clock: "+" + formatMS(latest.observedAtMs),
-                    label: "LATEST PROBE",
-                    detail: latest.source + " 返回 " + latest.stock + "，MySQL 为 " + latest.authoritativeStock + "。",
-                    failed: false
-                });
-            }
+        if (stage.id === "rebuild") {
+            var sample = stage.evidence;
+            events.push({ clock: sample ? sample.completedAt : "PROBE", label: "MISS / CACHE REBUILD",
+                detail: stage.summary + (sample ? " · 回源库存 " + sample.stock + " · MySQL 对照 " + sample.authoritativeStock : ""),
+                failed: stage.status === "failed" });
         }
-        if (index === stageNames.length - 1) {
-            events.push({
-                clock: "RESULT",
-                label: record.run.status === "failed" ? "EXPERIMENT FAILED" : "EXPERIMENT COMPLETED",
-                detail: record.run.status === "failed" ?
-                    (record.run.errorMessage || "后端返回 failed。") :
-                    ("P99 " + formatMS(record.run.purchaseP99Ms) + " · 旧读 " + record.probe.oldReads +
-                        " · 最终" + (currentConsistency(record.run) ? "一致" : "未一致") + "。"),
-                failed: record.run.status === "failed"
-            });
+        if (stage.id === "result") {
+            events.push({ clock: "RESULT", label: record.run.status,
+                detail: stage.summary + " · MySQL " + stockText(stage.mysql) + " / Redis " + stockText(stage.redis),
+                failed: stage.status === "failed" });
         }
         return events;
     }
@@ -1453,34 +1259,46 @@
         });
     }
 
-    function renderPlaybackFrame(index, options) {
-        if (!state.record || !state.record.run) {
-            return;
+    function renderEvidenceScene(record, index, live) {
+        var model = stageModel.inspect(record, live);
+        var renderers = { request: applyRequestFrame, transaction: applyTransactionFrame,
+            invalidate: applyInvalidationFrame, response: applyResponseFrame,
+            rebuild: applyRebuildFrame, result: applyCompleteFrame };
+        renderSceneBaseline(record);
+        model.ids.slice(0, index + 1).forEach(function (id) {
+            var stage = model.stages[id];
+            if (stage.status === "completed" || stage.status === "failed") {
+                renderers[id](record);
+            }
+        });
+        var current = model.stages[model.ids[index]];
+        if (current.status === "waiting" || current.status === "unobserved" || current.status === "running") {
+            var nodes = { request: "node-service", transaction: "node-mysql",
+                response: "node-response", invalidate: state.strategy === "sync-invalidate" ? "node-sync-redis" : "node-consumer",
+                rebuild: "node-probe", result: "node-probe-redis" };
+            var node = nodes[current.id];
+            setNode(node, current.status === "running" ? "running" : "waiting",
+                replayStatusNames[current.status], "—", "待真实证据");
+            focusFlowNode(node, current.id === "invalidate" && state.strategy === "outbox-mq-invalidate" ? "async" : null,
+                current.title, current.summary);
         }
+        byId("stage-kicker").textContent = (live ? "实时阶段 " : "回放步骤 ") + (index + 1) + " / 6";
+        byId("stage-title").textContent = current.title;
+        byId("stage-summary").textContent = current.summary;
+        renderStageExplanation(record, index, live);
+    }
+
+    function renderPlaybackFrame(index, options) {
+        if (!state.record || !state.record.run) { return; }
         options = options || {};
-        state.replay.index = Math.max(0, Math.min(stageNames.length - 1, Number(index)));
+        state.replay.index = Math.max(0, Math.min(stageNames.length - 1, Number(index) || 0));
         if (options.advance !== false) {
             state.replay.furthest = Math.max(state.replay.furthest, state.replay.index);
         }
-        renderSceneBaseline(state.record);
-        applyRequestFrame(state.record);
-        if (state.replay.index >= 1) {
-            applyTransactionFrame(state.record);
-        }
-        if (state.replay.index >= 2) {
-            applyResponseFrame(state.record);
-        }
-        if (state.replay.index >= 3) {
-            applyInvalidationFrame(state.record);
-        }
-        if (state.replay.index >= 4) {
-            applyProbeFrame(state.record);
-            applyCompleteFrame(state.record);
-        }
+        renderEvidenceScene(state.record, state.replay.index, false);
         renderStageReadout(state.record, state.replay.index);
         renderTimeline();
         renderHeaderAndControls();
-        renderInventoryMonitor();
         persistReplayPosition();
     }
 
@@ -1578,6 +1396,8 @@
         stopProbe();
         state.record = null;
         state.liveRun = null;
+        state.liveStage = -1;
+        state.liveBaseline = null;
         state.runObservedAt = null;
         state.observationHalted = false;
         state.inventoryObservation = { firstMismatch: null };
@@ -1624,7 +1444,8 @@
             errors: state.probe.errors,
             maxStaleWindowMs: probeWindowMS(),
             latest: state.probe.latest ? clone(state.probe.latest) : null,
-            samples: clone(state.probe.samples)
+            samples: clone(state.probe.samples),
+            lastMiss: state.probe.lastMiss ? clone(state.probe.lastMiss) : null
         };
     }
 
@@ -1697,6 +1518,7 @@
                 probe.hits += 1;
             } else if (sample.source === "redis-miss") {
                 probe.misses += 1;
+                probe.lastMiss = sample;
             } else {
                 probe.fallbacks += 1;
             }
@@ -1724,7 +1546,8 @@
             if (probe === state.probe) {
                 renderProbeStream(probe, probe.active ? "active" : "completed");
                 if (state.executionMode === "executing") {
-                    renderInventoryMonitor();
+                    if (state.liveRun) { renderLiveRunHUD(state.liveRun, false); }
+                    else { renderInventoryMonitor(); }
                 }
             }
         }
@@ -1754,124 +1577,42 @@
         return "purchase-web-" + Date.now().toString(36) + "-" + Math.random().toString(16).slice(2, 10);
     }
 
-    function renderLiveRunHUD(run) {
-        if (!run) {
-            return;
+    function liveRecord() {
+        return state.liveRun ? { run: state.liveRun, strategy: state.strategy,
+            baseline: state.liveBaseline, probe: state.probe } : null;
+    }
+
+    function renderLiveRunHUD(run, freshSnapshot) {
+        if (!run) { return; }
+        if (freshSnapshot !== false) { state.runObservedAt = Date.now(); }
+        var record = liveRecord();
+        var model = stageModel.inspect(record, true);
+        state.liveStage = model.current;
+        renderEvidenceScene(record, state.liveStage, true);
+        if (!run.criticalPathCompleted) {
+            var processed = Number(run.purchaseProcessed || 0);
+            setNode("node-buyers", "success", "唯一请求已释放", processed + " / " + run.purchaseRequested, "12 concurrent");
+            setNode("node-service", "running", "请求池持续处理", processed + " / " + run.purchaseRequested,
+                Number(run.purchaseSucceeded || 0) + " success");
+            setNode("node-mysql", processed ? "running" : "waiting", "并发事务持续推进",
+                processed + " 个请求已处理", stockText(run.finalMySQLStock));
+        } else if (state.strategy === "outbox-mq-invalidate" && model.stages.invalidate.status === "running") {
+            var outbox = outboxSummary(run);
+            var accepted = outbox.published + outbox.completed;
+            setNode("node-worker", outbox.retry ? "retry" : "running", "扫描 / 发布 Outbox",
+                Number(run.retryCount || 0) + " 次重试", accepted + " / " + outbox.total);
+            setNode("node-mq", accepted ? "running" : "waiting", accepted ? "Broker 已接收事件" : "等待发布",
+                String(accepted), run.mqStatus || "—");
+            setNode("node-consumer", accepted > outbox.completed ? "running" : "waiting", "校验事件并删除缓存",
+                outbox.completed + " / " + outbox.total, "DEL + ACK");
+            setNode("node-async-redis", outbox.completed ? "running" : "waiting", "等待全部 DEL 确认",
+                "1 个键", outbox.completed + " / " + outbox.total);
+            focusFlowNode(accepted > outbox.completed ? "node-consumer" : "node-worker", "async", "Redis 缓存失效", "请求已返回，后台继续处理");
         }
-        state.runObservedAt = Date.now();
-        var outbox = outboxSummary(run);
-        var processed = Math.min(Number(run.purchaseProcessed || 0), Number(run.purchaseRequested || PURCHASE_COUNT));
-        var requested = Number(run.purchaseRequested || PURCHASE_COUNT);
-        var criticalDone = run.criticalPathCompleted === true;
-        var asyncStrategy = state.strategy === "outbox-mq-invalidate";
-        var outboxTotal = outbox.total || Number(run.purchaseSucceeded || 0);
-        var brokerAccepted = outbox.published + outbox.completed;
-        var waitingConsumer = asyncStrategy && criticalDone && run.status === "waiting_consumer";
-        var completed = run.status === "completed";
-
-        byId("stage-kicker").textContent = "LIVE EXECUTION";
-        byId("topology-status").textContent = criticalDone ?
-            (asyncStrategy ? "PHASE 02" : "CRITICAL PATH COMPLETE") : "PHASE 01";
-
-        setNode("node-buyers", processed > 0 || criticalDone ? "success" : "running",
-            processed > 0 || criticalDone ? "150 个唯一请求已释放" : "正在释放唯一请求",
-            processed + " / " + requested, "12 concurrent");
-        setNode("node-service", criticalDone ? "success" : "running",
-            criticalDone ? "购买结果已收集" : "正在编排购买请求",
-            processed + " / " + requested, formatNumber(run.purchaseSucceeded || 0) + " success");
-        setNode("node-mysql", criticalDone ? "success" : (processed > 0 ? "running" : "waiting"),
-            criticalDone ? "事务批次已提交" : (processed > 0 ? "事务持续提交中" : "等待首个事务"),
-            processed + " / " + requested,
-            stockText(run.initialStock) + " → " + stockText(run.finalMySQLStock));
-        setNode("node-response", criticalDone ? (run.status === "failed" ? "failed" : "success") : "waiting",
-            criticalDone ? "购买响应已返回" : "等待关键路径结束",
-            criticalDone ? formatMS(run.purchaseP99Ms) : "—",
-            criticalDone ? (formatNumber(run.purchaseSucceeded || 0) + " success") : "—");
-        setFlowEdge("edge-tasks-service", processed > 0 || criticalDone ? "completed" : "running");
-        setFlowEdge("edge-service-mysql", criticalDone ? "completed" : (processed > 0 ? "running" : "idle"));
-        setFlowEdge("edge-mysql-response", criticalDone ? "completed" : "idle");
-
-        if (asyncStrategy) {
-            setNode("node-outbox", criticalDone ? "success" : (processed > 0 ? "running" : "waiting"),
-                criticalDone ? "与订单同事务提交" : "随成功订单写入",
-                criticalDone ? "COMMIT" : (processed + " / " + requested),
-                criticalDone ? (outboxTotal + " events") : "pending");
-            setNode("node-sync-redis", "unused", "异步方案不阻塞 Response", "—", "not used");
-        } else {
-            setNode("node-outbox", "unused", "同步方案不写入", "—", "not used");
-            setNode("node-sync-redis", criticalDone ? (run.status === "failed" ? "failed" : "success") :
-                (processed > 0 ? "running" : "waiting"),
-            criticalDone ? (run.status === "failed" ? "Redis DEL 失败" : "同步 Redis DEL 已完成") :
-                (processed > 0 ? "每笔提交后执行 DEL" : "等待事务提交"),
-            criticalDone ? formatMS(run.cacheInvalidationLatencyMs) : (processed + " / " + requested),
-            criticalDone ? (run.status === "failed" ? "failed" : "cache deleted") : "in request path");
-        }
-
-        if (!criticalDone) {
-            byId("stage-title").textContent = processed > 0 ? "MySQL Transaction 正在推进" : "Purchase Service 已接收任务";
-            byId("stage-summary").textContent = "已处理 " + processed + " / " + requested +
-                " 个真实请求；Response 与异步支线仍未开始。";
-            focusFlowNode(processed > 0 ? "node-mysql" : "node-service", "critical",
-                processed > 0 ? "MySQL Transaction 正在提交" : "Purchase Service 正在编排",
-                "请求关键路径正在推进");
-        } else if (!asyncStrategy) {
-            byId("stage-title").textContent = completed ? "同步请求关键路径已完成" : "同步 Redis DEL 正在收尾";
-            byId("stage-summary").textContent = "Response 已包含 Redis DEL 结果；本方案没有异步失效阶段。";
-            focusFlowNode(completed ? null : "node-sync-redis", completed ? "complete" : "critical",
-                completed ? "同步实验完成" : "同步 Redis DEL", "同步失效属于请求关键路径");
-        } else {
-            var workerDone = outboxTotal > 0 && brokerAccepted === outboxTotal;
-            var consumerDone = outboxTotal > 0 && outbox.completed === outboxTotal;
-            setNode("node-worker", outbox.retry ? "retry" : (workerDone ? "success" : "running"),
-                outbox.retry ? "发布失败，等待重试" : (workerDone ? "Outbox 已全部发布" : "扫描 pending / retry"),
-                Number(run.retryCount || 0) + " retries",
-                (outbox.pending + outbox.publishing + outbox.retry) + " waiting");
-            setNode("node-mq", workerDone ? "success" : (brokerAccepted > 0 ? "running" : "waiting"),
-                brokerAccepted > 0 ? "Broker 已接收失效事件" : "等待 Publisher",
-                brokerAccepted + " / " + outboxTotal, run.mqStatus || "—");
-            setNode("node-consumer", consumerDone ? "success" : (brokerAccepted > outbox.completed ? "running" : "waiting"),
-                consumerDone ? "消息已幂等消费" : (brokerAccepted > outbox.completed ? "正在消费并校验事件" : "等待消息"),
-                outbox.completed + " / " + outboxTotal + " msgs", "event_id dedupe");
-            setNode("node-async-redis", consumerDone ? "success" : (brokerAccepted > outbox.completed ? "running" : "waiting"),
-                consumerDone ? "Redis DEL 已完成" : (brokerAccepted > outbox.completed ? "正在执行幂等 DEL" : "等待缓存失效 Consumer"),
-                "1 key", outbox.completed + " / " + outboxTotal + " events");
-            setFlowEdge("edge-worker-mq", workerDone ? "completed" : (outbox.publishing > 0 || brokerAccepted > 0 ? "running" : "idle"));
-            setFlowEdge("edge-mq-consumer", consumerDone ? "completed" : (brokerAccepted > 0 ? "running" : "idle"));
-            setFlowEdge("edge-consumer-redis", consumerDone ? "completed" : (brokerAccepted > outbox.completed ? "running" : "idle"));
-
-            if (completed) {
-                byId("stage-title").textContent = "异步失效链路已完成";
-                byId("stage-summary").textContent = "Publisher、MQ、缓存失效 Consumer 与 Redis DEL 已处理 " +
-                    outbox.completed + " / " + outboxTotal + " 个真实事件。";
-                focusFlowNode(null, "complete", "异步链路完成", "缓存已与 MySQL 权威库存收敛");
-            } else if (waitingConsumer || brokerAccepted > outbox.completed) {
-                byId("stage-title").textContent = "缓存失效 Consumer 正在处理删缓存通知";
-                byId("stage-summary").textContent = "MQ 已接收 " + brokerAccepted + " 个事件；缓存失效 Consumer 已完成 " +
-                    outbox.completed + " / " + outboxTotal + " 次校验、DEL 与确认。";
-                focusFlowNode("node-consumer", "async", "缓存失效 Consumer 正在消费", "它不处理创建或取消订单");
-            } else {
-                byId("stage-title").textContent = "Outbox Publisher 等待下一次扫描";
-                byId("stage-summary").textContent = "请求关键路径已结束；Publisher 每 1 秒真实扫描 pending / retry。";
-                focusFlowNode("node-worker", "async", "Outbox Publisher 正在等待扫描节拍", "事务提交后的异步阶段");
-            }
-        }
-
-        setGameMetric("game-success-count", formatNumber(run.purchaseSucceeded || 0));
-        setGameMetric("stage-mysql-stock", stockText(run.finalMySQLStock));
-        setGameMetric("stage-redis-stock", stockText(run.finalRedisStock));
-        setGameMetric("game-old-read-count", formatNumber(state.probe.oldReads || 0));
-        byId("stage-message-state").textContent = asyncStrategy ?
-            (criticalDone ? ("缓存失效 Consumer " + outbox.completed + " / " + outboxTotal) : "Outbox 尚未展开") :
-            (criticalDone ? "同步链路结束" : "Redis DEL 位于关键路径");
-        setGameMetric("stage-duration", Number(run.purchaseP99Ms) > 0 ?
-            formatMS(run.purchaseP99Ms) : "采集中");
-        byId("game-verdict-line").textContent = !criticalDone ?
-            "执行解释：当前亮点来自后端增量快照，不是前端定时器推演。" :
-            (asyncStrategy ? "执行解释：Response 已结束，缓存失效正沿独立事件链推进。" :
-                "执行解释：同步 Redis DEL 已计入购买响应耗时。");
+        // 实时数字始终显示最新后端快照；不会为了复现 DEL 而把当前 Redis 强制清空。
         renderProbeStream(state.probe, state.probe.active ? "active" : "completed");
-        renderLiveStepExplanation(run);
-        renderInventoryMonitor();
+        renderTimeline();
+        renderHeaderAndControls();
     }
 
     async function pollCriticalPath(id, isActive) {
@@ -1930,7 +1671,7 @@
     function buildRecord(run, baseline) {
         var probe = snapshotProbe();
         return {
-            playbackVersion: 2,
+            playbackVersion: 3,
             strategy: state.strategy,
             materialId: state.materialId,
             materialName: state.profile.name,
@@ -1982,7 +1723,7 @@
         setExecutionMode(options.autoplay ? "replaying" :
             (state.replay.index === stageNames.length - 1 ? "result" : "paused"),
             options.autoplay ?
-                "真实执行已经完成，正在自动回放五个关键步骤。" :
+                "真实执行已经完成，正在自动回放六个关键步骤。" :
                 "真实执行已经完成；可使用上一步、播放暂停和下一步回看 Trace。");
         renderPlaybackFrame(state.replay.index, { advance: true });
         renderSavedResults();
@@ -2031,6 +1772,7 @@
         });
         try {
             var baseline = await resetExperiment();
+            state.liveBaseline = clone(baseline);
             setGameMetric("game-success-count", "0");
             setGameMetric("stage-mysql-stock", stockText(baseline.mysqlStock));
             setGameMetric("stage-redis-stock", stockText(baseline.redisStock));

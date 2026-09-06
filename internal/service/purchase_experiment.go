@@ -103,6 +103,11 @@ type PurchaseQuerySample struct {
 	AuthoritativeStock int           `json:"authoritativeStock"`
 	LatencyMS          float64       `json:"latencyMs"`
 	Old                bool          `json:"old"`
+	// 回填证据来自同一次 Cached 查询；MISS 本身不保证 SET 成功。
+	CacheRebuilt       bool      `json:"cacheRebuilt"`
+	CacheRebuildFailed bool      `json:"cacheRebuildFailed"`
+	StartedAt          time.Time `json:"startedAt"`
+	CompletedAt        time.Time `json:"completedAt"`
 }
 
 type PurchaseOutboxView struct {
@@ -117,37 +122,39 @@ type PurchaseOutboxView struct {
 
 // PurchaseExperimentRun 是主实验的真实执行和异步失效状态。
 type PurchaseExperimentRun struct {
-	RequestID                  string                `json:"requestId"`
-	MaterialID                 int                   `json:"materialId"`
-	Strategy                   PurchaseStrategy      `json:"strategy"`
-	Status                     string                `json:"status"`
-	InitialStock               int                   `json:"initialStock"`
-	FinalMySQLStock            int                   `json:"finalMySQLStock"`
-	FinalRedisStock            *int                  `json:"finalRedisStock"`
-	PurchaseRequested          int                   `json:"purchaseRequested"`
-	PurchaseProcessed          int                   `json:"purchaseProcessed"`
-	PurchaseSucceeded          int                   `json:"purchaseSucceeded"`
-	DuplicateRequests          int                   `json:"duplicateRequests"`
-	SoldOutRequests            int                   `json:"soldOutRequests"`
-	QueryRequested             int                   `json:"queryRequested"`
-	QueryCompleted             int                   `json:"queryCompleted"`
-	OldReadCount               int                   `json:"oldReadCount"`
-	PurchaseLatencyMS          float64               `json:"purchaseLatencyMs"`
-	PurchaseP99MS              float64               `json:"purchaseP99Ms"`
-	CacheInvalidationLatencyMS float64               `json:"cacheInvalidationLatencyMs"`
-	OutboxStatus               string                `json:"outboxStatus"`
-	MQStatus                   string                `json:"mqStatus"`
-	CriticalPathCompleted      bool                  `json:"criticalPathCompleted"`
-	PublisherScanIntervalMS    int64                 `json:"publisherScanIntervalMs"`
-	PublisherScanCount         uint64                `json:"publisherScanCount"`
-	PublisherLastScanAt        *time.Time            `json:"publisherLastScanAt,omitempty"`
-	PublisherNextScanAt        *time.Time            `json:"publisherNextScanAt,omitempty"`
-	RetryCount                 int                   `json:"retryCount"`
-	ErrorMessage               string                `json:"errorMessage,omitempty"`
-	ExecutedAt                 time.Time             `json:"executedAt"`
-	Trace                      []PurchaseTraceStep   `json:"trace"`
-	QuerySamples               []PurchaseQuerySample `json:"querySamples"`
-	Outbox                     []PurchaseOutboxView  `json:"outbox"`
+	RequestID                  string           `json:"requestId"`
+	MaterialID                 int              `json:"materialId"`
+	Strategy                   PurchaseStrategy `json:"strategy"`
+	Status                     string           `json:"status"`
+	InitialStock               int              `json:"initialStock"`
+	FinalMySQLStock            int              `json:"finalMySQLStock"`
+	FinalRedisStock            *int             `json:"finalRedisStock"`
+	PurchaseRequested          int              `json:"purchaseRequested"`
+	PurchaseProcessed          int              `json:"purchaseProcessed"`
+	PurchaseSucceeded          int              `json:"purchaseSucceeded"`
+	DuplicateRequests          int              `json:"duplicateRequests"`
+	SoldOutRequests            int              `json:"soldOutRequests"`
+	QueryRequested             int              `json:"queryRequested"`
+	QueryCompleted             int              `json:"queryCompleted"`
+	OldReadCount               int              `json:"oldReadCount"`
+	PurchaseLatencyMS          float64          `json:"purchaseLatencyMs"`
+	PurchaseP99MS              float64          `json:"purchaseP99Ms"`
+	CacheInvalidationLatencyMS float64          `json:"cacheInvalidationLatencyMs"`
+	// 最后一次成功同步 DEL 的真实完成时刻，用于区分删除后的查询与早期回填。
+	CacheInvalidatedAt      *time.Time            `json:"cacheInvalidatedAt,omitempty"`
+	OutboxStatus            string                `json:"outboxStatus"`
+	MQStatus                string                `json:"mqStatus"`
+	CriticalPathCompleted   bool                  `json:"criticalPathCompleted"`
+	PublisherScanIntervalMS int64                 `json:"publisherScanIntervalMs"`
+	PublisherScanCount      uint64                `json:"publisherScanCount"`
+	PublisherLastScanAt     *time.Time            `json:"publisherLastScanAt,omitempty"`
+	PublisherNextScanAt     *time.Time            `json:"publisherNextScanAt,omitempty"`
+	RetryCount              int                   `json:"retryCount"`
+	ErrorMessage            string                `json:"errorMessage,omitempty"`
+	ExecutedAt              time.Time             `json:"executedAt"`
+	Trace                   []PurchaseTraceStep   `json:"trace"`
+	QuerySamples            []PurchaseQuerySample `json:"querySamples"`
+	Outbox                  []PurchaseOutboxView  `json:"outbox"`
 }
 
 type purchaseQueryBatchResult struct {
@@ -157,6 +164,7 @@ type purchaseQueryBatchResult struct {
 
 type purchaseExecutionResult struct {
 	childRequestID      string
+	invalidatedAt       *time.Time
 	commit              *database.PurchaseCommitResult
 	transactionElapsed  time.Duration
 	requestLatency      time.Duration
@@ -310,6 +318,9 @@ func (s *PurchaseLabService) RunExperiment(
 					}
 				} else {
 					successfulInvalidations++
+					if result.invalidatedAt != nil && (run.CacheInvalidatedAt == nil || result.invalidatedAt.After(*run.CacheInvalidatedAt)) {
+						run.CacheInvalidatedAt = result.invalidatedAt
+					}
 				}
 			}
 		}
@@ -445,6 +456,10 @@ func (s *PurchaseLabService) executePurchase(
 		invalidationStarted := time.Now()
 		result.invalidationErr = deleteMaterialCacheWithRetry(ctx, materialID, 3)
 		result.invalidationElapsed = time.Since(invalidationStarted)
+		if result.invalidationErr == nil {
+			completedAt := time.Now()
+			result.invalidatedAt = &completedAt
+		}
 	}
 	result.requestLatency = time.Since(requestStarted)
 	if result.err == nil && !result.commit.SoldOut && !result.commit.Duplicate {
@@ -477,6 +492,10 @@ func (s *PurchaseLabService) executeQueryBatch(materialID, count int) ([]Purchas
 	if count <= 0 {
 		return nil, nil
 	}
+	// 保留 ReadCached 的入参校验，只额外暴露同一条读路径已有的回填证据。
+	if appErr := validateArchiveMaterialID(materialID); appErr != nil {
+		return nil, appErr
+	}
 	results := make(chan PurchaseQuerySample, count)
 	errs := make(chan error, count)
 	var wait sync.WaitGroup
@@ -485,7 +504,7 @@ func (s *PurchaseLabService) executeQueryBatch(materialID, count int) ([]Purchas
 		go func() {
 			defer wait.Done()
 			started := time.Now()
-			detail, source, _, appErr := s.archive.ReadCached(materialID)
+			detail, source, _, appErr, cacheTrace := s.archive.readCached(materialID)
 			if appErr != nil {
 				errs <- appErr
 				return
@@ -498,8 +517,10 @@ func (s *PurchaseLabService) executeQueryBatch(materialID, count int) ([]Purchas
 			}
 			results <- PurchaseQuerySample{
 				Source: source, Stock: detail.Stock, AuthoritativeStock: authoritativeStock,
-				LatencyMS: durationMilliseconds(readLatency),
-				Old:       detail.Stock != authoritativeStock,
+				LatencyMS:    durationMilliseconds(readLatency),
+				Old:          detail.Stock != authoritativeStock,
+				CacheRebuilt: cacheTrace.CacheRebuilt, CacheRebuildFailed: cacheTrace.CacheRebuildFailed,
+				StartedAt: started, CompletedAt: time.Now(),
 			}
 		}()
 	}

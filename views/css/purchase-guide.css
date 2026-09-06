@@ -1,0 +1,82 @@
+/* 购买入口只负责导览；样式限定在购买分支，不改变查询实验的条件交接页。 */
+html[data-planner="purchase"] .market-event { padding-top: 78px; padding-bottom: 18px; }
+html[data-planner="purchase"] .market-page[data-event-state="purchase_preparing"] .event-card { width: min(1180px, 100%); padding: 18px; }
+html[data-planner="purchase"] .planner-context { grid-template-columns: 58px minmax(0, 1fr); gap: 16px; margin-bottom: 14px; padding-bottom: 12px; }
+html[data-planner="purchase"] .planner-context > img { width: 58px; }
+html[data-planner="purchase"] .planner-context__copy small { display: block; line-height: 1.2; }
+html[data-planner="purchase"] .planner-context__copy h1 { margin: 4px 0; font-family: inherit; font-size: clamp(20px, 2.1vw, 28px); letter-spacing: 0; line-height: 1.35; }
+html[data-planner="purchase"] .planner-context__copy p { font-size: 12px; line-height: 1.5; }
+
+.purchase-guide { color: var(--planner-ink); }
+.purchase-guide h2, .purchase-guide p, .purchase-guide ol, .purchase-guide ul { margin: 0; }
+.purchase-guide ol, .purchase-guide ul { padding: 0; list-style: none; }
+.guide-paths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.guide-path { --path: var(--planner-teal-dark); --path-tint: #e2eee6; display: flex; flex-direction: column; min-width: 0; padding: 16px; border: 1px solid var(--planner-frame); border-top: 3px solid var(--path); background: var(--planner-paper); box-shadow: 3px 3px 0 #d8c9aa; }
+.guide-path-b { --path: #716095; --path-tint: #eee8f3; }
+.guide-path > header { display: flex; align-items: center; gap: 10px; }
+.guide-path-letter { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; border: 1px solid var(--path); color: var(--planner-paper); background: var(--path); font: 900 20px/1 ui-monospace, monospace; }
+.guide-path h2 { color: var(--planner-ink); font-size: 18px; }
+.guide-path > header > small { margin-left: auto; color: var(--path); font-size: 11px; font-weight: 700; }
+.purchase-guide .guide-request-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 12px; }
+.purchase-guide .guide-request-flow-b { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.guide-request-flow li { position: relative; display: grid; place-items: center; min-height: 40px; padding: 8px 4px; border: 1px solid var(--planner-line); color: var(--planner-ink); background: #fffaf0; font: 700 12px/1.4 ui-monospace, "PingFang SC", monospace; text-align: center; }
+.guide-request-flow li + li::before { position: absolute; right: calc(100% + 5px); width: 16px; color: var(--path); font-size: 18px; content: "→"; }
+.guide-request-flow .guide-delete-step { border-color: var(--path); color: var(--path); background: var(--path-tint); }
+.guide-async-branch { margin: 9px 0 0 12px; padding: 0 0 0 12px; border-left: 2px solid #b7a7c7; }
+.guide-async-branch > small { color: var(--path); font-size: 10px; }
+.guide-async-branch p { margin-top: 5px; color: var(--path); font: 700 11px/1.7 ui-monospace, "PingFang SC", monospace; }
+.guide-async-branch span { padding: 0 3px; color: #a697b7; }
+.purchase-guide .guide-tradeoff { margin: 10px 0; color: var(--planner-ink); font-size: 13px; line-height: 1.6; }
+.guide-boundary { margin-top: auto; padding: 8px 12px; border-left: 3px solid var(--path); background: var(--path-tint); }
+.guide-boundary strong { color: var(--path); font-size: 12px; }
+.guide-boundary p { margin-top: 4px; color: #536159; font-size: 12px; line-height: 1.6; }
+.guide-observe { margin-top: 16px; }
+.guide-observe h2 { margin-bottom: 8px; font-size: 14px; }
+.guide-observe ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--planner-line); background: #faf4e3; }
+.guide-observe li { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px; border-right: 1px solid var(--planner-line); }
+.guide-observe li:last-child { border-right: 0; }
+.guide-observe li > span { color: var(--planner-teal-dark); font: 800 18px/1 ui-monospace, monospace; }
+.guide-observe strong { display: block; font-size: 14px; }
+.guide-observe small { display: block; margin-top: 5px; color: var(--planner-muted); font-size: 11px; line-height: 1.5; }
+.guide-footer { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 20px; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 2px solid var(--planner-frame); }
+.guide-conditions > strong { display: block; font-size: 12px; }
+.guide-conditions > strong > small { margin-left: 10px; color: var(--planner-muted); font-size: 10px; font-weight: 500; }
+.guide-conditions ul { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 8px; }
+.guide-conditions li { color: var(--planner-ink); font-size: 12px; }
+.guide-conditions b { color: var(--planner-teal-dark); font: 800 14px/1.2 ui-monospace, monospace; }
+.guide-conditions p { margin-top: 8px; color: var(--planner-muted); font-size: 11px; line-height: 1.5; }
+.guide-enter { display: flex; justify-content: center; align-items: center; gap: 15px; min-height: 48px; padding: 12px 16px; border: 2px solid #254d4b; border-radius: 1px; color: var(--planner-paper); background: var(--planner-teal-dark); box-shadow: 3px 3px 0 #b9a779; font-size: 14px; font-weight: 800; line-height: 1.3; cursor: pointer; }
+.guide-enter:hover { background: #2c746c; }
+.guide-enter:focus-visible { outline: 3px solid var(--planner-teal-dark); outline-offset: 4px; }
+.guide-enter:active { transform: translate(1px, 1px); box-shadow: 2px 2px 0 #b9a779; }
+
+@media (max-width: 900px) {
+    .guide-path { padding: 12px; }
+    .guide-path h2 { font-size: 16px; }
+    .guide-path > header > small { font-size: 10px; }
+    .guide-observe li { padding: 10px; gap: 8px; }
+    .guide-observe strong { font-size: 12px; }
+    .guide-footer { grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; }
+}
+@media (max-width: 650px) {
+    html[data-planner="purchase"] .market-event { padding: 78px 12px 24px; }
+    html[data-planner="purchase"] .market-page[data-event-state="purchase_preparing"] .event-card { padding: 14px; }
+    html[data-planner="purchase"] .planner-context { grid-template-columns: 44px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; padding-bottom: 14px; }
+    html[data-planner="purchase"] .planner-context > img { width: 44px; }
+    html[data-planner="purchase"] .planner-context__copy small { font-size: 8px; }
+    html[data-planner="purchase"] .planner-context__copy h1 { font-size: 19px; }
+    html[data-planner="purchase"] .planner-context__copy p { font-size: 11px; }
+    .guide-paths { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    .guide-path > header { gap: 8px; }
+    .guide-path h2 { font-size: 16px; }
+    .guide-path > header > small { font-size: 10px; }
+    .guide-request-flow li { font-size: 11px; }
+    .guide-observe ol { grid-template-columns: minmax(0, 1fr); }
+    .guide-observe li { border-right: 0; border-bottom: 1px solid var(--planner-line); padding: 12px; }
+    .guide-observe li:last-child { border-bottom: 0; }
+    .guide-observe strong { font-size: 14px; }
+    .guide-footer { grid-template-columns: minmax(0, 1fr); }
+    .guide-conditions ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .guide-conditions > strong > small { display: block; margin: 5px 0 0; }
+    .guide-enter { width: 100%; }
+}

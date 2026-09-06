@@ -35,21 +35,6 @@
     var CONFIG_PREVIEW_MODE = "direct";
     var marketPreviewTimer = null;
     var marketPreviewSignature = "";
-    // 详情页只解释两条真实路径；本轮运行方案留到实验室内选择。
-    var purchasePathExplanations = Object.freeze({
-        "sync-invalidate": Object.freeze({
-            label: "同步删除缓存",
-            route: "MySQL COMMIT → Redis DEL → Response",
-            copy: "顾客响应会等待库存牌删除完成，路径更直接，但 Redis 位于购买请求链路中。"
-        }),
-        "outbox-mq-invalidate": Object.freeze({
-            label: "Outbox + MQ 异步失效",
-            route: "TX + Outbox → Response · Worker → MQ → Consumer → Redis DEL",
-            copy: "顾客先收到响应，再由信使异步更新库存牌；核心交易链路更短，但允许短暂旧读窗口。"
-        })
-    });
-    var purchaseExplainerMode = "sync-invalidate";
-
     function byId(id) {
         return document.getElementById(id);
     }
@@ -787,18 +772,6 @@
         byId("start-crowd-test").focus({ preventScroll: true });
     }
 
-    function renderPurchaseExplainer() {
-        var explanation = purchasePathExplanations[purchaseExplainerMode];
-        document.querySelectorAll("[data-purchase-explainer]").forEach(function (button) {
-            var active = button.dataset.purchaseExplainer === purchaseExplainerMode;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", String(active));
-        });
-        byId("purchase-plan-preview-heading").textContent = "方案解说 · " + explanation.label;
-        byId("purchase-plan-route-code").textContent = explanation.route;
-        byId("purchase-plan-route-copy").textContent = explanation.copy;
-    }
-
     function openPurchaseMode() {
         if (isTaskActive()) {
             showToast("查询潮汐仍在运行，请先结束当前任务再查看购买实验。");
@@ -815,23 +788,7 @@
         }
         setState("purchase_preparing");
         updateFoyerExperimentQuery("purchase");
-        renderPurchaseExplainer();
         byId("confirm-purchase-plan").focus({ preventScroll: true });
-    }
-
-    function selectPurchaseExplainer(mode) {
-        if (state !== "purchase_preparing" || !purchasePathExplanations[mode]) {
-            return;
-        }
-        purchaseExplainerMode = mode;
-        renderPurchaseExplainer();
-    }
-
-    function leavePurchaseMode() {
-        if (state !== "purchase_preparing") {
-            return;
-        }
-        window.location.assign("/");
     }
 
     function beginNextMarketDraft() {
@@ -892,13 +849,7 @@
             enterCrowdLabView();
         });
         byId("leave-crowd-mode").addEventListener("click", leaveCrowdMode);
-        document.querySelectorAll("[data-purchase-explainer]").forEach(function (button) {
-            button.addEventListener("click", function () {
-                selectPurchaseExplainer(button.dataset.purchaseExplainer);
-            });
-        });
         byId("confirm-purchase-plan").addEventListener("click", enterPurchaseLabFromMarket);
-        byId("leave-purchase-mode").addEventListener("click", leavePurchaseMode);
     }
 
     document.addEventListener("DOMContentLoaded", function () {
