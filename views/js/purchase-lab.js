@@ -40,7 +40,7 @@
     var resultsFocusRequestId = null;
     var evidenceRecord = null;
     // executionMode 表示“真实执行 / 回放 / 暂停 / 结果”边界；replay 只保存前端游标。
-    // startExperiment 执行购买；resetToPreparation 只重置基线，回放不调用这两个入口。
+    // startExperiment 执行购买；resetToPreparation 重置基线并清空录制结果，回放不调用这两个入口。
     var state = {
         materialId: null,
         profile: null,
@@ -1586,18 +1586,21 @@
         var previousMode = state.executionMode === "replaying" ? "paused" : state.executionMode;
         clearReplayTimer();
         state.replay.playing = false;
-        setExecutionMode("resetting", "正在恢复初始库存并预热 Redis；不会发起购买，A/B 对比保留。");
+        setExecutionMode("resetting", "正在恢复初始库存并预热 Redis，清空 A/B 结果和回放记录；不会发起购买。");
         try {
             // 必须等待真实重置成功，不能先把库存画成 100。
             await resetExperiment();
             try { window.sessionStorage.removeItem(REPLAY_POSITION_KEY); } catch (_) { /* 存储禁用时仍可重置 */ }
+            if (resultStore) { resultStore.clear(); }
+            Object.keys(recentResults).forEach(function (key) { delete recentResults[key]; });
+            evidenceRecord = null;
             var nextURL = new URL(window.location.href);
             if (state.strategy) { nextURL.searchParams.set("strategy", state.strategy); }
             window.history.replaceState(null, "", nextURL.toString());
             resultsFocusRequestId = null;
             resetIdleVisuals();
-            byId("prepare-action-hint").textContent = "已重置 · A/B 对比保留，点击开始实验再运行。";
-            showToast("实验已重置，尚未开始新一轮。");
+            byId("prepare-action-hint").textContent = "已清空实验数据 · 点击开始实验，重新录制。";
+            showToast("库存已恢复，A/B 结果、探针和回放记录已清空。");
         } catch (error) {
             setExecutionMode(previousMode, "重置未确认成功，请重试；当前仍保留重置前的观测记录。");
             byId("prepare-action-hint").textContent = "重置未确认成功，请重试。";
@@ -2100,6 +2103,20 @@
         panel.hidden = !records.length || state.executionMode === "executing";
         if (!records.length) {
             evidenceRecord = null;
+            panel.dataset.resultCount = "0";
+            panel.dataset.failed = "false";
+            ["results-table-head", "results-table-body", "evidence-strategies", "technical-trace"].forEach(function (id) {
+                byId(id).replaceChildren();
+            });
+            ["results-context", "results-verdict", "results-quality", "evidence-context"].forEach(function (id) {
+                byId(id).textContent = "";
+            });
+            byId("results-status").textContent = "尚未开始实验";
+            byId("results-verdict-title").textContent = "本轮观察";
+            document.querySelectorAll(".purchase-technical-grid dd").forEach(function (element) {
+                element.textContent = "—";
+            });
+            renderHeaderAndControls();
             return;
         }
         panel.dataset.resultCount = String(records.length);

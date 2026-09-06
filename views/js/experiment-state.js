@@ -213,8 +213,19 @@
         return Object.freeze(clone(result));
     }
 
+    function clearPurchaseResults() {
+        // 只清购买实验；查询实验和其他场景的录制结果不受影响。
+        try {
+            global.sessionStorage.removeItem(PURCHASE_RESULTS_KEY);
+        } catch (_) {
+            // 禁用存储时，页面自行清空内存中的结果。
+        }
+        global.dispatchEvent(new CustomEvent("silas:purchase-results-change", { detail: null }));
+    }
+
     global.SilasPurchaseLabResults = Object.freeze({
         list: listPurchaseResults,
-        save: savePurchaseResult
+        save: savePurchaseResult,
+        clear: clearPurchaseResults
     });
 }(window));
