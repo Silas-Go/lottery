@@ -40,7 +40,7 @@
     var resultsFocusRequestId = null;
     var evidenceRecord = null;
     // executionMode 表示“真实执行 / 回放 / 暂停 / 结果”边界；replay 只保存前端游标。
-    // 只有 startExperiment 会进入购买与重置接口，任何回放控制都不能复用该入口。
+    // startExperiment 执行购买；resetToPreparation 只重置基线，回放不调用这两个入口。
     var state = {
         materialId: null,
         profile: null,
@@ -780,6 +780,7 @@
         }
         var labels = {
             idle: "准备实验",
+            resetting: "正在重置实验",
             executing: "正在运行 · 实时观测",
             replaying: "正在回放实验过程",
             paused: "回放已暂停",
@@ -790,12 +791,13 @@
     }
 
     function renderHeaderAndControls() {
-        var busy = state.executionMode === "executing";
+        var busy = isExperimentBusy();
         var ready = !!(state.record && state.record.run);
         var label = modeLabel();
         byId("header-strategy").textContent = strategyNames[state.strategy] || "请选择方案";
         byId("header-status").textContent = label;
-        var activeIndex = busy ? state.liveStage : (ready ? state.replay.index : -1);
+        var activeIndex = state.executionMode === "resetting" ? -1 :
+            (busy ? state.liveStage : (ready ? state.replay.index : -1));
         byId("running-phase").textContent = label + (activeIndex >= 0 ?
             " · " + (activeIndex + 1) + "/6 " + stageNames[activeIndex] : "");
         byId("running-material").textContent = state.profile ? state.profile.name : "—";
@@ -809,7 +811,9 @@
             ((activeIndex + 1) + " / " + stageNames.length) : "— / " + stageNames.length;
         byId("timeline-mode").textContent = label;
         byId("start-purchase-run").disabled = busy || !state.strategy;
-        byId("start-purchase-run").textContent = busy ? "实验运行中…" : "开始实验";
+        byId("start-purchase-run").textContent = state.executionMode === "executing" ? "实验运行中…" : "开始实验";
+        byId("reset-purchase-run").disabled = busy || !state.materialId || !state.stock;
+        byId("reset-purchase-run").textContent = state.executionMode === "resetting" ? "重置中…" : "重置实验";
         byId("prepare-action-hint").textContent = state.strategy ?
             "开始时重置实验库存；请勿同时运行查询压测。" :
             "请先选择一种缓存失效方案。";
@@ -852,7 +856,7 @@
             button.dataset.status = status;
             button.classList.toggle("is-current", !!record && index === selected);
             button.setAttribute("aria-current", record && index === selected ? "step" : "false");
-            button.disabled = live || !record || index > state.replay.furthest;
+            button.disabled = isExperimentBusy() || !record || index > state.replay.furthest;
             button.querySelector("[data-step-status]").textContent = replayStatusNames[status] || status;
             button.title = stage.title + " · " + (replayStatusNames[status] || status);
         });
@@ -1336,7 +1340,7 @@
     }
 
     function pauseReplay(detail) {
-        if (!state.record) {
+        if (isExperimentBusy() || !state.record) {
             return;
         }
         clearReplayTimer();
@@ -1347,7 +1351,7 @@
     }
 
     function playReplay() {
-        if (!state.record) {
+        if (isExperimentBusy() || !state.record) {
             return;
         }
         if (state.replay.playing) {
@@ -1365,7 +1369,7 @@
     }
 
     function stepReplay(delta) {
-        if (!state.record) {
+        if (isExperimentBusy() || !state.record) {
             return;
         }
         pauseReplay("已按单步方式查看；页面不会自动继续，也不会重新修改库存。");
@@ -1380,7 +1384,7 @@
     }
 
     function chooseTimelineStep(index) {
-        if (!state.record || index > state.replay.furthest) {
+        if (isExperimentBusy() || !state.record || index > state.replay.furthest) {
             return;
         }
         pauseReplay("正在回看“" + stageNames[index] + "”；此操作只读取本轮 trace。");
@@ -1573,6 +1577,34 @@
         return payload.state;
     }
 
+    function isExperimentBusy() {
+        return state.executionMode === "executing" || state.executionMode === "resetting";
+    }
+
+    async function resetToPreparation() {
+        if (isExperimentBusy() || !state.materialId || !state.stock) { return; }
+        var previousMode = state.executionMode === "replaying" ? "paused" : state.executionMode;
+        clearReplayTimer();
+        state.replay.playing = false;
+        setExecutionMode("resetting", "正在恢复初始库存并预热 Redis；不会发起购买，A/B 对比保留。");
+        try {
+            // 必须等待真实重置成功，不能先把库存画成 100。
+            await resetExperiment();
+            try { window.sessionStorage.removeItem(REPLAY_POSITION_KEY); } catch (_) { /* 存储禁用时仍可重置 */ }
+            var nextURL = new URL(window.location.href);
+            if (state.strategy) { nextURL.searchParams.set("strategy", state.strategy); }
+            window.history.replaceState(null, "", nextURL.toString());
+            resultsFocusRequestId = null;
+            resetIdleVisuals();
+            byId("prepare-action-hint").textContent = "已重置 · A/B 对比保留，点击开始实验再运行。";
+            showToast("实验已重置，尚未开始新一轮。");
+        } catch (error) {
+            setExecutionMode(previousMode, "重置未确认成功，请重试；当前仍保留重置前的观测记录。");
+            byId("prepare-action-hint").textContent = "重置未确认成功，请重试。";
+            showToast("重置失败：" + error.message, "error");
+        }
+    }
+
     function requestID() {
         return "purchase-web-" + Date.now().toString(36) + "-" + Math.random().toString(16).slice(2, 10);
     }
@@ -1733,7 +1765,7 @@
     }
 
     async function startExperiment() {
-        if (state.executionMode === "executing" || !state.materialId || !state.strategy) {
+        if (isExperimentBusy() || !state.materialId || !state.strategy) {
             if (!state.strategy) {
                 showToast("请先选择同步失效或 Outbox + MQ 异步失效。", "error");
             }
@@ -1864,7 +1896,7 @@
     }
 
     function chooseStrategy(strategy) {
-        if (state.executionMode === "executing") {
+        if (isExperimentBusy()) {
             return;
         }
         setSelectedStrategy(strategy);
@@ -2102,6 +2134,7 @@
     }
 
     function runOtherStrategy() {
+        if (isExperimentBusy()) { return; }
         var current = evidenceRecord || state.record;
         var next = current && current.strategy === "sync-invalidate" ?
             "outbox-mq-invalidate" : "sync-invalidate";
@@ -2110,6 +2143,7 @@
     }
 
     function rerunCurrentStrategy() {
+        if (isExperimentBusy()) { return; }
         var current = evidenceRecord || state.record;
         if (current) {
             setSelectedStrategy(current.strategy);
@@ -2118,6 +2152,7 @@
     }
 
     function viewFullProcess() {
+        if (isExperimentBusy()) { return; }
         var record = evidenceRecord || state.record;
         if (!record) {
             return;
@@ -2141,6 +2176,7 @@
             });
         });
         byId("start-purchase-run").addEventListener("click", startExperiment);
+        byId("reset-purchase-run").addEventListener("click", resetToPreparation);
         byId("replay-previous").addEventListener("click", function () { stepReplay(-1); });
         byId("replay-toggle").addEventListener("click", playReplay);
         byId("replay-next").addEventListener("click", function () { stepReplay(1); });

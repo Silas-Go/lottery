@@ -7,7 +7,7 @@
     <meta name="description" content="对照同步删缓存与 Outbox + MQ，实时观察库存一致性、旧读与恢复。" />
     <title>缓存一致性购买实验 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260906-six-stages-v2" />
+    <link rel="stylesheet" href="/css/purchase-lab.css?v=20260906-reset-v1" />
 </head>
 <body class="purchase-page purchase-focus" data-purchase-strategy="unselected" data-purchase-status="idle">
     <header class="purchase-lab-header">
@@ -40,7 +40,10 @@
                             <span>B</span><div><strong>Outbox + MQ</strong><small>提交 → 返回 · 后台删缓存</small></div>
                         </button>
                     </div>
-                    <button id="start-purchase-run" class="purchase-hero-button" type="button" disabled>开始实验</button>
+                    <div class="purchase-setup-actions">
+                        <button id="start-purchase-run" class="purchase-hero-button" type="button" disabled>开始实验</button>
+                        <button id="reset-purchase-run" class="purchase-reset-button" type="button" disabled title="恢复初始库存和缓存，保留 A/B 对比，不自动运行">重置实验</button>
+                    </div>
                 </div>
                 <p id="prepare-action-hint" class="setup-hint">选择一种方案后开始。</p>
             </section>
@@ -292,6 +295,6 @@
     <div id="lab-toast" class="lab-toast" role="status" aria-live="polite"></div>
     <script src="/js/experiment-state.js?v=20260724-purchase-replay"></script>
     <script src="/js/purchase-stages.js?v=20260906-six-stages-v1"></script>
-    <script src="/js/purchase-lab.js?v=20260906-six-stages-v2"></script>
+    <script src="/js/purchase-lab.js?v=20260906-reset-v1"></script>
 </body>
 </html>
