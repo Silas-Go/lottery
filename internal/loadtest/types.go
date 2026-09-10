@@ -76,8 +76,6 @@ var rateConfigs = map[int]TierConfig{
 }
 
 var seckillRateConfigs = map[int]TierConfig{
-	300:  {ID: "seckill_qps_300", Label: "低于保护线", Rate: 300, Connections: 70, DurationSeconds: SeckillRateDurationSeconds},
-	800:  {ID: "seckill_qps_800", Label: "触及保护线", Rate: 800, Connections: 70, DurationSeconds: SeckillRateDurationSeconds},
 	1500: {ID: "seckill_qps_1500", Label: "超过保护线", Rate: 1500, Connections: 70, DurationSeconds: SeckillRateDurationSeconds},
 }
 
@@ -184,7 +182,7 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 		}
 		tier, ok := ResolveSeckillRate(request.Rate)
 		if !ok {
-			return TierConfig{}, "seckill rate must be one of 300, 800 or 1500"
+			return TierConfig{}, "seckill rate must be 1500"
 		}
 		return tier, ""
 	case ExperimentSeckillStockBurst:
@@ -361,24 +359,28 @@ type TaskMetrics struct {
 	ScenarioComparison    *ScenarioComparisonMetrics `json:"scenarioComparison,omitempty"`
 
 	// 以下字段只用于秒杀实验，避免把预期的 429、售罄和系统异常混成一个 Error Rate。
-	AllowedRequests     int64   `json:"allowedRequests,omitempty"`
-	RateLimitQPS        int64   `json:"rateLimitQps,omitempty"`
-	AllowedQPS          float64 `json:"allowedQps,omitempty"`
-	RateLimited         int64   `json:"rateLimited,omitempty"`
-	LimitedQPS          float64 `json:"limitedQps,omitempty"`
-	RateLimitRate       float64 `json:"rateLimitRate,omitempty"`
-	AdmissionSuccess    int64   `json:"admissionSuccess,omitempty"`
-	StockFailed         int64   `json:"stockFailed,omitempty"`
-	ActivityStock       int64   `json:"activityStock,omitempty"`
-	RedisStock          int64   `json:"redisStock,omitempty"`
-	SystemErrors        int64   `json:"systemErrors,omitempty"`
-	CreateOrderEnqueued int64   `json:"createOrderEnqueued,omitempty"`
-	CreateOrderConsumed int64   `json:"createOrderConsumed,omitempty"`
-	CreateOrderBacklog  int64   `json:"createOrderBacklog,omitempty"`
-	HTTP2xx             int64   `json:"http2xx,omitempty"`
-	HTTP429             int64   `json:"http429,omitempty"`
-	HTTPUnexpected      int64   `json:"httpUnexpected,omitempty"`
-	Oversold            bool    `json:"oversold"`
+	RunID           string  `json:"run_id,omitempty"`
+	AllowedRequests int64   `json:"allowedRequests,omitempty"`
+	RateLimitQPS    int64   `json:"rateLimitQps,omitempty"`
+	AllowedQPS      float64 `json:"allowedQps,omitempty"`
+	RateLimited     int64   `json:"rateLimited,omitempty"`
+	LimitedQPS      float64 `json:"limitedQps,omitempty"`
+	RateLimitRate   float64 `json:"rateLimitRate,omitempty"`
+	// AdmissionSuccess 保留旧任务的准入并入队口径；新页面只读取独立的 LuaAdmissionSuccess。
+	AdmissionSuccess int64 `json:"admissionSuccess,omitempty"`
+	// LuaAdmissionSuccess 为 nil 表示旧服务或旧任务没有独立计数，不能用入队数替代。
+	LuaAdmissionSuccess *int64 `json:"luaAdmissionSuccess,omitempty"`
+	StockFailed         int64  `json:"stockFailed,omitempty"`
+	ActivityStock       int64  `json:"activityStock,omitempty"`
+	RedisStock          int64  `json:"redisStock,omitempty"`
+	SystemErrors        int64  `json:"systemErrors,omitempty"`
+	CreateOrderEnqueued int64  `json:"createOrderEnqueued,omitempty"`
+	CreateOrderConsumed int64  `json:"createOrderConsumed,omitempty"`
+	CreateOrderBacklog  int64  `json:"createOrderBacklog,omitempty"`
+	HTTP2xx             int64  `json:"http2xx,omitempty"`
+	HTTP429             int64  `json:"http429,omitempty"`
+	HTTPUnexpected      int64  `json:"httpUnexpected,omitempty"`
+	Oversold            bool   `json:"oversold"`
 }
 
 // TaskLog 只保存任务级关键事件，不保存逐请求日志。

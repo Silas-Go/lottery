@@ -22,6 +22,9 @@ func NewLabHandler(store *database.Store, resetRuntime func()) *LabHandler {
 
 // ResetLab 重置本地实验状态：订单、Redis 临时资格、两套库存和内存指标全部回到初始基线。
 func (h *LabHandler) ResetLab(ctx *gin.Context) {
+	// 覆盖整个重置，不能让消费者在清表后、指标重置前写入新旧混合状态。
+	defer database.BeginSeckillReset()()
+
 	if err := h.store.ResetExperimentState(); err != nil {
 		writeAPIError(ctx, http.StatusInternalServerError, "LAB_RESET_FAILED", "实验数据重置失败", err)
 		return
@@ -35,6 +38,12 @@ func (h *LabHandler) ResetLab(ctx *gin.Context) {
 	if h.resetRuntime != nil {
 		h.resetRuntime()
 	}
+	runID, err := database.CurrentSeckillRun()
+	if err != nil {
+		writeAPIError(ctx, http.StatusInternalServerError, "LAB_RESET_FAILED", "读取新轮次失败", err)
+		return
+	}
+	metrics.SetSeckillRunID(runID)
 	metrics.ResetAll(activityStock, redisStock)
 
 	ctx.JSON(http.StatusOK, gin.H{

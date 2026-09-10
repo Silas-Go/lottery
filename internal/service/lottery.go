@@ -39,6 +39,8 @@ type LotteryOptions struct {
 // LotteryResult 表示限量材料库存获取成功后的统一订单视图。
 // Redis 模式返回 stock_acquired，MySQL 模式返回 pending_payment；二者都不是 paid 终态。
 type LotteryResult struct {
+	OrderID string
+	RunID   string
 	// UID 是 user id，用户 ID；前端支付时会把它带回 /pay。
 	UID int
 
@@ -134,13 +136,26 @@ func (s *LotteryService) ListMaterials() ([]SeckillMaterialView, *AppError) {
 // admission 是 Redis 模式的实时状态权威；普通 MQ 消费后才建立 MySQL pending_payment 账本。
 // Redis Lua 只保证 Redis 内部原子性，不保证跨 Redis/MQ/MySQL 的分布式原子提交。
 func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
+	defer database.BeginSeckillOperation()()
+
 	if !s.limiter.Allow() {
 		metrics.RecordRateLimited()
 		slog.Warn("lottery request rate limited", "uid", uid)
 		return nil, NewAppError(CodeRateLimited, "请求过多，请稍后重试", nil, "uid", uid)
 	}
 
-	slog.Info("lottery request start", "uid", uid)
+	runID, identityErr := database.CurrentSeckillRun()
+	if identityErr != nil {
+		metrics.RecordSystemError("读取实验轮次失败", identityErr)
+		return nil, NewAppError(CodeAdmissionFailed, "读取实验轮次失败", identityErr)
+	}
+	orderID, identityErr := database.NewIdentityID()
+	if identityErr != nil {
+		metrics.RecordSystemError("生成业务订单号失败", identityErr)
+		return nil, NewAppError(CodeAdmissionFailed, "生成业务订单号失败", identityErr)
+	}
+	identity := database.OrderIdentity{OrderID: orderID, RunID: runID}
+	slog.Info("lottery request start", "uid", uid, "order_id", orderID, "run_id", runID)
 	dbStart := time.Now()
 	ordered, err := s.store.HasOrder(database.DefaultActivityID, uid)
 	s.recordMySQLPressure(dbStart)
@@ -192,7 +207,7 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 			// 如果不把防重复、扣库存、写临时资格绑在同一个脚本里，
 			// 高并发下就可能出现重复参与或库存检查通过后被其他请求抢先扣光。
 			admissionTTL := time.Duration(PayDelaySeconds+AdmissionGraceSeconds) * time.Second
-			status, err := database.TryAcquireLotteryAdmission(uid, giftID, admissionTTL)
+			status, err := database.TryAcquireLotteryAdmission(uid, giftID, admissionTTL, identity)
 			switch status {
 			case database.AdmissionAcquired:
 				metrics.RecordRedisPreDeduct(giftID)
@@ -217,7 +232,7 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 			gift, err := s.store.GetGiftWithError(giftID)
 			s.recordMySQLPressure(dbStart)
 			if err != nil {
-				rollbackAdmission(s.store, uid, giftID, "gift_lookup_failed")
+				rollbackAdmission(s.store, uid, giftID, "gift_lookup_failed", identity)
 				metrics.RecordSystemError("查询取得的材料详情失败", err)
 				return nil, NewAppError(CodeGiftLookupFailed, "查询取得的材料详情失败", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
 			}
@@ -225,6 +240,7 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 
 			expiresAt := time.Now().Add(time.Duration(PayDelaySeconds) * time.Second)
 			command := database.Order{
+				OrderID: orderID, RunID: runID,
 				ActivityId: database.DefaultActivityID,
 				UserId:     uid, GiftId: giftID, Count: 1,
 				Status: database.OrderStatusStockAcquired, InventoryMode: database.InventoryModeRedis,
@@ -235,12 +251,12 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 			if err := mq.SendCancelOrder(command, PayDelaySeconds); err != nil {
 				// 用户不能在没有超时补偿消息的情况下持有库存。
 				// 如果 MQ 入队失败，必须立即释放 Redis 临时资格，否则这份库存会被长期占用。
-				rollbackAdmission(s.store, uid, giftID, "timeout_message_send_failed")
+				rollbackAdmission(s.store, uid, giftID, "timeout_message_send_failed", identity)
 				metrics.RecordSystemError("发送延时取消订单消息失败", err)
 				return nil, NewAppError(CodeMQSendFailed, "发送延时取消订单消息失败", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
 			}
 			if err := mq.SendCreateOrder(command); err != nil {
-				rollbackAdmission(s.store, uid, giftID, "async_order_message_send_failed")
+				rollbackAdmission(s.store, uid, giftID, "async_order_message_send_failed", identity)
 				metrics.RecordSystemError("发送异步创建订单消息失败", err)
 				return nil, NewAppError(CodeMQSendFailed, "发送异步创建订单消息失败", err, "uid", uid, "gid", giftID, "try", try, "attempt", attempt)
 			}
@@ -249,6 +265,7 @@ func (s *LotteryService) Draw(uid int) (*LotteryResult, *AppError) {
 
 			slog.Info("lottery request success", "uid", uid, "gid", giftID, "gift", gift.Name, "try", try, "attempt", attempt)
 			return &LotteryResult{
+				OrderID: orderID, RunID: runID,
 				UID:           uid,
 				GiftID:        giftID,
 				GiftName:      gift.Name,
@@ -271,11 +288,11 @@ func (s *LotteryService) recordMySQLPressure(start time.Time) {
 	metrics.RecordPreDeductMySQL(time.Since(start), inUse, capacity)
 }
 
-func rollbackAdmission(store *database.Store, uid int, giftID int, reason string) {
+func rollbackAdmission(store *database.Store, uid int, giftID int, reason string, identity database.OrderIdentity) {
 	// rollback 在本项目里表示“失败兜底回滚临时资格”。
 	// 回滚复用用户放弃和 MQ 超时的同一个 Lua release 释放路径。
 	// 这样即使支付、超时补偿、失败回滚同时竞争同一份资格，也只有仍持有资格的一方能回补库存。
-	released, err := database.ReleaseLotteryAdmission(uid, giftID)
+	released, err := database.ReleaseLotteryAdmission(uid, giftID, identity)
 	if err != nil {
 		slog.Error("rollback admission failed", "uid", uid, "gid", giftID, "reason", reason, "error", err)
 		return
@@ -287,7 +304,7 @@ func rollbackAdmission(store *database.Store, uid int, giftID int, reason string
 	metrics.RecordInventoryRollback(giftID, reason)
 	if _, _, recordErr := store.RecordReleasedRedisCancellation(
 		database.DefaultActivityID, uid, giftID,
-		time.Now().Add(time.Duration(PayDelaySeconds)*time.Second), reason,
+		time.Now().Add(time.Duration(PayDelaySeconds)*time.Second), reason, identity,
 	); recordErr != nil {
 		metrics.RecordSystemError("回滚结果写入订单账本失败", recordErr)
 		slog.Error("rollback admission ledger write failed", "uid", uid, "gid", giftID, "reason", reason, "error", recordErr)

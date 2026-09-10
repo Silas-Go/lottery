@@ -55,6 +55,11 @@ var ErrOrderNotFound = errors.New("order not found")
 type Order struct {
 	Id int
 
+	// OrderID 是准入前生成的全局业务订单号；Id 只是数据库内部主键。
+	OrderID string `gorm:"default:null" json:"order_id,omitempty"`
+	// RunID 标识产生该资格的实验轮次，旧记录保留为空。
+	RunID string `json:"run_id,omitempty"`
+
 	ActivityId int
 	GiftId     int
 	UserId     int
@@ -83,6 +88,8 @@ func (s *Store) EnsureOrderSchema() error {
 		name string
 		ddl  string
 	}{
+		{"order_id", "ALTER TABLE orders ADD COLUMN order_id varchar(32) NULL COMMENT '业务订单号，不随重置复用'"},
+		{"run_id", "ALTER TABLE orders ADD COLUMN run_id varchar(32) NOT NULL DEFAULT '' COMMENT '实验轮次'"},
 		{"activity_id", "ALTER TABLE orders ADD COLUMN activity_id int NOT NULL DEFAULT 1 COMMENT '活动id' AFTER id"},
 		{"status", "ALTER TABLE orders ADD COLUMN status varchar(32) NOT NULL DEFAULT 'paid' COMMENT '订单状态' AFTER count"},
 		{"inventory_mode", "ALTER TABLE orders ADD COLUMN inventory_mode varchar(16) NOT NULL DEFAULT 'redis' COMMENT '库存模式' AFTER status"},
@@ -101,13 +108,18 @@ func (s *Store) EnsureOrderSchema() error {
 	if err := s.ensureIndex("orders", "uk_activity_user", "ALTER TABLE orders ADD UNIQUE KEY uk_activity_user (activity_id, user_id)"); err != nil {
 		return err
 	}
+	if err := s.ensureIndex("orders", "uk_order_id", "ALTER TABLE orders ADD UNIQUE KEY uk_order_id (order_id)"); err != nil {
+		return err
+	}
 	return s.ensureIndex("orders", "idx_status_expires", "ALTER TABLE orders ADD KEY idx_status_expires (status, expires_at)")
 }
 
 // CreatePendingOrder 建立统一状态机中的待支付订单。
 // duplicated=true 表示同一活动、同一用户的账本已经存在；调用方必须读取原状态，绝不能覆盖终态。
-func (s *Store) CreatePendingOrder(activityID, userID, giftID int, mode InventoryMode, expiresAt time.Time) (*Order, bool, error) {
+func (s *Store) CreatePendingOrder(activityID, userID, giftID int, mode InventoryMode, expiresAt time.Time, identities ...OrderIdentity) (*Order, bool, error) {
+	identity := identityArg(identities)
 	order := &Order{
+		OrderID: identity.OrderID, RunID: identity.RunID,
 		ActivityId:    activityID,
 		GiftId:        giftID,
 		UserId:        userID,
@@ -118,7 +130,7 @@ func (s *Store) CreatePendingOrder(activityID, userID, giftID int, mode Inventor
 	}
 	if err := s.db.Create(order).Error; err != nil {
 		if isDuplicateKey(err) {
-			existing, findErr := s.FindOrder(activityID, userID)
+			existing, findErr := s.FindOrderIdentity(activityID, userID, identity)
 			if findErr != nil {
 				return nil, true, findErr
 			}
@@ -202,7 +214,8 @@ func (s *Store) TransitionPendingOrderToPaid(orderID int) (*Order, bool, error) 
 
 // RecordReleasedRedisCancellation 把 Redis 已经裁决成功的取消结果写入 MySQL 最终账本。
 // Redis Lua 已经把 admission 改为 cancelled 并且只回补一次库存，所以这里绝不能再次操作库存。
-func (s *Store) RecordReleasedRedisCancellation(activityID, userID, giftID int, expiresAt time.Time, reason string) (*Order, bool, error) {
+func (s *Store) RecordReleasedRedisCancellation(activityID, userID, giftID int, expiresAt time.Time, reason string, identities ...OrderIdentity) (*Order, bool, error) {
+	identity := identityArg(identities)
 	now := time.Now()
 	updates := map[string]any{
 		"status":         OrderStatusCancelled,
@@ -211,7 +224,7 @@ func (s *Store) RecordReleasedRedisCancellation(activityID, userID, giftID int, 
 		"cancel_reason":  reason,
 		"update_time":    now,
 	}
-	result := s.db.Model(&Order{}).
+	result := orderIdentityScope(s.db.Model(&Order{}), identity).
 		Where("activity_id = ? AND user_id = ? AND gift_id = ? AND status IN ?", activityID, userID, giftID,
 			[]OrderStatus{OrderStatusStockAcquired, OrderStatusPendingPayment}).
 		Updates(updates)
@@ -219,11 +232,11 @@ func (s *Store) RecordReleasedRedisCancellation(activityID, userID, giftID int, 
 		return nil, false, fmt.Errorf("record redis cancellation: %w", result.Error)
 	}
 	if result.RowsAffected == 1 {
-		order, err := s.FindOrder(activityID, userID)
+		order, err := s.FindOrderIdentity(activityID, userID, identity)
 		return order, true, err
 	}
 
-	existing, err := s.FindOrder(activityID, userID)
+	existing, err := s.FindOrderIdentity(activityID, userID, identity)
 	if err == nil {
 		if existing.GiftId != giftID || existing.InventoryMode != InventoryModeRedis {
 			return nil, false, fmt.Errorf("redis cancellation conflicts with existing order id=%d mode=%s gift=%d", existing.Id, existing.InventoryMode, existing.GiftId)
@@ -245,6 +258,7 @@ func (s *Store) RecordReleasedRedisCancellation(activityID, userID, giftID int, 
 	}
 
 	order := &Order{
+		OrderID: identity.OrderID, RunID: identity.RunID,
 		ActivityId:    activityID,
 		GiftId:        giftID,
 		UserId:        userID,
@@ -258,8 +272,15 @@ func (s *Store) RecordReleasedRedisCancellation(activityID, userID, giftID int, 
 	}
 	if createErr := s.db.Create(order).Error; createErr != nil {
 		if isDuplicateKey(createErr) {
+			existing, findErr := s.FindOrderIdentity(activityID, userID, identity)
+			if findErr != nil {
+				return nil, false, fmt.Errorf("cancellation identity conflicts with existing order: %w", findErr)
+			}
+			if existing.GiftId != giftID {
+				return nil, false, fmt.Errorf("cancellation gift conflicts with order %s", identity.OrderID)
+			}
 			// 创建消费者与取消可能同时首次落账；再次执行条件迁移即可收敛到 cancelled。
-			return s.RecordReleasedRedisCancellation(activityID, userID, giftID, expiresAt, reason)
+			return s.RecordReleasedRedisCancellation(activityID, userID, giftID, expiresAt, reason, identity)
 		}
 		return nil, false, fmt.Errorf("create cancelled redis order: %w", createErr)
 	}
@@ -424,4 +445,12 @@ WHERE TABLE_SCHEMA = DATABASE()
 func isDuplicateKey(err error) bool {
 	var mysqlErr *mysqlDriver.MySQLError
 	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
+}
+
+// orderIdentityScope 把所有取消写入绑定到业务订单号；空标识不会匹配新订单。
+func orderIdentityScope(query *gorm.DB, identity OrderIdentity) *gorm.DB {
+	if identity.OrderID == "" && identity.RunID == "" {
+		return query.Where("(order_id IS NULL OR order_id = '') AND run_id = ''")
+	}
+	return query.Where("order_id = ? AND run_id = ?", identity.OrderID, identity.RunID)
 }

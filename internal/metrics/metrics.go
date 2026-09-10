@@ -32,6 +32,10 @@ type Event struct {
 // 字段名使用英文是为了给前端 JSON 使用；中文语义以这里的注释为准。
 type Snapshot struct {
 	At string `json:"at"`
+	// RunID 与业务消息共用轮次；用于排除上一轮的延迟消息指标。
+	RunID string `json:"run_id"`
+	// IgnoredOrderMessages 是因资格或轮次不匹配而安全忽略的消息数。
+	IgnoredOrderMessages int64 `json:"ignoredOrderMessages"`
 
 	// RateLimitQPS 是当前进程秒杀入口令牌桶的保护线；页面只读取真实配置，不硬编码 800。
 	RateLimitQPS int64 `json:"rateLimitQps"`
@@ -50,6 +54,9 @@ type Snapshot struct {
 
 	// QueueSuccess 是 Redis 准入成功并同时登记普通落单与超时检查消息的请求数。
 	QueueSuccess int64 `json:"queueSuccess"`
+
+	// LuaAdmissionSuccess 只统计 Lua 返回 OK 的资格数；后续 MQ 失败或回补不抹掉这次准入。
+	LuaAdmissionSuccess int64 `json:"luaAdmissionSuccess"`
 
 	// RateLimited 是被本机令牌桶限流拦截的请求数。
 	RateLimited int64 `json:"rateLimited"`
@@ -114,19 +121,23 @@ type Snapshot struct {
 }
 
 type meter struct {
-	activityStock   int64
-	redisStock      int64
-	totalRequests   int64
-	queueSuccess    int64
-	rateLimited     int64
-	stockFailed     int64
-	mqPending       int64
-	completedOrders int64
-	maxLatency      int64
-	rateLimitQPS    int64
-	createEnqueued  int64
-	createConsumed  int64
-	systemErrors    int64
+	runMu                sync.RWMutex
+	runID                string
+	ignoredOrderMessages int64
+	activityStock        int64
+	redisStock           int64
+	totalRequests        int64
+	queueSuccess         int64
+	luaAdmissionSuccess  int64
+	rateLimited          int64
+	stockFailed          int64
+	mqPending            int64
+	completedOrders      int64
+	maxLatency           int64
+	rateLimitQPS         int64
+	createEnqueued       int64
+	createConsumed       int64
+	systemErrors         int64
 
 	mu             sync.Mutex
 	latencySamples []int64
@@ -155,10 +166,14 @@ func InitInventory(activityStock int64, redisStock int64) {
 // ResetAll 清空两套实验指标，并用真实库存重新建立面板基线。
 // 该函数只重置内存指标；MySQL/Redis 的业务数据重置由 database.ResetExperimentState 完成。
 func ResetAll(activityStock int64, redisStock int64) {
+	defaultMeter.runMu.Lock()
+	defer defaultMeter.runMu.Unlock()
+	atomic.StoreInt64(&defaultMeter.ignoredOrderMessages, 0)
 	atomic.StoreInt64(&defaultMeter.activityStock, activityStock)
 	atomic.StoreInt64(&defaultMeter.redisStock, redisStock)
 	atomic.StoreInt64(&defaultMeter.totalRequests, 0)
 	atomic.StoreInt64(&defaultMeter.queueSuccess, 0)
+	atomic.StoreInt64(&defaultMeter.luaAdmissionSuccess, 0)
 	atomic.StoreInt64(&defaultMeter.rateLimited, 0)
 	atomic.StoreInt64(&defaultMeter.stockFailed, 0)
 	atomic.StoreInt64(&defaultMeter.mqPending, 0)
@@ -209,6 +224,7 @@ func RecordRequest(duration time.Duration) {
 // RecordRedisPreDeduct 记录 Redis 预扣库存成功。
 // giftID 是 gift id，奖品 ID；这里只代表拿到临时资格，不代表最终订单成功。
 func RecordRedisPreDeduct(giftID int) {
+	atomic.AddInt64(&defaultMeter.luaAdmissionSuccess, 1)
 	stock := atomic.AddInt64(&defaultMeter.redisStock, -1)
 	if stock < 0 {
 		defaultMeter.addEvent("Redis 库存越界", fmt.Sprintf("奖品 %d 扣减后库存小于 0，系统会拒绝该请求。", giftID), "danger")
@@ -259,7 +275,18 @@ func RecordMQEnqueued() {
 
 // RecordMQConsumed 记录 RocketMQ 延时取消消息已消费。
 // timeoutRollback 表示本次消费是否真的释放了超时未支付的库存；如果用户已支付，消费也可能不回滚。
-func RecordMQConsumed(timeoutRollback bool) {
+func RecordMQConsumed(timeoutRollback bool, runIDs ...string) {
+	defaultMeter.runMu.RLock()
+	defer defaultMeter.runMu.RUnlock()
+	runID := ""
+	if len(runIDs) > 0 {
+		runID = runIDs[0]
+	}
+	// 旧取消消息可以正常 Ack，但不能减掉新一轮的待检查数量。
+	if runID != defaultMeter.runID {
+		return
+	}
+
 	n := atomic.AddInt64(&defaultMeter.mqPending, -1)
 	if n < 0 {
 		atomic.StoreInt64(&defaultMeter.mqPending, 0)
@@ -343,34 +370,37 @@ func SnapshotNow() Snapshot {
 	}
 
 	return Snapshot{
-		At:                  now.Format(time.RFC3339),
-		RateLimitQPS:        atomic.LoadInt64(&defaultMeter.rateLimitQPS),
-		ActivityStock:       activityStock,
-		RedisStock:          redisStock,
-		DBStock:             dbStockText(activityStock, completedOrders),
-		TotalRequests:       totalRequests,
-		QueueSuccess:        atomic.LoadInt64(&defaultMeter.queueSuccess),
-		RateLimited:         atomic.LoadInt64(&defaultMeter.rateLimited),
-		StockFailed:         atomic.LoadInt64(&defaultMeter.stockFailed),
-		MQPending:           mqPending,
-		CreateOrderEnqueued: createEnqueued,
-		CreateOrderConsumed: createConsumed,
-		CreateOrderBacklog:  createBacklog,
-		CompletedOrders:     completedOrders,
-		AvgLatency:          average(latencies),
-		MaxLatency:          atomic.LoadInt64(&defaultMeter.maxLatency),
-		P95:                 percentile(latencies, 0.95),
-		P99:                 percentile(latencies, 0.99),
-		QPS:                 qps,
-		Oversold:            redisStock < 0 || (activityStock > 0 && completedOrders > activityStock),
-		SystemErrors:        atomic.LoadInt64(&defaultMeter.systemErrors),
-		SimulationTotal:     totalRequests,
-		SimulationDone:      totalRequests,
-		Events:              events,
-		CacheAside:          SnapshotCacheAside(),
-		PreDeductMySQL:      SnapshotPreDeductMySQL(),
-		ArchiveRead:         SnapshotArchiveRead(ArchiveCacheTTL),
-		RateLimitProbe:      SnapshotRateLimitProbe(),
+		At:                   now.Format(time.RFC3339),
+		RunID:                SeckillRunID(),
+		IgnoredOrderMessages: atomic.LoadInt64(&defaultMeter.ignoredOrderMessages),
+		RateLimitQPS:         atomic.LoadInt64(&defaultMeter.rateLimitQPS),
+		ActivityStock:        activityStock,
+		RedisStock:           redisStock,
+		DBStock:              dbStockText(activityStock, completedOrders),
+		TotalRequests:        totalRequests,
+		QueueSuccess:         atomic.LoadInt64(&defaultMeter.queueSuccess),
+		LuaAdmissionSuccess:  atomic.LoadInt64(&defaultMeter.luaAdmissionSuccess),
+		RateLimited:          atomic.LoadInt64(&defaultMeter.rateLimited),
+		StockFailed:          atomic.LoadInt64(&defaultMeter.stockFailed),
+		MQPending:            mqPending,
+		CreateOrderEnqueued:  createEnqueued,
+		CreateOrderConsumed:  createConsumed,
+		CreateOrderBacklog:   createBacklog,
+		CompletedOrders:      completedOrders,
+		AvgLatency:           average(latencies),
+		MaxLatency:           atomic.LoadInt64(&defaultMeter.maxLatency),
+		P95:                  percentile(latencies, 0.95),
+		P99:                  percentile(latencies, 0.99),
+		QPS:                  qps,
+		Oversold:             redisStock < 0 || (activityStock > 0 && completedOrders > activityStock),
+		SystemErrors:         atomic.LoadInt64(&defaultMeter.systemErrors),
+		SimulationTotal:      totalRequests,
+		SimulationDone:       totalRequests,
+		Events:               events,
+		CacheAside:           SnapshotCacheAside(),
+		PreDeductMySQL:       SnapshotPreDeductMySQL(),
+		ArchiveRead:          SnapshotArchiveRead(ArchiveCacheTTL),
+		RateLimitProbe:       SnapshotRateLimitProbe(),
 	}
 }
 
@@ -459,3 +489,20 @@ func dbStockText(activityStock, completedOrders int64) string {
 	}
 	return fmt.Sprintf("%d / 已完成订单 %d", stock, completedOrders)
 }
+
+// SetSeckillRunID 在启动或重置时绑定指标轮次；普通消息重投不能改动它。
+func SetSeckillRunID(runID string) {
+	defaultMeter.runMu.Lock()
+	defer defaultMeter.runMu.Unlock()
+	defaultMeter.runID = runID
+}
+
+// SeckillRunID 返回当前指标轮次。
+func SeckillRunID() string {
+	defaultMeter.runMu.RLock()
+	defer defaultMeter.runMu.RUnlock()
+	return defaultMeter.runID
+}
+
+// RecordIgnoredOrderMessage 记录安全忽略的过期消息，不把正常去重当系统异常。
+func RecordIgnoredOrderMessage() { atomic.AddInt64(&defaultMeter.ignoredOrderMessages, 1) }

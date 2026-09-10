@@ -8,8 +8,8 @@
     var toastTimer = null;
     var chainTimers = [];
     var statusTimer = null;
-    var selectedLimitRate = 300;
     var activeTask = null;
+    var currentRateLimitQPS = null;
     var taskPollTimer = null;
     var taskStream = null;
     var taskRefreshBusy = false;
@@ -50,48 +50,13 @@
         }
     }
 
-    function renderMaterials() {
-        var grid = byId("material-grid");
-        grid.innerHTML = "";
-        materials.forEach(function (material) {
-            var card = document.createElement("article");
-            var image = document.createElement("img");
-            var content = document.createElement("div");
-            var label = document.createElement("small");
-            var name = document.createElement("h3");
-            var description = document.createElement("p");
-
-            card.className = "material-card";
-            card.dataset.materialId = String(material.id);
-            image.src = material.picture;
-            image.alt = material.name;
-            label.textContent = "唯一实验材料";
-            name.textContent = material.name;
-            description.textContent = material.description;
-            content.appendChild(label);
-            content.appendChild(name);
-            content.appendChild(description);
-            card.appendChild(image);
-            card.appendChild(content);
-            grid.appendChild(card);
-            materialByID.set(String(material.id), material);
-        });
-        setText("material-count", materials.length === 1 ? "星髓" : materials.length + " 种材料");
-    }
-
     async function loadMaterials() {
         var response = await fetch("/api/seckill/materials", { headers: { "Accept": "application/json" } });
         if (!response.ok) {
             throw new Error(await errorMessage(response));
         }
         materials = await response.json();
-        renderMaterials();
-    }
-
-    function activateMaterial(id) {
-        Array.prototype.forEach.call(document.querySelectorAll(".material-card"), function (card) {
-            card.classList.toggle("is-selected", card.dataset.materialId === String(id));
-        });
+        materials.forEach(function (material) { materialByID.set(String(material.id), material); });
     }
 
     function clearChain() {
@@ -122,13 +87,12 @@
     }
 
     function clearOrderCookies() {
-        ["uid", "gid", "name", "price", "order_status", "inventory_mode"].forEach(function (name) {
+        ["uid", "gid", "name", "price", "order_status", "inventory_mode", "order_id", "run_id"].forEach(function (name) {
             document.cookie = name + "=; Max-Age=0; Path=/";
         });
     }
 
     function showReceipt(material) {
-        activateMaterial(material.id);
         byId("receipt-image").src = material.picture;
         byId("receipt-image").alt = material.name;
         setText("receipt-name", material.name);
@@ -142,6 +106,8 @@
         window.clearTimeout(statusTimer);
         var uid = readCookie("uid");
         var gid = readCookie("gid");
+        var orderID = readCookie("order_id");
+        var runID = readCookie("run_id");
         if (!uid || !gid) {
             return;
         }
@@ -149,7 +115,7 @@
         async function poll() {
             attempts += 1;
             try {
-                var response = await fetch("/api/order/status?uid=" + encodeURIComponent(uid) + "&gid=" + encodeURIComponent(gid));
+                var response = await fetch("/api/order/status?uid=" + encodeURIComponent(uid) + "&gid=" + encodeURIComponent(gid) + "&order_id=" + encodeURIComponent(orderID) + "&run_id=" + encodeURIComponent(runID));
                 if (response.ok) {
                     var order = await response.json();
                     if (order.status === "pending_payment") {
@@ -172,7 +138,7 @@
     }
 
     async function drawMaterial() {
-        if (requestBusy) {
+        if (requestBusy || taskIsActive(activeTask)) {
             return;
         }
         requestBusy = true;
@@ -188,10 +154,10 @@
             }
             var giftID = (await response.text()).trim();
             if (giftID === "0") {
-                setRequestState("failed", "本次未取得", "当前没有可分配库存；Redis 没有产生负库存，也没有创建订单。");
+                setRequestState("failed", "本次未取得", "当前没有可分配库存，本次未取得资格。");
                 showToast("本次未取得材料");
                 requestBusy = false;
-                byId("draw-material").disabled = false;
+                byId("draw-material").disabled = taskIsActive(activeTask);
                 return;
             }
             var material = materialByID.get(giftID);
@@ -208,7 +174,7 @@
             setRequestState("failed", "请求失败", error.message);
             showToast(error.message);
             requestBusy = false;
-            byId("draw-material").disabled = false;
+            byId("draw-material").disabled = taskIsActive(activeTask);
         }
     }
 
@@ -253,8 +219,16 @@
         oversold.textContent = snapshot.oversold ? "是" : "否";
         oversold.dataset.value = snapshot.oversold ? "danger" : "safe";
         setText("metrics-time", snapshot.at || "实时快照");
-        setText("limit-threshold", Number(snapshot.rateLimitQps || 0).toLocaleString("zh-CN"));
+        currentRateLimitQPS = typeof snapshot.rateLimitQps === "number" ? snapshot.rateLimitQps : null;
+        renderLimitThreshold(currentRateLimitQPS);
         renderEvents(snapshot.events);
+    }
+
+    function renderLimitThreshold(threshold) {
+        var value = threshold == null ? "—" : formatNumber(threshold);
+        setText("limit-threshold", value);
+        setText("limit-title-threshold", value);
+        setText("limit-flow-allowed", threshold > 0 ? "约 " + value + " QPS 放行" : "等待有效限流阈值");
     }
 
     function formatNumber(value, digits) {
@@ -300,9 +274,7 @@
         byId("stop-stock-test").disabled = !(active && taskKind(task) === "stock");
         byId("stop-limit-test").disabled = !(active && taskKind(task) === "limit");
         byId("reset-seckill").disabled = active;
-        Array.prototype.forEach.call(document.querySelectorAll("[data-limit-rate]"), function (button) {
-            button.disabled = active;
-        });
+        byId("draw-material").disabled = active || requestBusy;
     }
 
     function renderTaskLogs(kind, logs) {
@@ -327,47 +299,50 @@
         badge.dataset.status = task.status;
         setText("stock-progress", taskIsActive(task) ?
             "已完成 " + formatNumber(metrics.actualRequests) + " / " + formatNumber(task.plannedRequests || 600) + " 个请求" :
-            "本轮任务 " + task.taskId);
+            (task.status === "completed" ? "本轮结果已冻结" : taskStatusLabel(task.status)));
         setText("stock-result-total", formatNumber(metrics.actualRequests));
         setText("stock-result-limited", formatNumber(metrics.rateLimited));
-        setText("stock-result-admitted", formatNumber(metrics.admissionSuccess));
+        // 旧任务没有独立 Lua 计数，必须显示缺失，不能拿入队数冒充。
+        var hasLuaCount = typeof metrics.luaAdmissionSuccess === "number";
+        setText("stock-result-admitted", hasLuaCount ? formatNumber(metrics.luaAdmissionSuccess) : "—");
         setText("stock-result-failed", formatNumber(metrics.stockFailed));
         setText("stock-result-remaining", formatNumber(metrics.redisStock));
-        setText("stock-result-errors", formatNumber(Number(metrics.systemErrors || 0) + Number(metrics.httpUnexpected || 0)));
+        setText("stock-result-errors", formatNumber(metrics.systemErrors));
         setText("stock-result-enqueued", formatNumber(metrics.createOrderEnqueued));
         setText("stock-result-consumed", formatNumber(metrics.createOrderConsumed));
         setText("stock-result-backlog", formatNumber(metrics.createOrderBacklog));
-        setText("stock-result-oversold", metrics.oversold ? "是" : "否");
+        setText("stock-result-http-errors", formatNumber(metrics.httpUnexpected));
+        byId("stock-experiment").dataset.runState = task.status;
         renderTaskLogs("stock", task.logs);
 
         var verdict = byId("stock-verdict");
         verdict.removeAttribute("data-tone");
         if (task.status === "completed") {
             var allowed = Number(metrics.allowedRequests || 0);
-            var accountingClosed = Number(metrics.admissionSuccess || 0) + Number(metrics.stockFailed || 0) === allowed;
+            var accountingClosed = Number(metrics.luaAdmissionSuccess || 0) + Number(metrics.stockFailed || 0) === allowed;
             var enqueued = Number(metrics.createOrderEnqueued || 0);
             var consumed = Number(metrics.createOrderConsumed || 0);
             var backlog = Number(metrics.createOrderBacklog || 0);
-            var mqAccountingClosed = enqueued === Number(metrics.admissionSuccess || 0) &&
+            var mqAccountingClosed = enqueued === Number(metrics.luaAdmissionSuccess || 0) &&
                 consumed <= enqueued && backlog === enqueued - consumed;
-            var passed = Number(metrics.actualRequests || 0) === Number(task.plannedRequests || 600) &&
+            var passed = hasLuaCount && allowed === Number(metrics.actualRequests || 0) && Number(metrics.actualRequests || 0) === Number(task.plannedRequests || 600) &&
                 Number(metrics.rateLimited || 0) === 0 &&
-                Number(metrics.admissionSuccess || 0) === Number(metrics.activityStock || 300) &&
+                Number(metrics.luaAdmissionSuccess || 0) === Number(metrics.activityStock || 300) &&
                 Number(metrics.redisStock || 0) === 0 &&
                 Number(metrics.systemErrors || 0) === 0 &&
                 Number(metrics.httpUnexpected || 0) === 0 &&
                 !metrics.oversold && accountingClosed && mqAccountingClosed;
             verdict.dataset.tone = passed ? "success" : "danger";
             verdict.textContent = passed ?
-                (backlog === 0 ?
-                    "库存结论成立：600 个唯一请求全部越过限流器，Lua 恰好放行 300 个，剩余请求售罄，库存归零且没有超卖；普通落单消息也已排空。" :
-                    "库存结论成立：600 个唯一请求全部越过限流器，Lua 恰好放行 300 个，剩余请求售罄，库存归零且没有超卖。普通落单已消费 " + consumed + " 条、仍积压 " + backlog + " 条，这是异步削峰的独立证据，不参与库存正确性判定。") :
-                "本轮没有满足全部不变量。请查看限流、系统异常、库存记账和普通落单积压，不能把这轮结果宣称为“无超卖证明”。";
+                "本轮未发生超卖：" + formatNumber(metrics.activityStock) + " 份库存，" + formatNumber(metrics.luaAdmissionSuccess) + " 个请求获得资格，剩余库存为 0。" +
+                    (backlog > 0 ? "仍有 " + formatNumber(backlog) + " 条落单消息待处理。" : "落单观察已完成。") :
+                (hasLuaCount ? "本轮未满足库存核对条件，暂不能得出未超卖结论。请查看运行记录。" : "这份结果缺少独立 Lua 准入计数，请重新运行实验。");
+            if (!passed) { byId("stock-evidence").open = true; }
         } else if (task.status === "failed" || task.status === "stopped") {
             verdict.dataset.tone = "danger";
             verdict.textContent = task.errorMessage || "任务没有完整结束，本轮不能形成库存正确性结论。";
         } else {
-            verdict.textContent = "实验运行中：限流、库存和 MQ 指标均来自当前服务端任务。";
+            verdict.textContent = task.status === "collecting" ? "争抢结束，正在观察异步落单。" : "正在核对请求、资格与库存，结束后给出本轮结论。";
         }
     }
 
@@ -378,35 +353,41 @@
         badge.dataset.status = task.status;
         setText("limit-progress", taskIsActive(task) ?
             "已运行 " + formatNumber(task.elapsedSeconds) + " 秒，剩余约 " + formatNumber(task.remainingSeconds) + " 秒" :
-            "本轮任务 " + task.taskId);
-        setText("limit-result-target", formatNumber(task.tier && task.tier.rate));
+            (task.status === "completed" ? "本轮结果已冻结" : taskStatusLabel(task.status)));
+        byId("limit-experiment").dataset.runState = task.status;
+        if (typeof metrics.rateLimitQps === "number") { renderLimitThreshold(metrics.rateLimitQps); }
         setText("limit-result-actual", formatNumber(metrics.actualQps, 1));
-        setText("limit-result-allowed-qps", formatNumber(metrics.allowedQps, 1));
+        setText("limit-result-allowed-qps", task.status === "completed" ? formatNumber(metrics.allowedQps, 1) : "—");
         setText("limit-result-total", formatNumber(metrics.actualRequests));
         setText("limit-result-allowed", formatNumber(metrics.allowedRequests));
         setText("limit-result-limited", formatNumber(metrics.rateLimited));
         setText("limit-result-rate", formatNumber(metrics.rateLimitRate, 1) + "%");
         setText("limit-result-errors", formatNumber(metrics.httpUnexpected));
+        setText("limit-result-transport-errors", formatNumber(Number(metrics.timeouts || 0) + Number(metrics.socketErrors || 0)));
         renderTaskLogs("limit", task.logs);
 
         var verdict = byId("limit-verdict");
         verdict.removeAttribute("data-tone");
         if (task.status === "completed") {
             var target = Number(task.tier && task.tier.rate || 0);
-            var threshold = Number(byId("limit-threshold").textContent.replace(/,/g, "")) || 800;
-            var unexpected = Number(metrics.httpUnexpected || 0);
-            var passed;
-            if (target > threshold) {
-                passed = Number(metrics.rateLimited || 0) > 0 && Number(metrics.allowedQps || 0) <= threshold * 1.15 && unexpected === 0;
-            } else {
-                passed = Number(metrics.rateLimitRate || 0) <= 3 && Number(metrics.allowedQps || 0) >= target * .85 && unexpected === 0;
-            }
+            // 用本轮冻结的真实阈值判断，避免页面后来的配置或旧任务缺失字段改变结论。
+            var threshold = Number(metrics.rateLimitQps || 0);
+            var duration = Number(metrics.durationSeconds || 0);
+            var actualQPS = Number(metrics.actualQps || 0);
+            var allowedQPS = Number(metrics.allowedQps || 0);
+            var unexpected = Number(metrics.httpUnexpected || 0) + Number(metrics.timeouts || 0) + Number(metrics.socketErrors || 0);
+            var total = Number(metrics.actualRequests || 0);
+            var accountingClosed = total === Number(metrics.allowedRequests || 0) + Number(metrics.rateLimited || 0);
+            // 桶容量为一秒阈值，平均上界包含满桶突发容量；2% 容忍计时边界。
+            var passed = threshold > 0 && duration > 0 && target > threshold && actualQPS > threshold &&
+                actualQPS >= target * .85 && Number(metrics.rateLimited || 0) > 0 &&
+                allowedQPS >= threshold * .85 && allowedQPS <= threshold * (1 + 1 / duration) * 1.02 &&
+                unexpected === 0 && accountingClosed;
             verdict.dataset.tone = passed ? "success" : "danger";
             verdict.textContent = passed ?
-                (target > threshold ?
-                    "结论成立：实际到达速率超过保护线后产生了真实 429；令牌放行速率被控制在保护线及一秒突发容量允许的范围内。" :
-                    "结论成立：目标流量没有超过保护线，绝大多数探针获得令牌，并且没有访问库存、MQ 或 MySQL。") :
-                "本轮没有形成清晰的限流结论：检查实际到达速率、429、令牌放行 QPS 和非预期错误后再解释。";
+                "入口流量超过设定阈值后，多余请求被提前拦截，没有继续进入后面的业务链路。" :
+                "本轮未形成清晰的过载保护结论，请检查实际流量、限流阈值和异常记录。";
+            if (!passed) { byId("limit-evidence").open = true; }
         } else if (task.status === "failed" || task.status === "stopped") {
             verdict.dataset.tone = "danger";
             verdict.textContent = task.errorMessage || "任务没有完整结束，本轮不能形成限流结论。";
@@ -473,15 +454,23 @@
             showToast("已有实验正在运行");
             return;
         }
+        if (requestBusy && page.dataset.requestState === "requesting") {
+            showToast("请等待单次请求结束");
+            return;
+        }
+        if (experiment === "seckill-rate-limit" && currentRateLimitQPS !== 800) {
+            showToast("本场景需要入口阈值为 800 QPS，请检查服务配置与指标连接");
+            return;
+        }
         var question = experiment === "seckill-stock-burst" ?
             "将重置秒杀订单与库存，然后让 600 个唯一用户同时争抢 300 份星髓。开始吗？" :
-            "将重置令牌桶与实验指标，然后运行 10 秒限流探针。探针不会扣库存。开始吗？";
+            "将重置秒杀库存、订单、令牌桶与指标，然后以 1500 QPS 冲击入口 10 秒。探针请求本身不扣库存。开始吗？";
         if (!window.confirm(question)) {
             return;
         }
         var body = { experiment: experiment };
         if (experiment === "seckill-rate-limit") {
-            body.rate = selectedLimitRate;
+            body.rate = 1500;
         }
         setTaskControls({ status: "starting", experiment: experiment });
         try {
@@ -491,6 +480,9 @@
                 body: JSON.stringify(body)
             });
             clearOrderCookies();
+            window.clearTimeout(statusTimer);
+            requestBusy = false;
+            setText("draw-material", "发送一次请求");
             byId("request-receipt").hidden = true;
             await refreshTask(created.taskId);
             observeTask(created.taskId);
@@ -571,11 +563,10 @@
             }
             var payload = await response.json();
             clearOrderCookies();
-            activateMaterial(0);
             byId("request-receipt").hidden = true;
             requestBusy = false;
-            byId("draw-material").disabled = false;
-            setText("draw-material", "递交真实申领");
+            byId("draw-material").disabled = taskIsActive(activeTask);
+            setText("draw-material", "发送一次请求");
             setRequestState("idle", "等待递交", "实验已恢复基线，可以递交一次新的真实申领。");
             clearChain();
             renderMetrics(payload.snapshot);
@@ -594,14 +585,6 @@
         byId("stop-stock-test").addEventListener("click", function () { stopTask("stock"); });
         byId("start-limit-test").addEventListener("click", function () { startTask("seckill-rate-limit"); });
         byId("stop-limit-test").addEventListener("click", function () { stopTask("limit"); });
-        Array.prototype.forEach.call(document.querySelectorAll("[data-limit-rate]"), function (button) {
-            button.addEventListener("click", function () {
-                selectedLimitRate = Number(button.dataset.limitRate);
-                Array.prototype.forEach.call(document.querySelectorAll("[data-limit-rate]"), function (candidate) {
-                    candidate.classList.toggle("is-selected", candidate === button);
-                });
-            });
-        });
         try {
             await Promise.all([loadMaterials(), loadMetricsSnapshot()]);
         } catch (error) {

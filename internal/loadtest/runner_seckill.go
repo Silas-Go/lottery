@@ -158,7 +158,7 @@ func (r *Runner) runStockBurst(ctx context.Context, id string, task Task) {
 	if record := r.records[id]; record != nil && record.Task.Status == StatusCollecting {
 		record.Task.Metrics = metrics
 		r.appendLogLocked(record, "success", fmt.Sprintf(
-			"批次完成：准入 %d，售罄/重复 %d，限流 %d，普通落单积压 %d",
+			"批次完成：准入并入队 %d，售罄/重复 %d，限流 %d，普通落单积压 %d",
 			metrics.AdmissionSuccess,
 			metrics.StockFailed,
 			metrics.RateLimited,

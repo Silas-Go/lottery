@@ -106,6 +106,8 @@ func (h *GiftHandler) Lottery(ctx *gin.Context) {
 	ctx.SetCookie("price", strconv.Itoa(result.Price), result.Delay, "/", cookieDomain, false, false)
 	ctx.SetCookie("uid", strconv.Itoa(result.UID), result.Delay, "/", cookieDomain, false, false)
 	ctx.SetCookie("gid", strconv.Itoa(result.GiftID), result.Delay, "/", cookieDomain, false, false)
+	ctx.SetCookie("order_id", result.OrderID, result.Delay, "/", cookieDomain, false, false)
+	ctx.SetCookie("run_id", result.RunID, result.Delay, "/", cookieDomain, false, false)
 	ctx.SetCookie("order_status", string(result.Status), result.Delay, "/", cookieDomain, false, false)
 	ctx.SetCookie("inventory_mode", string(result.InventoryMode), result.Delay, "/", cookieDomain, false, false)
 

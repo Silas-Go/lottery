@@ -26,20 +26,26 @@ var (
 )
 
 // LotteryAdmission 是 Redis 模式在 MySQL 订单建立前后的实时准入状态。
-// Value 使用 giftID|state，例如 3|pending_payment；旧版仅保存 giftID 的值按 pending_payment 兼容读取。
+// Value 为 giftID|state|order_id|run_id；旧版 giftID 或 giftID|state 只允许旧格式操作。
 type LotteryAdmission struct {
-	GiftID int
-	State  OrderStatus
+	GiftID  int
+	State   OrderStatus
+	OrderID string
+	RunID   string
 }
 
 // acquireAdmissionScript 原子完成防重、库存扣减和 stock_acquired 状态建立。
-// KEYS[1] 是 gift_count_{gid}，KEYS[2] 是 porder_{uid}；ARGV[1] 是 gid，ARGV[2] 是 TTL 秒数。
+// KEYS 为库存、用户资格、当前轮次；ARGV 为 gid、TTL 秒数、业务订单号、轮次。
+// 后续三个状态脚本同样在 Lua 内核对订单号与轮次，不能只在 Go 中先读后判。
 // TTL 只负责清理长期残留状态，不负责回补库存；库存释放必须通过 releaseAdmissionScript。
 var acquireAdmissionScript = redis.NewScript(`
 local stockKey = KEYS[1]
 local admissionKey = KEYS[2]
 local giftID = ARGV[1]
 local ttlSeconds = tonumber(ARGV[2])
+local orderID = ARGV[3] or ""
+local runID = ARGV[4] or ""
+if orderID ~= "" and redis.call("GET", KEYS[3]) ~= runID then return "STALE_RUN" end
 
 if redis.call("EXISTS", admissionKey) == 1 then
 	return "DUPLICATE"
@@ -52,6 +58,7 @@ end
 
 redis.call("DECR", stockKey)
 local value = tostring(giftID) .. "|stock_acquired"
+if orderID ~= "" then value = value .. "|" .. orderID .. "|" .. runID end
 if ttlSeconds and ttlSeconds > 0 then
 	redis.call("SET", admissionKey, value, "EX", ttlSeconds)
 else
@@ -68,17 +75,20 @@ local giftID = tostring(ARGV[1])
 local current = redis.call("GET", admissionKey)
 if not current then return 0 end
 
-local currentGiftID, state = string.match(tostring(current), "^([^|]+)|(.+)$")
+local currentGiftID, state, orderID, runID = string.match(tostring(current), "^([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
 if not currentGiftID then
-	currentGiftID = tostring(current)
-	state = "pending_payment"
+ currentGiftID, state = string.match(tostring(current), "^([^|]+)|([^|]+)$")
+ if not currentGiftID then currentGiftID = tostring(current); state = "pending_payment" end
+ orderID = ""; runID = ""
 end
-if currentGiftID ~= giftID then return 0 end
+if currentGiftID ~= giftID or orderID ~= (ARGV[2] or "") or runID ~= (ARGV[3] or "") then return 0 end
+if orderID ~= "" and redis.call("GET", KEYS[#KEYS]) ~= runID then return 0 end
 if state == "pending_payment" then return 2 end
 if state ~= "stock_acquired" then return 0 end
 
 local ttl = redis.call("PTTL", admissionKey)
 local value = giftID .. "|pending_payment"
+if orderID ~= "" then value = value .. "|" .. orderID .. "|" .. runID end
 if ttl > 0 then redis.call("SET", admissionKey, value, "PX", ttl)
 else redis.call("SET", admissionKey, value) end
 return 1
@@ -92,17 +102,20 @@ local giftID = tostring(ARGV[1])
 local current = redis.call("GET", admissionKey)
 if not current then return 0 end
 
-local currentGiftID, state = string.match(tostring(current), "^([^|]+)|(.+)$")
+local currentGiftID, state, orderID, runID = string.match(tostring(current), "^([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
 if not currentGiftID then
-	currentGiftID = tostring(current)
-	state = "pending_payment"
+ currentGiftID, state = string.match(tostring(current), "^([^|]+)|([^|]+)$")
+ if not currentGiftID then currentGiftID = tostring(current); state = "pending_payment" end
+ orderID = ""; runID = ""
 end
-if currentGiftID ~= giftID then return 0 end
+if currentGiftID ~= giftID or orderID ~= (ARGV[2] or "") or runID ~= (ARGV[3] or "") then return 0 end
+if orderID ~= "" and redis.call("GET", KEYS[#KEYS]) ~= runID then return 0 end
 if state == "paid" then return 2 end
 if state ~= "pending_payment" then return 0 end
 
 local ttl = redis.call("PTTL", admissionKey)
 local value = giftID .. "|paid"
+if orderID ~= "" then value = value .. "|" .. orderID .. "|" .. runID end
 if ttl > 0 then redis.call("SET", admissionKey, value, "PX", ttl)
 else redis.call("SET", admissionKey, value) end
 return 1
@@ -118,31 +131,38 @@ local giftID = tostring(ARGV[1])
 local current = redis.call("GET", admissionKey)
 if not current then return 0 end
 
-local currentGiftID, state = string.match(tostring(current), "^([^|]+)|(.+)$")
+local currentGiftID, state, orderID, runID = string.match(tostring(current), "^([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
 if not currentGiftID then
-	currentGiftID = tostring(current)
-	state = "pending_payment"
+ currentGiftID, state = string.match(tostring(current), "^([^|]+)|([^|]+)$")
+ if not currentGiftID then currentGiftID = tostring(current); state = "pending_payment" end
+ orderID = ""; runID = ""
 end
-if currentGiftID ~= giftID then return 0 end
+if currentGiftID ~= giftID or orderID ~= (ARGV[2] or "") or runID ~= (ARGV[3] or "") then return 0 end
+if orderID ~= "" and redis.call("GET", KEYS[#KEYS]) ~= runID then return 0 end
 if state == "cancelled" then return 2 end
 if state ~= "stock_acquired" and state ~= "pending_payment" then return 0 end
 
 redis.call("INCR", stockKey)
 local ttl = redis.call("PTTL", admissionKey)
 local value = giftID .. "|cancelled"
+if orderID ~= "" then value = value .. "|" .. orderID .. "|" .. runID end
 if ttl > 0 then redis.call("SET", admissionKey, value, "PX", ttl)
 else redis.call("SET", admissionKey, value) end
 return 1
 `)
 
 // TryAcquireLotteryAdmission 发放 Redis 库存资格并进入 stock_acquired。
-func TryAcquireLotteryAdmission(uid int, giftID int, ttl time.Duration) (AdmissionStatus, error) {
+func TryAcquireLotteryAdmission(uid int, giftID int, ttl time.Duration, identities ...OrderIdentity) (AdmissionStatus, error) {
 	if GiftRedis == nil {
 		return "", errors.New("redis client is nil")
 	}
 	stockKey := inventoryKey(giftID)
 	admissionKey := tempOrderKey(uid)
-	result, err := acquireAdmissionScript.Run(GiftRedis, []string{stockKey, admissionKey}, giftID, int(ttl.Seconds())).Result()
+	identity := identityArg(identities)
+	if (identity.OrderID != "" || identity.RunID != "") && !identity.Valid() {
+		return "", fmt.Errorf("invalid order identity")
+	}
+	result, err := acquireAdmissionScript.Run(GiftRedis, []string{stockKey, admissionKey, SeckillRunKey}, giftID, int(ttl.Seconds()), identity.OrderID, identity.RunID).Result()
 	if err != nil {
 		return "", fmt.Errorf("run acquire admission script: %w", err)
 	}
@@ -212,7 +232,7 @@ func (s *Store) UnpersistedAdmissionCounts(activityID int) (map[int]int, error) 
 				continue
 			}
 			// 消费者可能已建账但尚未来得及推进 Redis；该订单已由 CompletedOrderCounts 统计，不能重复扣除。
-			_, findErr := s.FindOrder(activityID, uid)
+			_, findErr := s.FindOrderIdentity(activityID, uid, OrderIdentity{OrderID: admission.OrderID, RunID: admission.RunID})
 			if findErr == nil {
 				continue
 			}
@@ -229,26 +249,28 @@ func (s *Store) UnpersistedAdmissionCounts(activityID int) (map[int]int, error) 
 }
 
 // MarkLotteryAdmissionPendingPayment 在异步订单落库后推进 stock_acquired -> pending_payment。
-// 返回 true 也可能表示重复消息已经推进过，因此消费者可以安全 Ack。
-func MarkLotteryAdmissionPendingPayment(uid, giftID int) (bool, error) {
+// 返回 true 仅表示首次推进；重复消息返回 false，消费者读取 pending_payment 后安全 Ack。
+func MarkLotteryAdmissionPendingPayment(uid, giftID int, identities ...OrderIdentity) (bool, error) {
 	if GiftRedis == nil {
 		return false, errors.New("redis client is nil")
 	}
-	result, err := markPendingPaymentScript.Run(GiftRedis, []string{tempOrderKey(uid)}, giftID).Result()
+	identity := identityArg(identities)
+	result, err := markPendingPaymentScript.Run(GiftRedis, []string{tempOrderKey(uid), SeckillRunKey}, giftID, identity.OrderID, identity.RunID).Result()
 	if err != nil {
 		return false, fmt.Errorf("mark admission pending_payment: %w", err)
 	}
 	n, err := redisInt(result)
-	return n == 1 || n == 2, err
+	return n == 1, err
 }
 
 // ClaimLotteryAdmission 原子执行 pending_payment -> paid。
 // 返回 true 包含首次支付和 paid 幂等重试；cancelled/stock_acquired/不存在返回 false。
-func ClaimLotteryAdmission(uid int, giftID int) (bool, error) {
+func ClaimLotteryAdmission(uid int, giftID int, identities ...OrderIdentity) (bool, error) {
 	if GiftRedis == nil {
 		return false, errors.New("redis client is nil")
 	}
-	result, err := claimAdmissionScript.Run(GiftRedis, []string{tempOrderKey(uid)}, giftID).Result()
+	identity := identityArg(identities)
+	result, err := claimAdmissionScript.Run(GiftRedis, []string{tempOrderKey(uid), SeckillRunKey}, giftID, identity.OrderID, identity.RunID).Result()
 	if err != nil {
 		return false, fmt.Errorf("claim lottery admission: %w", err)
 	}
@@ -258,11 +280,12 @@ func ClaimLotteryAdmission(uid int, giftID int) (bool, error) {
 
 // ReleaseLotteryAdmission 原子执行非终态 -> cancelled 并回补 Redis 库存。
 // 返回 true 仅表示本次调用首次完成回补；重复取消返回 false，调用方可读取 admission 判断幂等终态。
-func ReleaseLotteryAdmission(uid int, giftID int) (bool, error) {
+func ReleaseLotteryAdmission(uid int, giftID int, identities ...OrderIdentity) (bool, error) {
 	if GiftRedis == nil {
 		return false, errors.New("redis client is nil")
 	}
-	result, err := releaseAdmissionScript.Run(GiftRedis, []string{inventoryKey(giftID), tempOrderKey(uid)}, giftID).Result()
+	identity := identityArg(identities)
+	result, err := releaseAdmissionScript.Run(GiftRedis, []string{inventoryKey(giftID), tempOrderKey(uid), SeckillRunKey}, giftID, identity.OrderID, identity.RunID).Result()
 	if err != nil {
 		return false, fmt.Errorf("release lottery admission: %w", err)
 	}
@@ -271,18 +294,27 @@ func ReleaseLotteryAdmission(uid int, giftID int) (bool, error) {
 }
 
 func parseAdmission(raw string) (*LotteryAdmission, error) {
-	parts := strings.SplitN(raw, "|", 2)
+	parts := strings.Split(raw, "|")
 	giftID, err := strconv.Atoi(parts[0])
 	if err != nil {
 		return nil, fmt.Errorf("invalid gift id %q: %w", parts[0], err)
 	}
 	state := OrderStatusPendingPayment // 兼容旧版 porder_{uid}=giftID。
-	if len(parts) == 2 {
+	if len(parts) >= 2 {
 		state = OrderStatus(parts[1])
 	}
 	switch state {
 	case OrderStatusStockAcquired, OrderStatusPendingPayment, OrderStatusPaid, OrderStatusCancelled:
-		return &LotteryAdmission{GiftID: giftID, State: state}, nil
+		admission := &LotteryAdmission{GiftID: giftID, State: state}
+		if len(parts) == 4 {
+			admission.OrderID, admission.RunID = parts[2], parts[3]
+			if !(OrderIdentity{OrderID: parts[2], RunID: parts[3]}).Valid() {
+				return nil, fmt.Errorf("invalid admission identity")
+			}
+		} else if len(parts) != 1 && len(parts) != 2 {
+			return nil, fmt.Errorf("invalid admission format")
+		}
+		return admission, nil
 	default:
 		return nil, fmt.Errorf("invalid admission state %q", state)
 	}

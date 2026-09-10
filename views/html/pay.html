@@ -51,17 +51,24 @@
             deleteCookie("price");
             deleteCookie("order_status");
             deleteCookie("inventory_mode");
+            deleteCookie("order_id");
+            deleteCookie("run_id");
         }
 
+        var boundOrder;
         function currentOrder() {
-            return {
+            if (boundOrder) { return boundOrder; }
+            boundOrder = {
                 uid: getCookie("uid"),
                 gid: getCookie("gid"),
                 name: getCookie("name"),
                 price: getCookie("price"),
                 status: getCookie("order_status"),
-                mode: getCookie("inventory_mode")
+                mode: getCookie("inventory_mode"),
+                orderID: getCookie("order_id"),
+                runID: getCookie("run_id")
             };
+            return boundOrder;
         }
 
         function showMessage(text) {
@@ -79,6 +86,8 @@
             var body = new URLSearchParams();
             body.set("uid", order.uid);
             body.set("gid", order.gid);
+            body.set("order_id", order.orderID);
+            body.set("run_id", order.runID);
 
             var response = await fetch(url, {
                 method: "POST",
@@ -131,7 +140,7 @@
         }
 
         async function refreshOrderState(order) {
-            var response = await fetch("/api/order/status?uid=" + encodeURIComponent(order.uid) + "&gid=" + encodeURIComponent(order.gid));
+            var response = await fetch("/api/order/status?uid=" + encodeURIComponent(order.uid) + "&gid=" + encodeURIComponent(order.gid) + "&order_id=" + encodeURIComponent(order.orderID) + "&run_id=" + encodeURIComponent(order.runID));
             if (!response.ok) {
                 return order.status;
             }

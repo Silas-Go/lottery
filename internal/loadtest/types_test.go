@@ -120,7 +120,9 @@ func TestValidateSeckillExperimentsKeepVariablesIsolated(t *testing.T) {
 
 	invalid := []CreateRequest{
 		{Experiment: ExperimentSeckillRateLimit, Rate: 500},
-		{Experiment: ExperimentSeckillRateLimit, Rate: 800, ArchiveID: 4},
+		{Experiment: ExperimentSeckillRateLimit, Rate: 300},
+		{Experiment: ExperimentSeckillRateLimit, Rate: 800},
+		{Experiment: ExperimentSeckillRateLimit, Rate: 1500, ArchiveID: 4},
 		{Experiment: ExperimentSeckillStockBurst, Rate: 300},
 		{Experiment: ExperimentSeckillStockBurst, Connections: 70},
 	}

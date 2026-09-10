@@ -95,7 +95,10 @@ func RunOrderConsumer(ctx context.Context, createOrder CreateOrderHandler, timeo
 				continue
 			}
 			if message.GetTopic() == CancelTopic() {
-				metrics.RecordMQConsumed(timeoutRollback)
+				var command database.Order
+				if err := sonic.Unmarshal(message.GetBody(), &command); err == nil {
+					metrics.RecordMQConsumed(timeoutRollback, command.RunID)
+				}
 			}
 			slog.Info("rocketmq order message handled", "message_id", message.GetMessageId(),
 				"topic", message.GetTopic(), "group", OrderConsumerGroup(), "timeout_rollback", timeoutRollback)
@@ -114,6 +117,7 @@ func handleOrderMessage(
 	if err := sonic.Unmarshal(body, &command); err != nil {
 		return false, fmt.Errorf("decode %s message %s: %w", topic, messageID, err)
 	}
+	slog.Debug("order message received", "message_id", messageID, "order_id", command.OrderID, "run_id", command.RunID, "uid", command.UserId, "topic", topic)
 	switch topic {
 	case OrderTopic():
 		if createOrder == nil {

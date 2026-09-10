@@ -7,10 +7,14 @@ import (
 )
 
 // ResetExperimentState 把本地秒杀实验恢复到一轮新压测前的真实业务状态。
+// 调用方必须持有 BeginSeckillReset 屏障，覆盖业务数据和指标重置。
 // 它会清空正式订单、恢复 Cache-Aside 库存、清掉 Redis 临时资格和旧库存缓存，然后重建 Redis 预扣库存。
 func (s *Store) ResetExperimentState() error {
 	if s == nil {
 		return errors.New("database store is nil")
+	}
+	if err := RotateSeckillRun(); err != nil {
+		return fmt.Errorf("rotate seckill run: %w", err)
 	}
 	if err := s.ResetOrders(); err != nil {
 		return err

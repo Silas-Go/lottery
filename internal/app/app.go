@@ -271,6 +271,12 @@ func initInventoryMetrics(store *database.Store) {
 			redisTotal += int64(gift.Count)
 		}
 	}
+	runID, runErr := database.CurrentSeckillRun()
+	if runErr != nil {
+		slog.Error("initialize seckill run failed", "error", runErr)
+		return
+	}
+	metrics.SetSeckillRunID(runID)
 	metrics.InitInventory(baseTotal, redisTotal)
 	slog.Info("inventory metrics initialized", "gift_count", len(gifts), "base_stock", baseTotal, "redis_stock", redisTotal)
 }

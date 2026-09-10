@@ -97,7 +97,7 @@ func SendCancelOrder(order database.Order, delay int) error {
 
 	content, err := sonic.Marshal(order)
 	if err != nil {
-		slog.Error("marshal cancel order failed", "uid", order.UserId, "gid", order.GiftId, "error", err)
+		slog.Error("marshal cancel order failed", "order_id", order.OrderID, "run_id", order.RunID, "uid", order.UserId, "gid", order.GiftId, "error", err)
 		return fmt.Errorf("marshal cancel order: %w", err)
 	}
 
@@ -118,12 +118,12 @@ func SendCancelOrder(order database.Order, delay int) error {
 	defer cancel()
 
 	if _, err := producer.Send(ctx, msg); err != nil {
-		slog.Error("send cancel order failed", "uid", order.UserId, "gid", order.GiftId, "topic", CancelTopic(), "delay", delay, "error", err)
+		slog.Error("send cancel order failed", "order_id", order.OrderID, "run_id", order.RunID, "uid", order.UserId, "gid", order.GiftId, "topic", CancelTopic(), "delay", delay, "error", err)
 		return fmt.Errorf("send cancel order to rocketmq: %w", err)
 	}
 
 	metrics.RecordMQEnqueued()
-	slog.Info("send cancel order success", "uid", order.UserId, "gid", order.GiftId, "topic", CancelTopic(), "delay", delay)
+	slog.Info("send cancel order success", "order_id", order.OrderID, "run_id", order.RunID, "uid", order.UserId, "gid", order.GiftId, "topic", CancelTopic(), "delay", delay)
 	return nil
 }
 
@@ -148,7 +148,7 @@ func SendCreateOrder(order database.Order) error {
 		return fmt.Errorf("send create order to rocketmq: %w", err)
 	}
 	metrics.RecordCreateOrderEnqueued()
-	slog.Info("send async create order success", "uid", order.UserId, "gid", order.GiftId, "topic", OrderTopic())
+	slog.Info("send async create order success", "order_id", order.OrderID, "run_id", order.RunID, "uid", order.UserId, "gid", order.GiftId, "topic", OrderTopic())
 	return nil
 }
 

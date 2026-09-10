@@ -17,12 +17,14 @@ type OrderService struct {
 
 // OrderStateView 是状态查询接口使用的稳定业务视图。
 type OrderStateView struct {
-	OrderID       int                    `json:"orderId,omitempty"`
-	UID           int                    `json:"uid"`
-	GiftID        int                    `json:"giftId"`
-	Status        database.OrderStatus   `json:"status"`
-	InventoryMode database.InventoryMode `json:"inventoryMode"`
-	ExpiresAt     time.Time              `json:"expiresAt,omitempty"`
+	BusinessOrderID string                 `json:"order_id,omitempty"`
+	RunID           string                 `json:"run_id,omitempty"`
+	OrderID         int                    `json:"orderId,omitempty"`
+	UID             int                    `json:"uid"`
+	GiftID          int                    `json:"giftId"`
+	Status          database.OrderStatus   `json:"status"`
+	InventoryMode   database.InventoryMode `json:"inventoryMode"`
+	ExpiresAt       time.Time              `json:"expiresAt,omitempty"`
 }
 
 func NewOrderService(store *database.Store) *OrderService {
@@ -33,26 +35,41 @@ func NewOrderService(store *database.Store) *OrderService {
 // CreateRedisPendingOrder 是普通 MQ 创建订单消息的消费回调。
 // 它只允许 stock_acquired -> pending_payment，重复消息返回幂等成功，迟到消息不能覆盖 paid/cancelled。
 func (s *OrderService) CreateRedisPendingOrder(command database.Order) error {
+	defer database.BeginSeckillOperation()()
+	identity := command.Identity()
+
 	admission, err := database.GetLotteryAdmission(command.UserId)
 	if err != nil {
 		return err
 	}
-	if admission == nil || admission.GiftID != command.GiftId {
+	if !admission.Matches(command.GiftId, identity) {
 		// 重置实验或终态过期后到达的旧消息没有可消费的库存资格，直接忽略，不能凭消息复活订单。
-		slog.Warn("async order create skipped without matching admission", "uid", command.UserId, "gid", command.GiftId)
+		metrics.RecordIgnoredOrderMessage()
+		slog.Info("stale create order ignored", "uid", command.UserId, "gid", command.GiftId, "order_id", identity.OrderID, "run_id", identity.RunID)
 		return nil
 	}
 
+	if identity.OrderID != "" {
+		runID, runErr := database.CurrentSeckillRun()
+		if runErr != nil {
+			return runErr
+		}
+		if runID != identity.RunID {
+			metrics.RecordIgnoredOrderMessage()
+			slog.Info("stale order run ignored", "order_id", identity.OrderID, "run_id", identity.RunID)
+			return nil
+		}
+	}
 	expiresAt := command.ExpiresAt
 	if expiresAt.IsZero() {
 		expiresAt = time.Now().Add(time.Duration(PayDelaySeconds) * time.Second)
 	}
 	if admission.State == database.OrderStatusCancelled {
-		_, _, err := s.store.RecordReleasedRedisCancellation(database.DefaultActivityID, command.UserId, command.GiftId, expiresAt, "cancelled_before_order_created")
+		_, _, err := s.store.RecordReleasedRedisCancellation(database.DefaultActivityID, command.UserId, command.GiftId, expiresAt, "cancelled_before_order_created", identity)
 		return err
 	}
 
-	order, _, err := s.store.CreatePendingOrder(database.DefaultActivityID, command.UserId, command.GiftId, database.InventoryModeRedis, expiresAt)
+	order, _, err := s.store.CreatePendingOrder(database.DefaultActivityID, command.UserId, command.GiftId, database.InventoryModeRedis, expiresAt, identity)
 	if err != nil {
 		return err
 	}
@@ -73,13 +90,13 @@ func (s *OrderService) CreateRedisPendingOrder(command database.Order) error {
 		return nil
 	}
 
-	advanced, err := database.MarkLotteryAdmissionPendingPayment(command.UserId, command.GiftId)
+	advanced, err := database.MarkLotteryAdmissionPendingPayment(command.UserId, command.GiftId, identity)
 	if err != nil {
 		return err
 	}
 	if advanced {
 		metrics.RecordCreateOrderConsumed()
-		slog.Info("async order entered pending_payment", "order_id", order.Id, "uid", command.UserId, "gid", command.GiftId)
+		slog.Info("async order entered pending_payment", "ledger_id", order.Id, "order_id", identity.OrderID, "run_id", identity.RunID, "uid", command.UserId, "gid", command.GiftId)
 		return nil
 	}
 
@@ -88,8 +105,11 @@ func (s *OrderService) CreateRedisPendingOrder(command database.Order) error {
 	if err != nil {
 		return err
 	}
-	if admission != nil && admission.GiftID == command.GiftId && admission.State == database.OrderStatusCancelled {
-		_, _, err = s.store.RecordReleasedRedisCancellation(database.DefaultActivityID, command.UserId, command.GiftId, expiresAt, "cancelled_during_order_creation")
+	if admission.Matches(command.GiftId, identity) && admission.State == database.OrderStatusPendingPayment {
+		return nil
+	}
+	if admission.Matches(command.GiftId, identity) && admission.State == database.OrderStatusCancelled {
+		_, _, err = s.store.RecordReleasedRedisCancellation(database.DefaultActivityID, command.UserId, command.GiftId, expiresAt, "cancelled_during_order_creation", identity)
 		return err
 	}
 	return fmt.Errorf("admission cannot enter pending_payment uid=%d gid=%d", command.UserId, command.GiftId)
@@ -97,10 +117,13 @@ func (s *OrderService) CreateRedisPendingOrder(command database.Order) error {
 
 // Pay 只允许 pending_payment -> paid。
 // paid 重试幂等成功；stock_acquired 返回处理中；cancelled 永远不能被支付复活。
-func (s *OrderService) Pay(uid int, gid int) *AppError {
-	order, err := s.store.FindOrder(database.DefaultActivityID, uid)
+func (s *OrderService) Pay(uid int, gid int, identities ...database.OrderIdentity) *AppError {
+	defer database.BeginSeckillOperation()()
+	identity := requestIdentity(identities)
+
+	order, err := s.store.FindOrderIdentity(database.DefaultActivityID, uid, identity)
 	if errors.Is(err, database.ErrOrderNotFound) {
-		return s.payBeforeLedgerCreated(uid, gid)
+		return s.payBeforeLedgerCreated(uid, gid, identity)
 	}
 	if err != nil {
 		return NewAppError(CodeOrderCreateFailed, "读取订单状态失败，请稍后重试", err, "uid", uid, "gid", gid)
@@ -122,7 +145,7 @@ func (s *OrderService) Pay(uid int, gid int) *AppError {
 	}
 
 	if !order.ExpiresAt.IsZero() && !time.Now().Before(order.ExpiresAt) {
-		_, cancelErr := s.cancel(uid, gid, "payment_timeout", order.ExpiresAt)
+		_, cancelErr := s.cancel(uid, gid, "payment_timeout", order.ExpiresAt, identity)
 		if cancelErr != nil && cancelErr.Code == CodeOrderAlreadyPaid {
 			return nil
 		}
@@ -133,7 +156,7 @@ func (s *OrderService) Pay(uid int, gid int) *AppError {
 	}
 
 	if order.InventoryMode == database.InventoryModeRedis {
-		claimed, claimErr := database.ClaimLotteryAdmission(uid, gid)
+		claimed, claimErr := database.ClaimLotteryAdmission(uid, gid, identity)
 		if claimErr != nil {
 			metrics.RecordSystemError("支付资格状态迁移失败", claimErr)
 			return NewAppError(CodeAdmissionFailed, "支付资格确认失败，请稍后重试", claimErr, "uid", uid, "gid", gid)
@@ -166,12 +189,12 @@ func (s *OrderService) Pay(uid int, gid int) *AppError {
 	return nil
 }
 
-func (s *OrderService) payBeforeLedgerCreated(uid, gid int) *AppError {
+func (s *OrderService) payBeforeLedgerCreated(uid, gid int, identity database.OrderIdentity) *AppError {
 	admission, err := database.GetLotteryAdmission(uid)
 	if err != nil {
 		return NewAppError(CodeAdmissionFailed, "读取订单处理状态失败", err, "uid", uid, "gid", gid)
 	}
-	if admission == nil || admission.GiftID != gid {
+	if !admission.Matches(gid, identity) {
 		return NewAppError(CodeOrderNotOwned, "您没有该商品的有效订单", nil, "uid", uid, "gid", gid)
 	}
 	return appErrorForAdmission(admission, gid, uid)
@@ -196,8 +219,11 @@ func appErrorForAdmission(admission *database.LotteryAdmission, gid, uid int) *A
 }
 
 // GiveUp 主动执行 pending_payment/stock_acquired -> cancelled。
-func (s *OrderService) GiveUp(uid int, gid int) *AppError {
-	released, appErr := s.cancel(uid, gid, "user_giveup", time.Now())
+func (s *OrderService) GiveUp(uid int, gid int, identities ...database.OrderIdentity) *AppError {
+	defer database.BeginSeckillOperation()()
+	identity := requestIdentity(identities)
+
+	released, appErr := s.cancel(uid, gid, "user_giveup", time.Now(), identity)
 	if appErr != nil {
 		return appErr
 	}
@@ -210,6 +236,41 @@ func (s *OrderService) GiveUp(uid int, gid int) *AppError {
 
 // TimeoutCancel 是延迟消息回调。paid/cancelled 视为已处理；系统错误返回给 MQ 触发重试。
 func (s *OrderService) TimeoutCancel(command database.Order) (bool, error) {
+	defer database.BeginSeckillOperation()()
+	identity := command.Identity()
+	// 历史 MySQL 订单没有 Redis 资格；只允许消息指向同一笔旧账本。
+	// 旧表 datetime 会舍入到秒，截止时间核对需容忍不足一秒的存储精度差。
+	legacyMySQL := false
+	if identity.OrderID == "" && identity.RunID == "" {
+		order, err := s.store.FindOrderIdentity(database.DefaultActivityID, command.UserId, identity)
+		if err != nil && !errors.Is(err, database.ErrOrderNotFound) {
+			return false, err
+		}
+		legacyMySQL = err == nil && order.InventoryMode == database.InventoryModeMySQL &&
+			order.GiftId == command.GiftId && !command.ExpiresAt.IsZero() &&
+			order.ExpiresAt.Sub(command.ExpiresAt).Abs() < time.Second && (command.Id == 0 || command.Id == order.Id)
+	}
+	admission, err := database.GetLotteryAdmission(command.UserId)
+	if err != nil && !legacyMySQL {
+		return false, err
+	}
+	// 无账本的 stock_acquired 也能取消，但必须先匹配同一次资格，不能用用户 ID 找新订单。
+	if !legacyMySQL && !admission.Matches(command.GiftId, identity) {
+		metrics.RecordIgnoredOrderMessage()
+		slog.Info("stale cancel order ignored", "uid", command.UserId, "order_id", identity.OrderID, "run_id", identity.RunID)
+		return false, nil
+	}
+	if identity.OrderID != "" {
+		runID, runErr := database.CurrentSeckillRun()
+		if runErr != nil {
+			return false, runErr
+		}
+		if runID != identity.RunID {
+			metrics.RecordIgnoredOrderMessage()
+			return false, nil
+		}
+	}
+
 	expiresAt := command.ExpiresAt
 	if expiresAt.IsZero() {
 		expiresAt = time.Now()
@@ -217,7 +278,7 @@ func (s *OrderService) TimeoutCancel(command database.Order) (bool, error) {
 	if time.Now().Before(expiresAt) {
 		return false, fmt.Errorf("order is not expired until %s", expiresAt.Format(time.RFC3339Nano))
 	}
-	released, appErr := s.cancel(command.UserId, command.GiftId, "payment_timeout", expiresAt)
+	released, appErr := s.cancel(command.UserId, command.GiftId, "payment_timeout", expiresAt, identity)
 	if appErr == nil {
 		return released, nil
 	}
@@ -227,8 +288,8 @@ func (s *OrderService) TimeoutCancel(command database.Order) (bool, error) {
 	return false, appErr
 }
 
-func (s *OrderService) cancel(uid, gid int, reason string, expiresAt time.Time) (bool, *AppError) {
-	order, err := s.store.FindOrder(database.DefaultActivityID, uid)
+func (s *OrderService) cancel(uid, gid int, reason string, expiresAt time.Time, identity database.OrderIdentity) (bool, *AppError) {
+	order, err := s.store.FindOrderIdentity(database.DefaultActivityID, uid, identity)
 	if err == nil && order.GiftId != gid {
 		return false, NewAppError(CodeOrderNotOwned, "订单与商品不匹配", nil, "uid", uid, "gid", gid, "order_id", order.Id)
 	}
@@ -252,7 +313,7 @@ func (s *OrderService) cancel(uid, gid int, reason string, expiresAt time.Time) 
 	}
 
 	// Redis 模式必须先由 Lua 裁决支付/取消并只回补一次，再把结果写入 MySQL 账本。
-	released, releaseErr := database.ReleaseLotteryAdmission(uid, gid)
+	released, releaseErr := database.ReleaseLotteryAdmission(uid, gid, identity)
 	if releaseErr != nil {
 		metrics.RecordSystemError("Redis 订单取消失败", releaseErr)
 		return false, NewAppError(CodeGiveUpRollbackFailed, "取消订单并回补库存失败", releaseErr, "uid", uid, "gid", gid)
@@ -261,7 +322,7 @@ func (s *OrderService) cancel(uid, gid int, reason string, expiresAt time.Time) 
 	if getErr != nil {
 		return false, NewAppError(CodeGiveUpRollbackFailed, "读取取消结果失败", getErr, "uid", uid, "gid", gid)
 	}
-	if admission == nil || admission.GiftID != gid {
+	if !admission.Matches(gid, identity) {
 		if order != nil && order.Status == database.OrderStatusCancelled && order.StockReleased {
 			return false, nil
 		}
@@ -279,7 +340,7 @@ func (s *OrderService) cancel(uid, gid int, reason string, expiresAt time.Time) 
 	if admission.State != database.OrderStatusCancelled {
 		return false, NewAppError(CodeOrderStateConflict, "订单取消状态冲突", nil, "uid", uid, "gid", gid, "status", admission.State)
 	}
-	if _, _, recordErr := s.store.RecordReleasedRedisCancellation(database.DefaultActivityID, uid, gid, expiresAt, reason); recordErr != nil {
+	if _, _, recordErr := s.store.RecordReleasedRedisCancellation(database.DefaultActivityID, uid, gid, expiresAt, reason, identity); recordErr != nil {
 		return false, NewAppError(CodeGiveUpRollbackFailed, "取消结果写入订单账本失败", recordErr, "uid", uid, "gid", gid)
 	}
 	if released {
@@ -290,8 +351,11 @@ func (s *OrderService) cancel(uid, gid int, reason string, expiresAt time.Time) 
 
 // Status 返回两个模式统一的订单状态。
 // Redis 模式在异步落账窗口优先返回 admission 状态，MySQL 账本建立后仍保持相同枚举。
-func (s *OrderService) Status(uid, gid int) (*OrderStateView, *AppError) {
-	order, err := s.store.FindOrder(database.DefaultActivityID, uid)
+func (s *OrderService) Status(uid, gid int, identities ...database.OrderIdentity) (*OrderStateView, *AppError) {
+	defer database.BeginSeckillOperation()()
+	identity := requestIdentity(identities)
+
+	order, err := s.store.FindOrderIdentity(database.DefaultActivityID, uid, identity)
 	if err != nil && !errors.Is(err, database.ErrOrderNotFound) {
 		return nil, NewAppError(CodeOrderCreateFailed, "读取订单状态失败", err, "uid", uid, "gid", gid)
 	}
@@ -300,7 +364,7 @@ func (s *OrderService) Status(uid, gid int) (*OrderStateView, *AppError) {
 	}
 	if order != nil && (order.Status == database.OrderStatusPaid || order.Status == database.OrderStatusCancelled) {
 		return &OrderStateView{
-			OrderID: order.Id, UID: uid, GiftID: gid, Status: order.Status,
+			BusinessOrderID: order.OrderID, RunID: order.RunID, OrderID: order.Id, UID: uid, GiftID: gid, Status: order.Status,
 			InventoryMode: order.InventoryMode, ExpiresAt: order.ExpiresAt,
 		}, nil
 	}
@@ -309,8 +373,8 @@ func (s *OrderService) Status(uid, gid int) (*OrderStateView, *AppError) {
 	if admissionErr != nil && (order == nil || order.InventoryMode == database.InventoryModeRedis) {
 		return nil, NewAppError(CodeAdmissionFailed, "读取订单处理状态失败", admissionErr, "uid", uid, "gid", gid)
 	}
-	if admission != nil && admission.GiftID == gid && (order == nil || order.InventoryMode == database.InventoryModeRedis) {
-		view := &OrderStateView{UID: uid, GiftID: gid, Status: admission.State, InventoryMode: database.InventoryModeRedis}
+	if admission.Matches(gid, identity) && (order == nil || order.InventoryMode == database.InventoryModeRedis) {
+		view := &OrderStateView{BusinessOrderID: admission.OrderID, RunID: admission.RunID, UID: uid, GiftID: gid, Status: admission.State, InventoryMode: database.InventoryModeRedis}
 		if order != nil {
 			view.OrderID = order.Id
 			view.ExpiresAt = order.ExpiresAt
@@ -321,7 +385,15 @@ func (s *OrderService) Status(uid, gid int) (*OrderStateView, *AppError) {
 		return nil, NewAppError(CodeOrderNotOwned, "订单不存在", nil, "uid", uid, "gid", gid)
 	}
 	return &OrderStateView{
-		OrderID: order.Id, UID: uid, GiftID: gid, Status: order.Status,
+		BusinessOrderID: order.OrderID, RunID: order.RunID, OrderID: order.Id, UID: uid, GiftID: gid, Status: order.Status,
 		InventoryMode: order.InventoryMode, ExpiresAt: order.ExpiresAt,
 	}, nil
+}
+
+// requestIdentity 的空值只供旧账本兼容，Redis Lua 会拒绝用空值操作新资格。
+func requestIdentity(identities []database.OrderIdentity) database.OrderIdentity {
+	if len(identities) == 0 {
+		return database.OrderIdentity{}
+	}
+	return identities[0]
 }

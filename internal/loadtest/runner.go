@@ -942,21 +942,23 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 		return TaskMetrics{}, fmt.Errorf("metrics returned HTTP %d", response.StatusCode)
 	}
 	var snapshot struct {
-		RateLimitQPS        int64 `json:"rateLimitQps"`
-		ActivityStock       int64 `json:"activityStock"`
-		RedisStock          int64 `json:"redisStock"`
-		TotalRequests       int64 `json:"totalRequests"`
-		QueueSuccess        int64 `json:"queueSuccess"`
-		RateLimited         int64 `json:"rateLimited"`
-		StockFailed         int64 `json:"stockFailed"`
-		SystemErrors        int64 `json:"systemErrors"`
-		CreateOrderEnqueued int64 `json:"createOrderEnqueued"`
-		CreateOrderConsumed int64 `json:"createOrderConsumed"`
-		CreateOrderBacklog  int64 `json:"createOrderBacklog"`
-		Oversold            bool  `json:"oversold"`
-		QPS                 int64 `json:"qps"`
-		P95                 int64 `json:"p95"`
-		P99                 int64 `json:"p99"`
+		RunID               string `json:"run_id"`
+		RateLimitQPS        int64  `json:"rateLimitQps"`
+		ActivityStock       int64  `json:"activityStock"`
+		RedisStock          int64  `json:"redisStock"`
+		TotalRequests       int64  `json:"totalRequests"`
+		QueueSuccess        int64  `json:"queueSuccess"`
+		LuaAdmissionSuccess *int64 `json:"luaAdmissionSuccess"`
+		RateLimited         int64  `json:"rateLimited"`
+		StockFailed         int64  `json:"stockFailed"`
+		SystemErrors        int64  `json:"systemErrors"`
+		CreateOrderEnqueued int64  `json:"createOrderEnqueued"`
+		CreateOrderConsumed int64  `json:"createOrderConsumed"`
+		CreateOrderBacklog  int64  `json:"createOrderBacklog"`
+		Oversold            bool   `json:"oversold"`
+		QPS                 int64  `json:"qps"`
+		P95                 int64  `json:"p95"`
+		P99                 int64  `json:"p99"`
 		RateLimitProbe      struct {
 			TotalRequests int64 `json:"totalRequests"`
 			Allowed       int64 `json:"allowed"`
@@ -981,6 +983,7 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 			limitedRate = float64(probe.Limited) * 100 / float64(probe.TotalRequests)
 		}
 		return TaskMetrics{
+			RunID:           snapshot.RunID,
 			ActualRequests:  probe.TotalRequests,
 			ActualQPS:       float64(probe.QPS),
 			AllowedRequests: probe.Allowed,
@@ -997,12 +1000,14 @@ func (r *Runner) fetchAppMetrics(ctx context.Context, task Task) (TaskMetrics, e
 			allowed = 0
 		}
 		return TaskMetrics{
+			RunID:               snapshot.RunID,
 			ActualRequests:      snapshot.TotalRequests,
 			ActualQPS:           float64(snapshot.QPS),
 			AllowedRequests:     allowed,
 			RateLimitQPS:        snapshot.RateLimitQPS,
 			RateLimited:         snapshot.RateLimited,
 			AdmissionSuccess:    snapshot.QueueSuccess,
+			LuaAdmissionSuccess: snapshot.LuaAdmissionSuccess,
 			StockFailed:         snapshot.StockFailed,
 			ActivityStock:       snapshot.ActivityStock,
 			RedisStock:          snapshot.RedisStock,

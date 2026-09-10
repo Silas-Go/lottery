@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"silas/internal/database"
 	"silas/internal/service"
 	"strconv"
 	"time"
@@ -28,7 +29,7 @@ func (h *OrderHandler) Status(ctx *gin.Context) {
 		writeAPIError(ctx, http.StatusBadRequest, "INVALID_GID", "gid 参数必须是正整数", err, "raw_gid", ctx.Query("gid"), "uid", uid)
 		return
 	}
-	state, appErr := h.order.Status(uid, gid)
+	state, appErr := h.order.Status(uid, gid, orderRequestIdentity(ctx))
 	if appErr != nil {
 		writeServiceError(ctx, appErr)
 		return
@@ -63,7 +64,7 @@ func (h *OrderHandler) Pay(ctx *gin.Context) {
 	}
 
 	slog.Info("pay http request accepted", "uid", uid, "gid", gid, "client", ctx.ClientIP(), "method", ctx.Request.Method, "path", ctx.Request.URL.Path)
-	if appErr := h.order.Pay(uid, gid); appErr != nil {
+	if appErr := h.order.Pay(uid, gid, orderRequestIdentity(ctx)); appErr != nil {
 		writeServiceError(ctx, appErr)
 		return
 	}
@@ -88,10 +89,25 @@ func (h *OrderHandler) GiveUp(ctx *gin.Context) {
 	}
 
 	slog.Info("give up http request accepted", "uid", uid, "gid", gid, "client", ctx.ClientIP(), "method", ctx.Request.Method, "path", ctx.Request.URL.Path)
-	if appErr := h.order.GiveUp(uid, gid); appErr != nil {
+	if appErr := h.order.GiveUp(uid, gid, orderRequestIdentity(ctx)); appErr != nil {
 		writeServiceError(ctx, appErr)
 		return
 	}
 	slog.Info("give up http request success", "uid", uid, "gid", gid, "status", http.StatusOK, "duration_ms", time.Since(start).Milliseconds())
 	ctx.String(http.StatusOK, "已放弃")
+}
+
+// orderRequestIdentity 只接受请求明确绑定的身份；缺失身份只允许操作旧账本。
+// 新页面随每次动作发送绑定的订单号，避免旧标签页操作后来领取的新资格。
+func orderRequestIdentity(ctx *gin.Context) database.OrderIdentity {
+	read := func(name string) string {
+		if value, ok := ctx.GetPostForm(name); ok {
+			return value
+		}
+		if value, ok := ctx.GetQuery(name); ok {
+			return value
+		}
+		return ""
+	}
+	return database.OrderIdentity{OrderID: read("order_id"), RunID: read("run_id")}
 }

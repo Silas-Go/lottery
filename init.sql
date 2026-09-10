@@ -16,7 +16,9 @@ insert into inventory (id,name,description,picture,price,count) values
 (4,'星髓','从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。','img/star-marrow-relic.png',5200,300);
 
 create table if not exists orders(
-    id int auto_increment comment '订单id，自增',
+    id int auto_increment comment '订单账本id，自增',
+    order_id varchar(32) null comment '一次秒杀资格的唯一业务订单号',
+    run_id varchar(32) not null default '' comment '秒杀实验轮次',
     activity_id int not null default 1 comment '活动id',
     gift_id int not null comment '商品id',
     user_id int not null comment '用户id',
@@ -33,7 +35,8 @@ create table if not exists orders(
     primary key (id),
     key idx_user (user_id),
     key idx_status_expires (status, expires_at),
-    unique key uk_activity_user (activity_id, user_id)
+    unique key uk_activity_user (activity_id, user_id),
+    unique key uk_order_id (order_id)
 )default charset=utf8mb4;
 
 -- 材料情报店只读实验的权威档案。
