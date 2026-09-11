@@ -70,7 +70,7 @@
     // 链路高亮只解释当前真实请求将经过的组件；指标和业务结果仍全部来自服务端。
     function playChain() {
         clearChain();
-        ["http", "limit", "redis", "mq", "mysql"].forEach(function (name, index) {
+        ["limit", "redis", "mq", "mysql"].forEach(function (name, index) {
             chainTimers.push(window.setTimeout(function () {
                 var step = document.querySelector('[data-chain-step="' + name + '"]');
                 if (step) {
@@ -227,8 +227,7 @@
     function renderLimitThreshold(threshold) {
         var value = threshold == null ? "—" : formatNumber(threshold);
         setText("limit-threshold", value);
-        setText("limit-title-threshold", value);
-        setText("limit-flow-allowed", threshold > 0 ? "约 " + value + " QPS 放行" : "等待有效限流阈值");
+        setText("limit-flow-allowed", threshold > 0 ? "约 " + value + " QPS" : "等待有效限流阈值");
     }
 
     function formatNumber(value, digits) {
@@ -305,6 +304,7 @@
         // 旧任务没有独立 Lua 计数，必须显示缺失，不能拿入队数冒充。
         var hasLuaCount = typeof metrics.luaAdmissionSuccess === "number";
         setText("stock-result-admitted", hasLuaCount ? formatNumber(metrics.luaAdmissionSuccess) : "—");
+        setText("stock-process-admitted", hasLuaCount ? formatNumber(metrics.luaAdmissionSuccess) : "—");
         setText("stock-result-failed", formatNumber(metrics.stockFailed));
         setText("stock-result-remaining", formatNumber(metrics.redisStock));
         setText("stock-result-errors", formatNumber(metrics.systemErrors));
@@ -316,6 +316,7 @@
         renderTaskLogs("stock", task.logs);
 
         var verdict = byId("stock-verdict");
+        byId("stock-conclusion").removeAttribute("data-tone");
         verdict.removeAttribute("data-tone");
         if (task.status === "completed") {
             var allowed = Number(metrics.allowedRequests || 0);
@@ -332,17 +333,20 @@
                 Number(metrics.systemErrors || 0) === 0 &&
                 Number(metrics.httpUnexpected || 0) === 0 &&
                 !metrics.oversold && accountingClosed && mqAccountingClosed;
-            verdict.dataset.tone = passed ? "success" : "danger";
-            verdict.textContent = passed ?
-                "本轮未发生超卖：" + formatNumber(metrics.activityStock) + " 份库存，" + formatNumber(metrics.luaAdmissionSuccess) + " 个请求获得资格，剩余库存为 0。" +
-                    (backlog > 0 ? "仍有 " + formatNumber(backlog) + " 条落单消息待处理。" : "落单观察已完成。") :
-                (hasLuaCount ? "本轮未满足库存核对条件，暂不能得出未超卖结论。请查看运行记录。" : "这份结果缺少独立 Lua 准入计数，请重新运行实验。");
-            if (!passed) { byId("stock-evidence").open = true; }
+            verdict.dataset.tone = passed ? "success" : "pending";
+            byId("stock-conclusion").dataset.tone = verdict.dataset.tone;
+            verdict.textContent = passed ? "✓ 本轮未发生超卖" : "本轮结果待核对";
+            setText("stock-conclusion-copy", passed ? formatNumber(metrics.actualRequests) + " 个请求竞争 " + formatNumber(metrics.activityStock) + " 份库存，只有 " + formatNumber(metrics.luaAdmissionSuccess) + " 个请求获得资格。" : "查看详细指标与日志，确认本轮结果。");
+            setText("stock-verdict-detail", passed ? (backlog > 0 ? "库存核对通过，仍有 " + formatNumber(backlog) + " 条落单消息待处理。" : "库存核对通过，落单观察已完成。") :
+                (hasLuaCount ? "本轮未满足库存核对条件，暂不能得出未超卖结论。请查看运行记录。" : "这份结果缺少独立 Lua 准入计数，请重新运行实验。"));
         } else if (task.status === "failed" || task.status === "stopped") {
-            verdict.dataset.tone = "danger";
-            verdict.textContent = task.errorMessage || "任务没有完整结束，本轮不能形成库存正确性结论。";
+            verdict.textContent = task.status === "failed" ? "实验未完成" : "实验已停止";
+            setText("stock-conclusion-copy", "本轮尚不能形成库存正确性结论。");
+            setText("stock-verdict-detail", task.errorMessage || "任务没有完整结束，本轮不能形成库存正确性结论。");
         } else {
-            verdict.textContent = task.status === "collecting" ? "争抢结束，正在观察异步落单。" : "正在核对请求、资格与库存，结束后给出本轮结论。";
+            verdict.textContent = task.status === "collecting" ? "争抢结束，正在核对" : "请求正在争抢库存";
+            setText("stock-conclusion-copy", "结束后，根据本轮请求、资格与库存给出结论。");
+            setText("stock-verdict-detail", "正在核对请求、资格与库存，结束后给出本轮结论。");
         }
     }
 
@@ -367,6 +371,7 @@
         renderTaskLogs("limit", task.logs);
 
         var verdict = byId("limit-verdict");
+        byId("limit-conclusion").removeAttribute("data-tone");
         verdict.removeAttribute("data-tone");
         if (task.status === "completed") {
             var target = Number(task.tier && task.tier.rate || 0);
@@ -383,16 +388,19 @@
                 actualQPS >= target * .85 && Number(metrics.rateLimited || 0) > 0 &&
                 allowedQPS >= threshold * .85 && allowedQPS <= threshold * (1 + 1 / duration) * 1.02 &&
                 unexpected === 0 && accountingClosed;
-            verdict.dataset.tone = passed ? "success" : "danger";
-            verdict.textContent = passed ?
-                "入口流量超过设定阈值后，多余请求被提前拦截，没有继续进入后面的业务链路。" :
-                "本轮未形成清晰的过载保护结论，请检查实际流量、限流阈值和异常记录。";
-            if (!passed) { byId("limit-evidence").open = true; }
+            verdict.dataset.tone = passed ? "success" : "pending";
+            byId("limit-conclusion").dataset.tone = verdict.dataset.tone;
+            verdict.textContent = passed ? "✓ 超额请求已被拦截" : "本轮结果待核对";
+            setText("limit-conclusion-copy", passed ? "超过系统阈值的请求提前被拦截，避免继续进入后端业务链路。" : "查看详细指标与日志，确认流量与拦截结果。");
+            setText("limit-verdict-detail", passed ? "入口流量超过设定阈值后，多余请求被提前拦截，没有继续进入后面的业务链路。" : "本轮未形成清晰的过载保护结论，请检查实际流量、限流阈值和异常记录。");
         } else if (task.status === "failed" || task.status === "stopped") {
-            verdict.dataset.tone = "danger";
-            verdict.textContent = task.errorMessage || "任务没有完整结束，本轮不能形成限流结论。";
+            verdict.textContent = task.status === "failed" ? "实验未完成" : "实验已停止";
+            setText("limit-conclusion-copy", "本轮尚不能形成过载保护结论。");
+            setText("limit-verdict-detail", task.errorMessage || "任务没有完整结束，本轮不能形成限流结论。");
         } else {
-            verdict.textContent = "限流探针运行中：这一轮不会读取或扣减星髓库存。";
+            verdict.textContent = "正在观察入口拦截";
+            setText("limit-conclusion-copy", "请求通过令牌桶，超出部分提前拒绝。");
+            setText("limit-verdict-detail", "限流探针运行中：这一轮不会读取或扣减星髓库存。");
         }
     }
 

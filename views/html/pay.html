@@ -44,6 +44,10 @@
     </main>
 
     <script>
+        // 仅识别站内实验入口，订单操作完成后回到原实验；不接受任意跳转地址。
+        var returnPath = new URLSearchParams(window.location.search).get("from") === "seckill-lab"
+            ? "/seckill-lab" : "/";
+
         function clearOrderCookie() {
             deleteCookie("uid");
             deleteCookie("gid");
@@ -79,7 +83,7 @@
             var order = currentOrder();
             if (!order.uid || !order.gid) {
                 clearOrderCookie();
-                window.location.replace("/");
+                window.location.replace(returnPath);
                 return;
             }
 
@@ -166,7 +170,7 @@
                 try {
                     await postOrderAction("/giveup");
                     clearOrderCookie();
-                    window.location.replace("/");
+                    window.location.replace(returnPath);
                 } catch (error) {
                     showMessage(error.message);
                 }
@@ -177,7 +181,7 @@
                     await postOrderAction("/pay");
                     clearOrderCookie();
                     alert("支付成功，订单已进入 paid 状态。");
-                    window.location.replace("/");
+                    window.location.replace(returnPath);
                 } catch (error) {
                     showMessage(error.message);
                 }

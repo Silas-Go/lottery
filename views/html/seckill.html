@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#ebe2c5" />
     <meta name="description" content="600 人抢 300 份库存怎么不超卖？1500 QPS 冲击入口怎么挡住？用两个真实实验看结果。" />
-    <title>限量材料申领所 · Silas</title>
+    <title>星髓秒杀实验室 · Silas</title>
     <link rel="icon" type="image/png" href="/favicon.ico?v=4" />
-    <link rel="stylesheet" href="/css/seckill.css?v=20260911-order-identity-v1" />
+    <link rel="stylesheet" href="/css/seckill.css?v=20260911-chain-return-v2" />
 </head>
 
 <body class="seckill-page" data-request-state="idle">
@@ -30,15 +30,14 @@
         </section>
         <section id="experiment-config" class="request-overview lab-card" aria-labelledby="chain-title">
             <div class="chain-toolbar">
-                <h2 id="chain-title">一次请求怎么走？ <small>链路示意</small></h2>
+                <h2 id="chain-title">先挡住流量，再抢对库存。 <small>链路示意</small></h2>
                 <div><span id="request-badge" class="state-badge">等待递交</span><button id="draw-material" class="primary-action" type="button">发送一次请求</button></div>
             </div>
             <ol class="request-chain" aria-label="真实秒杀请求的主要步骤">
-                <li data-chain-step="http"><b>01</b><div><strong>发起请求</strong><span>GET /lucky</span></div></li>
-                <li data-chain-step="limit"><b>02</b><div><strong>入口限流</strong><span>先挡住超额请求</span></div></li>
-                <li data-chain-step="redis"><b>03</b><div><strong>库存争抢</strong><span>Redis Lua 原子准入</span></div></li>
-                <li data-chain-step="mq"><b>04</b><div><strong>异步落单</strong><span>MQ 传递落单消息</span></div></li>
-                <li data-chain-step="mysql"><b>05</b><div><strong>等待支付</strong><span>MySQL 记录订单</span></div></li>
+                <li data-chain-step="limit"><div><strong>入口限流</strong><span>控制进入系统的流量</span></div></li>
+                <li data-chain-step="redis"><div><strong>Redis Lua</strong><span>保证库存扣减原子性</span></div></li>
+                <li data-chain-step="mq"><div><strong>MQ</strong><span>异步创建订单</span></div></li>
+                <li data-chain-step="mysql"><div><strong>MySQL</strong><span>保存订单账本</span></div></li>
             </ol>
             <div class="request-footnote">
                 <p id="request-message" role="status">点击发送一个真实请求；获得资格会占用 1 份库存。</p>
@@ -47,79 +46,99 @@
             <article id="request-receipt" class="request-receipt" hidden aria-live="polite">
                 <img id="receipt-image" src="" alt="" />
                 <div><h3 id="receipt-name">等待材料</h3><p id="receipt-status">正在确认订单状态</p></div>
-                <a id="open-order" href="/result">查看并处理订单 →</a>
+                <a id="open-order" href="/result?from=seckill-lab">查看并处理订单 →</a>
             </article>
         </section>
 
         <div class="experiments-grid" aria-label="库存正确性与入口过载保护，两个独立实验">
         <section id="stock-experiment" class="experiment-section lab-card" aria-labelledby="stock-title" data-run-state="idle">
             <header class="section-heading">
-                <div><small>问题一 · 抢得对</small><h2 id="stock-title">600 人抢 300 份库存，怎么保证不超卖？</h2></div>
+                <div><small>实验 01 / 库存正确性</small><h2 id="stock-title">600 人同时抢 300 份库存，会不会超卖？</h2></div>
                 <span id="stock-task-status" class="state-badge" role="status">尚未运行</span>
             </header>
-            <p class="experiment-question">验证大量请求同时争抢库存时，库存准入是否仍然正确。</p>
-            <div class="contract-grid">
-                <article><small>请求用户</small><strong>600 <em>人</em></strong></article>
-                <article><small>初始库存</small><strong>300 <em>份</em></strong></article>
+            <div class="experiment-stage">
+                <div class="stock-process" aria-label="600 个请求争抢 300 份库存，Lua 原子准入后获得资格">
+                    <div class="process-node"><strong class="hero-number">600</strong><span>请求同时进入</span></div>
+                    <div class="process-connector" aria-hidden="true"><i></i><b>→</b></div>
+                    <div class="process-node atomic-node"><span class="process-caption">初始库存 300 份</span><strong>Redis Lua</strong><span>检查库存 · 原子扣减</span></div>
+                    <div class="process-connector" aria-hidden="true"><i></i><b>→</b></div>
+                    <div class="process-node"><strong id="stock-process-admitted" class="hero-number">—</strong><span>获得资格 <small>最多 300</small></span></div>
+                </div>
+                <div class="experiment-actions">
+                    <button id="start-stock-test" class="primary-action" type="button">开始 600 人争抢</button>
+                    <button id="stop-stock-test" class="secondary-action" type="button" disabled>停止本轮</button>
+                    <span id="stock-progress" role="status">开始后重置秒杀库存与订单，再发出请求</span>
+                </div>
+                <div class="conclusion-card" id="stock-conclusion">
+                    <div><small>库存正确性验证</small><p id="stock-verdict" class="experiment-verdict" role="status">等待争抢结果</p><p id="stock-conclusion-copy" class="conclusion-copy">600 个请求竞争 300 份库存，能有多少人获得资格？</p></div>
+                    <div class="conclusion-number"><strong id="stock-result-remaining">—</strong><span>剩余库存</span></div>
+                </div>
             </div>
-            <p class="experiment-answer">Redis Lua 把检查库存与扣减放在同一次原子操作中。</p>
-            <div class="experiment-actions">
-                <button id="start-stock-test" class="primary-action" type="button">开始 600 人争抢</button>
-                <button id="stop-stock-test" class="secondary-action" type="button" disabled>停止本轮</button>
-                <span id="stock-progress" role="status">开始后重置秒杀库存与订单，再发出请求</span>
+            <div class="experiment-disclosures">
+                <details id="stock-evidence" class="experiment-evidence">
+                    <summary>查看详细指标与日志</summary>
+                    <p id="stock-verdict-detail" class="auxiliary-note">运行后查看请求、资格和库存的核对结果。</p>
+                    <div class="result-grid result-grid--stock">
+                        <article><span>总请求数</span><strong id="stock-result-total">—</strong></article>
+                        <article><span>Lua 准入成功</span><strong id="stock-result-admitted">—</strong></article>
+                        <article><span>未获资格</span><strong id="stock-result-failed">—</strong></article>
+                        <article><span>MQ 成功入队</span><strong id="stock-result-enqueued">—</strong></article>
+                        <article><span>已落单 · 待支付</span><strong id="stock-result-consumed">—</strong></article>
+                    </div>
+                    <div class="evidence-metrics"><span>限流拦截 <b id="stock-result-limited">—</b></span><span>服务端异常 <b id="stock-result-errors">—</b></span><span>HTTP 异常 <b id="stock-result-http-errors">—</b></span><span>待处理落单消息 <b id="stock-result-backlog">—</b></span></div>
+                    <ol id="stock-task-logs" class="task-logs"><li>尚无任务日志</li></ol>
+                </details>
+                <details class="experiment-evidence"><summary>查看实验限制</summary><p class="auxiliary-note">验证库存准入正确性，观察异步落单。不包含支付、取消和超时回补。</p><p class="auxiliary-note">未获资格包含库存不足、重复参与等业务拒绝，并非全部进入过 Lua。落单数记录首次进入待支付的订单；请求结束后最多观察 5 秒。流程动画只示意过程，不代表逐条请求追踪。</p></details>
             </div>
-            <div class="result-grid result-grid--stock" aria-live="polite">
-                <article><span>总请求数</span><strong id="stock-result-total">—</strong></article>
-                <article class="result-key"><span>Lua 准入成功</span><strong id="stock-result-admitted">—</strong></article>
-                <article><span>未获资格</span><strong id="stock-result-failed">—</strong></article>
-                <article class="result-key"><span>Redis 剩余库存</span><strong id="stock-result-remaining">—</strong></article>
-                <article><span>MQ 成功入队</span><strong id="stock-result-enqueued">—</strong></article>
-                <article><span>已落单 · 待支付</span><strong id="stock-result-consumed">—</strong></article>
-            </div>
-            <p id="stock-verdict" class="experiment-verdict" role="status">300 份库存，最多只能有 300 个请求获得资格。</p>
-            <p class="experiment-boundary">只验证准入与观察落单；不包含支付、取消和超时回补。</p>
-            <details id="stock-evidence" class="experiment-evidence">
-                <summary>查看运行记录与指标说明</summary>
-                <p class="auxiliary-note">未获资格包含库存不足、重复参与等业务拒绝，并非全部进入过 Lua。落单数记录首次进入待支付的订单；请求结束后最多观察 5 秒。</p>
-                <div class="evidence-metrics"><span>限流拦截 <b id="stock-result-limited">—</b></span><span>服务端异常 <b id="stock-result-errors">—</b></span><span>HTTP 异常 <b id="stock-result-http-errors">—</b></span><span>待处理落单消息 <b id="stock-result-backlog">—</b></span></div>
-                <ol id="stock-task-logs" class="task-logs"><li>尚无任务日志</li></ol>
-            </details>
         </section>
 
         <section id="limit-experiment" class="experiment-section lab-card" aria-labelledby="limit-title" data-run-state="idle">
             <header class="section-heading">
-                <div><small>问题二 · 挡得住</small><h2 id="limit-title">1500 QPS 冲进来，怎么只放 <span id="limit-title-threshold">800</span> QPS 进去？</h2></div>
+                <div><small>实验 02 / 流量保护</small><h2 id="limit-title">1500 QPS 洪峰来了，系统如何挡住？</h2></div>
                 <span id="limit-task-status" class="state-badge" role="status">尚未运行</span>
             </header>
-            <p class="experiment-question">让请求超过入口设定的阈值，观察哪些被放行、哪些被提前拦截。</p>
-            <div class="limit-config">
-                <div><small>模拟请求</small><strong>1500 <em>QPS</em></strong></div>
-                <div><small>限流阈值</small><strong><span id="limit-threshold">—</span> <em>QPS</em></strong></div>
-                <div><small>持续时间</small><strong>10 <em>秒</em></strong></div>
+            <div class="experiment-stage">
+                <div class="traffic-process" aria-label="1500 QPS 流量经过入口令牌桶，部分放行，超出请求快速拒绝">
+                    <div class="traffic-label traffic-input"><strong class="hero-number">1500 <em>QPS</em></strong><span>请求洪峰</span></div>
+                    <div class="traffic-label traffic-gate"><strong><span id="limit-threshold">—</span> <em>QPS</em></strong><span>入口令牌桶 · 限流阈值</span></div>
+                    <div class="traffic-label traffic-output"><strong id="limit-flow-allowed">约 800 QPS</strong><span>允许进入业务</span></div>
+                    <svg class="traffic-stream" viewBox="0 0 900 110" preserveAspectRatio="none" aria-hidden="true">
+                        <defs><pattern id="request-dots" width="19" height="13" patternUnits="userSpaceOnUse"><rect x="2" y="3" width="8" height="4" rx="1" fill="currentColor" /></pattern></defs>
+                        <path class="stream-track" d="M0 5H290L425 35V75L290 105H0Z" />
+                        <path class="stream-track" d="M475 35H900V75H475Z" />
+                        <path class="stream-particles" d="M0 5H290L425 35V75L290 105H0Z" />
+                        <path class="stream-particles" d="M475 35H900V75H475Z" />
+                        <rect class="filter-frame" x="427" y="20" width="46" height="70" rx="5" />
+                        <path class="filter-slots" d="M438 35H462M438 48H462M438 61H462M438 74H462" />
+                    </svg>
+                    <div class="traffic-rejected"><span aria-hidden="true">↳</span> 超出请求快速拒绝 <small>429</small></div>
+                </div>
+                <div class="experiment-actions">
+                    <button id="start-limit-test" class="primary-action" type="button">开始流量冲击</button>
+                    <button id="stop-limit-test" class="secondary-action" type="button" disabled>停止本轮</button>
+                    <span id="limit-progress" role="status">固定 1500 QPS，持续 10 秒</span>
+                </div>
+                <div class="conclusion-card" id="limit-conclusion">
+                    <div><small>入口过载保护验证</small><p id="limit-verdict" class="experiment-verdict" role="status">等待流量冲击</p><p id="limit-conclusion-copy" class="conclusion-copy">超过入口阈值的请求，能否被提前拦住？</p></div>
+                    <div class="conclusion-number"><strong id="limit-result-allowed-qps">—</strong><span>实测平均放行 QPS</span></div>
+                </div>
             </div>
-            <p class="experiment-answer">入口令牌桶：<span id="limit-flow-allowed">约 800 QPS 放行</span>，超出请求返回 429。</p>
-            <div class="experiment-actions">
-                <button id="start-limit-test" class="primary-action" type="button">开始流量冲击</button>
-                <button id="stop-limit-test" class="secondary-action" type="button" disabled>停止本轮</button>
-                <span id="limit-progress" role="status">固定 1500 QPS，持续 10 秒</span>
+            <div class="experiment-disclosures">
+                <details id="limit-evidence" class="experiment-evidence">
+                    <summary>查看详细指标与日志</summary>
+                    <p id="limit-verdict-detail" class="auxiliary-note">运行后查看实测流量、限流比例和异常记录。</p>
+                    <div class="result-grid result-grid--limit">
+                        <article><span>总请求数</span><strong id="limit-result-total">—</strong></article>
+                        <article><span>获得令牌 / 放行请求</span><strong id="limit-result-allowed">—</strong></article>
+                        <article><span>被限流请求</span><strong id="limit-result-limited">—</strong></article>
+                        <article><span>限流比例</span><strong id="limit-result-rate">—</strong></article>
+                    </div>
+                    <div class="evidence-metrics"><span>实际请求 QPS <b id="limit-result-actual">—</b></span><span>HTTP 异常 <b id="limit-result-errors">—</b></span><span>超时 / 连接错误 <b id="limit-result-transport-errors">—</b></span></div>
+                    <ol id="limit-task-logs" class="task-logs"><li>尚无任务日志</li></ol>
+                </details>
+                <details class="experiment-evidence"><summary>查看实验限制</summary><p class="auxiliary-note">只测入口：拿到令牌即返回，不访问 Redis、MQ、MySQL，不代表完整秒杀接口或多实例承载能力。</p><p class="auxiliary-note">允许满桶短时突发，平均放行可能略高于 800 QPS。流量动画为示意，不按粒子计数。开始前沿用现有流程重置秒杀库存、订单和指标。</p></details>
             </div>
-            <div class="result-grid result-grid--limit" aria-live="polite">
-                <article><span>总请求数</span><strong id="limit-result-total">—</strong></article>
-                <article><span>获得令牌 / 放行请求</span><strong id="limit-result-allowed">—</strong></article>
-                <article class="result-key"><span>被限流请求</span><strong id="limit-result-limited">—</strong></article>
-                <article class="result-key"><span>实际平均放行 QPS</span><strong id="limit-result-allowed-qps">—</strong></article>
-                <article><span>限流比例</span><strong id="limit-result-rate">—</strong></article>
-            </div>
-            <p id="limit-verdict" class="experiment-verdict" role="status">超过入口阈值的请求，能否在进入业务链路前被拦住？</p>
-            <p class="experiment-boundary">只测入口：拿到令牌即返回，不访问 Redis、MQ、MySQL。允许短时突发，平均放行可能略高于 800 QPS。</p>
-            <details id="limit-evidence" class="experiment-evidence">
-                <summary>查看运行记录与指标说明</summary>
-                <p class="auxiliary-note">只测单进程入口保护，不代表完整秒杀接口或多实例的承载能力。沿用现有实验准备流程：开始前会重置秒杀库存、订单和指标。</p>
-                <div class="evidence-metrics"><span>实际请求 QPS <b id="limit-result-actual">—</b></span><span>HTTP 异常 <b id="limit-result-errors">—</b></span><span>超时 / 连接错误 <b id="limit-result-transport-errors">—</b></span></div>
-                <ol id="limit-task-logs" class="task-logs"><li>尚无任务日志</li></ol>
-            </details>
         </section>
-
         </div>
 
         <details class="auxiliary-panel global-evidence">
@@ -155,7 +174,7 @@
     </main>
 
     <div id="lab-toast" class="lab-toast" role="status" aria-live="assertive"></div>
-    <script src="/js/seckill.js?v=20260911-order-identity-v1"></script>
+    <script src="/js/seckill.js?v=20260911-chain-return-v2"></script>
 </body>
 
 </html>

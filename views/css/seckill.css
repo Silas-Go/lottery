@@ -1,4 +1,4 @@
-/* 与购买实验室共用纸色、硬描边、青绿按钮的视觉语言；本页保持链路在上、实验并列。 */
+/* 与购买实验室共用纸色、硬描边、青绿按钮的视觉语言；本页以过程和结论呈现两项实验。 */
 :root {
     color-scheme: light;
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -71,7 +71,7 @@ a:hover { text-decoration: underline; }
 .request-receipt h3 { font-size: 13px; }
 .request-receipt p { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .request-receipt a { margin-left: auto; font-size: 12px; font-weight: 700; white-space: nowrap; }
-/* 两项各自保存结果，默认并列；折叠详情只增高当前卡片。 */
+/* 两项各自保存结果，详细记录按需展开。 */
 .experiments-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); align-items: start; gap: 16px; margin-top: 16px; }
 .experiment-section { padding: 14px 16px 0; scroll-margin-top: 12px; }
 .section-heading { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
@@ -178,4 +178,97 @@ em { color: var(--muted); font: normal 10px ui-sans-serif, system-ui, sans-serif
 @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* 实验展示层：保留项目纸色与硬描边，把过程和结论置于详细指标之前。 */
+.seckill-main { max-width: 1180px; }
+.lab-intro { margin: 8px 0 14px; }
+.lab-intro h1 { font-size: clamp(22px, 2.6vw, 30px); }
+.request-overview { padding: 12px 16px; }
+.chain-toolbar h2 { font-size: 12px; font-weight: 500; color: var(--muted); }
+.chain-toolbar .primary-action { background: transparent; box-shadow: none; color: var(--teal); min-height: 30px; padding: 5px 10px; font-weight: 600; }
+.chain-toolbar .primary-action:hover:not(:disabled) { background: var(--teal-soft); }
+.request-chain { grid-template-columns: repeat(4,minmax(0,1fr)); padding: 8px 0; gap: 20px; }
+.request-chain li { border: 1px solid var(--line); background: var(--surface-soft); padding: 8px 10px; }
+.request-chain li + li::before, .request-chain li:nth-child(4)::before { content: "→"; left: -20px; }
+.request-chain strong { font-size: 12px; }
+.request-chain span { font-size: 10px; }
+.experiments-grid { grid-template-columns: 1fr; gap: 22px; margin-top: 22px; }
+.experiment-section { padding: 22px 28px 0; }
+.experiments-grid .section-heading { min-height: 0; }
+.section-heading h2 { font-size: clamp(18px,2.3vw,25px); }
+.section-heading small { letter-spacing: .07em; margin-bottom: 6px; }
+.experiment-stage { margin-top: 20px; }
+.stock-process { display: grid; grid-template-columns: 1fr 60px 1.1fr 60px 1fr; align-items: center; min-height: 120px; }
+.process-node { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.process-node > span, .traffic-label > span { font-size: 12px; color: var(--muted); }
+.hero-number { font: 750 clamp(40px,5vw,62px)/1 ui-monospace, monospace; letter-spacing: -.06em; color: var(--teal); font-variant-numeric: tabular-nums; }
+.process-node small { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; font-weight: 400; }
+.atomic-node { padding: 18px 8px; border-top: 2px solid var(--teal); border-bottom: 2px solid var(--teal); background: var(--teal-soft); }
+.atomic-node strong { font-size: clamp(17px,2.1vw,25px); }
+.atomic-node .process-caption { font-size: 10px; }
+.process-connector { position: relative; color: var(--teal); text-align: center; overflow: hidden; }
+.process-connector b { font: 400 30px/1 monospace; }
+.process-connector i { position: absolute; left: 0; top: 50%; width: 5px; height: 5px; background: var(--teal); border-radius: 50%; opacity: 0; }
+.experiment-actions { gap: 10px; padding: 20px 0 18px; }
+.experiment-actions .primary-action { min-height: 40px; padding-inline: 20px; font-size: 13px; }
+.experiment-actions > span { flex: 1; padding-left: 4px; }
+.experiment-actions .secondary-action:disabled { display: none; }
+.conclusion-card { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 18px 22px; background: var(--surface-soft); border-left: 3px solid var(--line); }
+.conclusion-card[data-tone="success"] { background: var(--teal-soft); border-color: var(--teal); }
+.conclusion-card small { color: var(--muted); font-size: 10px; }
+.conclusion-card .experiment-verdict { min-height: 0; padding: 0; margin: 6px 0; background: none; border: 0; color: var(--ink); font-size: 20px; line-height: 1.35; }
+.conclusion-card[data-tone="success"] .experiment-verdict { color: var(--teal); }
+.conclusion-copy { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.conclusion-number { display: grid; gap: 6px; flex-shrink: 0; text-align: right; }
+.conclusion-number strong { font: 750 38px/1 ui-monospace, monospace; color: var(--teal); }
+.conclusion-number span { color: var(--muted); font-size: 10px; }
+.experiment-disclosures { margin-top: 12px; }
+.experiment-disclosures .experiment-evidence { border-top: 1px solid #b9aa8d55; }
+.experiment-evidence > summary { padding: 9px 0; font-size: 10px; }
+.experiment-evidence .result-grid { display: flex; flex-wrap: wrap; gap: 18px; border: 0; background: none; margin: 14px 0; }
+.experiment-evidence .result-grid article { padding: 0; min-height: 0; gap: 3px; }
+.experiment-evidence .result-grid strong { font-size: 18px; }
+.traffic-process { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: end; }
+.traffic-label { display: grid; gap: 8px; text-align: center; }
+.traffic-label strong:not(.hero-number) { font: 700 clamp(15px,2.3vw,27px)/1.2 ui-monospace,monospace; color: var(--teal); }
+.traffic-label .hero-number { font-size: clamp(32px,4.4vw,52px); }
+.traffic-label em { font-size: 12px; letter-spacing: 0; }
+.traffic-stream { width: 100%; height: 75px; grid-column: 1 / -1; margin-top: 12px; color: var(--teal); }
+.stream-track { fill: var(--teal-soft); }
+.stream-particles { fill: url(#request-dots); opacity: .65; }
+.filter-frame { fill: var(--teal); stroke: var(--frame); stroke-width: 2px; }
+.filter-slots { stroke: var(--surface); stroke-width: 2px; }
+.traffic-rejected { grid-column: 2 / 4; padding: 6px 0 0 23%; color: var(--gold); font-size: 12px; }
+.traffic-rejected > span { display: inline-block; font-size: 20px; }
+.traffic-rejected small { margin-left: 6px; opacity: .7; }
+.experiment-section[data-run-state="running"] .process-connector i { animation: request-travel 1.2s linear infinite; }
+.experiment-section[data-run-state="running"] .stream-particles { animation: stream-flow .8s linear infinite; }
+.experiment-section[data-run-state="running"] .atomic-node, .experiment-section[data-run-state="collecting"] .atomic-node { animation: status-pulse 1.5s ease-in-out infinite; }
+@keyframes request-travel { 0% { left: 0; opacity: 0; } 20%,80% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+@keyframes stream-flow { to { transform: translateX(19px); } }
+@media (max-width: 760px) {
+    .experiment-section { padding: 18px 16px 0; }
+    .stock-process { grid-template-columns: 1fr 24px 1.1fr 24px 1fr; }
+    .process-connector b { font-size: 22px; }
+    .request-chain { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; }
+    .request-chain li + li::before, .request-chain li:nth-child(4)::before { left: -14px; }
+    .request-overview { padding: 10px 12px; }
+    .request-chain li { padding: 6px 4px; }
+    .request-chain strong { font-size: 10px; }
+    .request-chain span { font-size: 9px; }
+    .experiment-actions > span { flex-basis: 100%; padding: 0; }
+    .conclusion-card { padding: 14px; gap: 12px; }
+    .conclusion-card .experiment-verdict { font-size: 17px; }
+    .conclusion-copy { font-size: 11px; }
+    .conclusion-number strong { font-size: 30px; }
+    .traffic-label > span { font-size: 10px; }
+    .traffic-rejected { padding-left: 10%; font-size: 11px; }
+}
+@media (max-width: 420px) {
+    .hero-number { font-size: 38px; }
+    .atomic-node strong { font-size: 16px; }
+    .process-node > span { font-size: 10px; }
+    .traffic-label strong:not(.hero-number) { font-size: 14px; }
+    .traffic-label .hero-number { font-size: 30px; }
 }
