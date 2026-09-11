@@ -33,7 +33,7 @@ type Gift struct {
 // 名称和价格与 materials 聚合读模型保持一致；count 是独立抢购活动的库存基线，
 // 不复用购买实验的 materials.stock，避免两个实验互相污染。
 var defaultSeckillMaterialCatalog = []Gift{
-	{Id: StarMarrowMaterialID, Name: "星髓", Description: "从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。", Picture: "img/star-marrow-relic.png", Price: 5200, Count: 300},
+	{Id: StarMarrowMaterialID, Name: "星髓", Description: "从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。", Picture: "img/star-marrow-relic.png", Price: 5200, Count: 1000},
 }
 
 // EnsureSeckillMaterialCatalog 为不会重跑 init.sql 的老数据卷迁移限量材料目录。
@@ -53,6 +53,11 @@ func (s *Store) EnsureSeckillMaterialCatalog() (bool, error) {
 	}
 	if seckillMaterialCatalogMatches(current) {
 		return false, nil
+	}
+
+	// 目录/库存基线迁移也是新一轮实验；旧消息不能扣减新一轮的消息指标。
+	if err := RotateSeckillRun(); err != nil {
+		return false, fmt.Errorf("rotate migrated seckill run: %w", err)
 	}
 
 	// Redis 先清理：如果后续 MySQL 事务失败，下次启动仍会检测到旧目录并重新迁移；

@@ -126,7 +126,7 @@ docs/                   # 设计和可靠性说明
 
 ## 配置
 
-本机脚本覆盖的环境变量：`COMPUTERNAME=itcheer`（规避 RocketMQ/gRPC 中文主机名问题）、`LOTTERY_HTTP_ADDR=localhost:5678`、MySQL/Redis/MQ 连接信息、`LOTTERY_RATE_LIMIT_QPS=800`。详见 `scripts/run-local-app.ps1`。
+本机脚本覆盖的环境变量：`COMPUTERNAME=itcheer`（规避 RocketMQ/gRPC 中文主机名问题）、`LOTTERY_HTTP_ADDR=localhost:5678`、MySQL/Redis/MQ 连接信息、`LOTTERY_RATE_LIMIT_QPS=1200`。详见 `scripts/run-local-app.ps1`。
 
 ## 修改指南
 

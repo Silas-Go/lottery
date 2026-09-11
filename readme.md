@@ -211,13 +211,12 @@ Outbox Worker（每 1 秒扫描）
 
 入口：`/seckill-lab`
 
-秒杀页把不同结论拆成三个独立场景，避免用一轮混合流量同时证明所有事情：
+秒杀页用一轮真实抢购展示两道防线，沿限流、资格分配、异步落单依次观察，并保留单次请求入口：
 
 | 场景 | 负载 | 验证目标 |
 |---|---|---|
 | 单次链路 | 浏览器发起一次真实 `/lucky` | 看清限流、Lua、MQ、MySQL 和订单状态的先后关系 |
-| 库存争抢 | 600 个唯一用户同时争抢 300 份星髓 | 300 准入、300 售罄、0 超卖；默认满桶 800 内不应触发限流 |
-| 入口限流 | 300 / 800 / 1500 req/s，各运行 10 秒 | 单独观察共享令牌桶的 204 放行和 429 拒绝，不访问库存、MQ 或 MySQL |
+| 两道防线流水线 | 1500 个唯一用户争抢 1000 份星髓，入口 1200 QPS | 同一批请求依次经过限流、Lua 资格裁判和 MQ；实际限流/业务拒绝人数取实测，不预设分流比例 |
 
 当前公开写入口只保留 Redis 准入模式：
 
@@ -389,7 +388,7 @@ docs                        本地开发、可靠性边界和演示资料
 | `LOTTERY_REDIS_DB` | `2` | Redis DB |
 | `LOTTERY_MQ_ENABLED` | `true` | 是否启用 RocketMQ |
 | `LOTTERY_MQ_ENDPOINT` | `rocketmq-broker:8081` | RocketMQ Proxy gRPC 地址 |
-| `LOTTERY_RATE_LIMIT_QPS` | `800` | 本进程秒杀令牌桶速率，`0` 表示关闭 |
+| `LOTTERY_RATE_LIMIT_QPS` | `1200` | 本进程秒杀令牌桶速率，`0` 表示关闭 |
 | `LOTTERY_CACHEASIDE_DB_CONCURRENCY` | `10` | 查询实验 MySQL 并发闸门 |
 | `LOTTERY_LOADTEST_RUNNER_URL` | `http://loadtest-runner:8090` | 主应用访问 Runner 的内部地址 |
 | `LOTTERY_LOG_LEVEL` | `info` | `slog` 日志级别 |

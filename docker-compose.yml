@@ -30,7 +30,7 @@ services:
       LOTTERY_MQ_ORDER_CONSUMER_GROUP: lottery
       LOTTERY_MQ_PURCHASE_CACHE_CONSUMER_GROUP: lottery-purchase-cache
       LOTTERY_COOKIE_DOMAIN: localhost
-      LOTTERY_RATE_LIMIT_QPS: "800"
+      LOTTERY_RATE_LIMIT_QPS: "1200"
       LOTTERY_LOADTEST_RUNNER_URL: http://loadtest-runner:8090
     ports:
       - "5678:5678"

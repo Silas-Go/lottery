@@ -6,8 +6,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,23 +20,23 @@ type stockBurstHTTPResult struct {
 	err        error
 }
 
-// runStockBurst 生成精确的 600 个唯一用户请求并同时放行。
-// 这里故意不用持续 QPS：库存正确性实验关心固定请求数在同一竞争窗口内的原子裁决，
-// 而不是一段时间内的到达率。600 小于令牌桶满桶容量 800，因此正常情况下限流不参与结果。
+// runStockBurst 让同一批 1500 个唯一用户经过真实入口限流、Lua 准入和 MQ 落单。
+// 1200 QPS 是令牌补充速率，1000 是库存总量；两者不能直接相减推断拒绝人数。
+// 到达时间和满桶补充会影响分流，所有结果必须以真实快照及 HTTP 状态核对。
 func (r *Runner) runStockBurst(ctx context.Context, id string, task Task) {
 	baseline, err := r.fetchAppMetrics(ctx, task)
 	if err != nil {
 		r.finish(id, StatusFailed, CodeRunnerFailure, "读取秒杀实验基线失败："+err.Error(), EventFailed)
 		return
 	}
-	if baseline.RateLimitQPS > 0 && baseline.RateLimitQPS < SeckillStockRequests {
+	if baseline.RateLimitQPS != SeckillEntryQPS || baseline.ActivityStock != SeckillInitialStock || baseline.RedisStock != SeckillInitialStock {
 		r.finish(id, StatusFailed, CodeRunnerFailure, fmt.Sprintf(
-			"库存实验要求满桶容量至少为 %d，当前 LOTTERY_RATE_LIMIT_QPS=%d 会让限流器成为变量",
-			SeckillStockRequests,
-			baseline.RateLimitQPS,
+			"流水线场景需要入口 %d QPS、初始库存 %d；当前为 %d QPS、活动库存 %d、Redis 库存 %d",
+			SeckillEntryQPS, SeckillInitialStock, baseline.RateLimitQPS, baseline.ActivityStock, baseline.RedisStock,
 		), EventFailed)
 		return
 	}
+
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		MaxIdleConns:          SeckillStockConcurrency,
@@ -52,18 +54,33 @@ func (r *Runner) runStockBurst(ctx context.Context, id string, task Task) {
 	client := &http.Client{Transport: transport, Timeout: 15 * time.Second}
 	results := make(chan stockBurstHTTPResult, SeckillStockRequests)
 	startGate := make(chan struct{})
+	var ready sync.WaitGroup
+	ready.Add(SeckillStockRequests)
 
-	if !r.markSeckillRunning(id, "600 个唯一用户已就绪，正在同时争抢星髓") {
+	if !r.markSeckillRunning(id, "正在为 1500 个唯一用户准备连接，连接就绪后统一发送请求") {
 		return
 	}
 	startedAt := time.Now()
 	for index := 0; index < SeckillStockRequests; index++ {
 		uid := 1_000_000_000 + index + 1
 		go func() {
-			<-startGate
+			var once sync.Once
+			announceReady := func() { once.Do(ready.Done) }
+			defer announceReady() // 建连失败也必须结束准备，避免等待永不释放。
 			requestStarted := time.Now()
+			// 只预建连接，不预发业务请求；排除 DNS/TCP 建连将洪峰摊平的影响。
+			requestContext := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+				GotConn: func(httptrace.GotConnInfo) {
+					announceReady()
+					select {
+					case <-startGate:
+					case <-ctx.Done():
+					}
+					requestStarted = time.Now()
+				},
+			})
 			request, err := http.NewRequestWithContext(
-				ctx,
+				requestContext,
 				http.MethodGet,
 				fmt.Sprintf("%s/lucky?uid=%d", r.appBaseURL, uid),
 				nil,
@@ -87,6 +104,15 @@ func (r *Runner) runStockBurst(ctx context.Context, id string, task Task) {
 			}
 		}()
 	}
+	prepared := make(chan struct{})
+	go func() { ready.Wait(); close(prepared) }()
+	select {
+	case <-prepared:
+	case <-ctx.Done():
+		r.finishContextEnd(id, ctx, "连接准备阶段")
+		return
+	}
+	startedAt = time.Now()
 	close(startGate)
 
 	latencies := make([]time.Duration, 0, SeckillStockRequests)
@@ -174,7 +200,7 @@ func (r *Runner) runStockBurst(ctx context.Context, id string, task Task) {
 		r.persistLocked()
 	}
 	r.mu.Unlock()
-	r.finish(id, StatusCompleted, "", "库存争抢完成，结果已冻结", EventCompleted)
+	r.finish(id, StatusCompleted, "", "两道防线实验完成，本轮结果已冻结", EventCompleted)
 }
 
 func (r *Runner) markSeckillRunning(id, message string) bool {

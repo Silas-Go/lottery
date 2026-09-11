@@ -215,7 +215,7 @@ func initInfrastructure() *database.Store {
 func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService, *service.PurchaseLabService) {
 	gin.DefaultWriter = io.Discard
 
-	rateLimitQPS := util.EnvInt("LOTTERY_RATE_LIMIT_QPS", 0)
+	rateLimitQPS := util.EnvInt("LOTTERY_RATE_LIMIT_QPS", 1200)
 	lotteryService := service.NewLotteryService(store, service.LotteryOptions{
 		RateLimitQPS: rateLimitQPS,
 	})

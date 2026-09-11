@@ -15,8 +15,10 @@ const (
 	MaxDurationSeconds          = 30
 	DefaultDurationSeconds      = 30
 	SeckillRateDurationSeconds  = 10
-	SeckillStockRequests        = 600
-	SeckillStockConcurrency     = 600
+	SeckillStockRequests        = 1500
+	SeckillStockConcurrency     = 1500
+	SeckillInitialStock         = 1000
+	SeckillEntryQPS             = 1200
 	CachePenetrationMissingID   = 900004
 	ProtectionNone              = "none"
 	ProtectionKeyMutex          = "key-mutex"
@@ -191,7 +193,7 @@ func ValidateCreateRequest(request CreateRequest) (TierConfig, string) {
 			return TierConfig{}, "seckill stock burst does not accept custom workload parameters"
 		}
 		return TierConfig{
-			ID: "stock_600", Label: "600 人争抢 300 份星髓",
+			ID: "stock_1500", Label: "1500 人争抢 1000 份星髓：两道防线",
 			Connections: SeckillStockConcurrency, DurationSeconds: 15,
 		}, ""
 	case ExperimentCacheAsideRead:

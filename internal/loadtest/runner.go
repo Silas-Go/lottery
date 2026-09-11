@@ -144,7 +144,7 @@ func (r *Runner) PlanConnections(request CreateRequest) (ConnectionPlanResponse,
 		reason = "限流探针固定通路，避免连接配置成为额外变量"
 	} else if request.Experiment == ExperimentSeckillStockBurst {
 		connectionMode = ConnectionModeAuto
-		reason = "定量并发批次固定 600 个唯一请求同时起跑"
+		reason = "定量并发批次固定 1500 个唯一请求同时起跑"
 	} else if request.Rate > 0 {
 		if connectionMode == "" {
 			connectionMode = ConnectionModeAuto
@@ -192,8 +192,8 @@ func (r *Runner) Start(request CreateRequest) (Task, *APIError) {
 		connectionLog = fmt.Sprintf("配置 wrk2 -c %d（固定限流探针）", tier.Connections)
 	} else if request.Experiment == ExperimentSeckillStockBurst {
 		connectionMode = ConnectionModeAuto
-		connectionReason = "定量并发批次固定 600 个唯一请求同时起跑"
-		connectionLog = "配置 600 个唯一用户并发争抢 300 份星髓"
+		connectionReason = "定量并发批次固定 1500 个唯一请求同时起跑"
+		connectionLog = "配置 1500 个唯一用户，通过 1200 QPS 入口争抢 1000 份星髓"
 	} else if request.Rate > 0 {
 		if connectionMode == "" {
 			connectionMode = ConnectionModeAuto

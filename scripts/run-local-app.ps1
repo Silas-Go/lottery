@@ -33,7 +33,7 @@ $env:LOTTERY_MQ_PURCHASE_INVALIDATION_TOPIC = "PURCHASE_CACHE_INVALIDATE"
 $env:LOTTERY_MQ_ORDER_CONSUMER_GROUP = "lottery"
 $env:LOTTERY_MQ_PURCHASE_CACHE_CONSUMER_GROUP = "lottery-purchase-cache"
 $env:LOTTERY_COOKIE_DOMAIN = "localhost"
-$env:LOTTERY_RATE_LIMIT_QPS = "800"
+$env:LOTTERY_RATE_LIMIT_QPS = "1200"
 
 Write-Host "Starting local Go app at http://localhost:5678/"
 Write-Host "Press Ctrl+C to stop the app. Docker infra will keep running."
