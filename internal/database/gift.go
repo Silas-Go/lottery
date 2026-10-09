@@ -36,7 +36,19 @@ var defaultSeckillMaterialCatalog = []Gift{
 	{Id: StarMarrowMaterialID, Name: "星髓", Description: "从坠星内部提取的高密度魔力介质，仅用于高阶炼成与能量校准。", Picture: "img/star-marrow-relic.png", Price: 5200, Count: 1000},
 }
 
-// EnsureSeckillMaterialCatalog 为不会重跑 init.sql 的老数据卷迁移限量材料目录。
+// ValidateSeckillMaterialCatalog 只读检查目录，普通启动不能自动迁移并清空共享库存。
+func (s *Store) ValidateSeckillMaterialCatalog() error {
+	var current []Gift
+	if err := s.db.Order("id").Find(&current).Error; err != nil {
+		return fmt.Errorf("load seckill material catalog: %w", err)
+	}
+	if !seckillMaterialCatalogMatches(current) {
+		return fmt.Errorf("seckill material catalog requires migration: stop all Apps and run -init-inventory")
+	}
+	return nil
+}
+
+// EnsureSeckillMaterialCatalog 在显式离线初始化时为老数据卷迁移限量材料目录。
 // 只有目录名称、描述、图片、价格或库存基线不一致时才迁移；正常重启不能重置活动库存。
 //
 // 旧订单的 gift id 已经对应篮球、茶叶等废弃语义，无法安全映射到新材料。因此迁移时先清掉
@@ -60,7 +72,7 @@ func (s *Store) EnsureSeckillMaterialCatalog() (bool, error) {
 		return false, fmt.Errorf("rotate migrated seckill run: %w", err)
 	}
 
-	// Redis 先清理：如果后续 MySQL 事务失败，下次启动仍会检测到旧目录并重新迁移；
+	// Redis 先清理：如果后续 MySQL 事务失败，下次显式初始化仍会检测到旧目录并重新迁移；
 	// 反过来先提交 MySQL，进程崩溃会让旧 admission 带着已被重用的 gid 存活。
 	if err := clearLotteryRedisState(); err != nil {
 		return false, fmt.Errorf("clear legacy seckill redis state: %w", err)

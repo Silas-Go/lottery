@@ -14,12 +14,49 @@ const (
 
 	// INVENTORY_IDS_KEY 是奖品 ID 注册表（Redis SET）的 key，保存当前活动的全部 gift id。
 	// 读取实时库存时用 SMEMBERS 拿到 id 列表，再用一次 MGET 批量取库存，
-	// 取代原来的 KEYS gift_count_* 全库扫描。它由 InitGiftInventory 在启动时按 MySQL 配置重建，
+	// 取代原来的 KEYS gift_count_* 全库扫描。它由显式初始化或实验重置按 MySQL 配置重建，
 	// 是读取库存的权威来源：手动往 Redis 塞 gift_count_* 而不更新注册表的 key 不会被读到。
 	INVENTORY_IDS_KEY = "gift_ids"
 )
 
+// ValidateGiftInventory 只读校验注册表与库存，不把缺失 key 当作售罄，更不能自动回填。
+// 返回值仅供本机指标建立启动快照；其他实例仍可继续通过 Lua 扣减库存。
+func ValidateGiftInventory(gifts []*Gift) (int64, error) {
+	if GiftRedis == nil {
+		return 0, errors.New("redis client is nil")
+	}
+	ids, err := GiftRedis.SMembers(INVENTORY_IDS_KEY).Result()
+	if err != nil {
+		return 0, fmt.Errorf("read inventory registry: %w", err)
+	}
+	if len(gifts) == 0 || len(ids) != len(gifts) {
+		return 0, fmt.Errorf("inventory registry missing or mismatched: got %d ids, want %d", len(ids), len(gifts))
+	}
+	registered := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		registered[id] = true
+	}
+	var total int64
+	for _, gift := range gifts {
+		id := strconv.Itoa(gift.Id)
+		if !registered[id] {
+			return 0, fmt.Errorf("gift %d missing from inventory registry", gift.Id)
+		}
+		key := INVENTORY_PREFIX + id
+		count, err := GiftRedis.Get(key).Int64()
+		if err != nil {
+			return 0, fmt.Errorf("read initialized inventory %s: %w", key, err)
+		}
+		if count < 0 || count > int64(gift.Count) {
+			return 0, fmt.Errorf("inventory %s out of range: %d", key, count)
+		}
+		total += count
+	}
+	return total, nil
+}
+
 // InitGiftInventory 从 MySQL 账本和 Redis stock_acquired 状态恢复活动库存及奖品 ID 注册表。
+// 只能在全部 App 停止后的显式初始化，或已隔离业务的实验重置中调用；普通启动禁止调用。
 // 恢复量必须扣掉 Redis 模式的 pending_payment/paid 订单，以及尚未异步落账的 stock_acquired；
 // cancelled 已经完成回补，MySQL 模式使用独立库存，二者都不能从 Redis 基线重复扣除。
 //
@@ -60,14 +97,14 @@ func (s *Store) InitGiftInventory() error {
 		slog.Info("gift inventory restored to redis", "activity_id", DefaultActivityID, "gift_id", gift.Id, "initial", gift.Count, "sold", sold, "remaining", remaining)
 	}
 	// gift_ids 是读取权威，但旧 gift_count_* 仍会占据数据卷并误导人工排查；
-	// 每次启动只保留当前 MySQL 目录对应的库存 key。
+	// 显式重建时只保留当前 MySQL 目录对应的库存 key。
 	if err := deleteRedisKeysExcept(INVENTORY_PREFIX+"*", currentStockKeys); err != nil {
 		return fmt.Errorf("remove unregistered gift inventory: %w", err)
 	}
 
 	// 重建奖品 ID 注册表（全量替换，保证与 MySQL 配置一致）。
 	// 先用 DEL 清空旧注册表，再用 SADD 写入当前奖品 ID 集合；两步不是原子的，
-	// 但此函数只在启动初始化时调用一次，不存在并发写入竞争。
+	// 调用方必须先停止并发业务，不能依赖本进程锁来保护其他实例。
 	if err := GiftRedis.Del(INVENTORY_IDS_KEY).Err(); err != nil {
 		slog.Error("clear gift id registry failed", "key", INVENTORY_IDS_KEY, "error", err)
 		return fmt.Errorf("clear gift id registry: %w", err)
@@ -91,7 +128,7 @@ func GetAllGiftInventory() []*Gift {
 }
 
 // GetAllGiftInventoryWithError 用一次 SMEMBERS + 一次 MGET 批量读取全部奖品库存。
-// 依赖 InitGiftInventory 在启动时建好的 INVENTORY_IDS_KEY 注册表拿到 id 列表，
+// 依赖显式初始化或实验重置建好的 INVENTORY_IDS_KEY 注册表拿到 id 列表，
 // 再用 MGET 一次拉回全部 gift_count_{id} 值，总往返固定 2 次，不随奖品数增长。
 //
 // 原来的实现用 KEYS gift_count_* 扫描 + 逐 key GET，在 /lucky 每次请求 + 10 次重试

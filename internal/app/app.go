@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -35,7 +36,7 @@ type Application struct {
 // New 初始化依赖并创建 HTTP 应用。
 // 这里集中完成基础设施和路由装配，main.go 只负责启动，方便后续排查启动阶段失败点。
 func New() *Application {
-	store := initInfrastructure()
+	store := initInfrastructure(false)
 	engine, orderService, purchaseLabService := initHTTP(store)
 	backgroundCancel, backgroundDone := startMQBackground(orderService, purchaseLabService)
 	addr := util.EnvString("LOTTERY_HTTP_ADDR", "localhost:5678")
@@ -163,7 +164,16 @@ func (a *Application) Shutdown(ctx context.Context) {
 	slog.Info("application resources closed")
 }
 
-func initInfrastructure() *database.Store {
+// InitializeInventory 仅供停掉全部 App 后的显式维护命令调用，不启动 HTTP 或 MQ Worker。
+// 它复用原有恢复算法，不提供在线重建或跨实例重置协调。
+func InitializeInventory() {
+	store := initInfrastructure(true)
+	defer store.CloseGiftDB()
+	defer database.CloseGiftRedis()
+	slog.Info("inventory initialization completed; maintenance command exiting")
+}
+
+func initInfrastructure(initializeInventory bool) *database.Store {
 	util.InitSlog("./log/lottery.log")
 	slog.Info("application infrastructure initializing")
 	store := database.ConnectGiftDB("./conf", "mysql", util.YAML, "./log/lottery.db.log")
@@ -180,13 +190,16 @@ func initInfrastructure() *database.Store {
 		slog.Error("ensure cache stock schema failed", "error", err)
 		panic(err)
 	}
-	// 旧数据卷仍可能保存现代奖品或多材料目录。目录只在不一致时迁移为唯一主角“星髓”，
-	// 并清理无法继续解释的旧订单/admission；正常重启不会重置已经发生的活动库存。
-	if migrated, err := store.EnsureSeckillMaterialCatalog(); err != nil {
-		slog.Error("ensure seckill material catalog failed", "error", err)
+	// 目录迁移会清理订单和 Redis 库存，只允许显式维护命令执行。
+	// 普通实例遇到旧目录直接退出，不能在其他实例仍接流量时偷偷重建。
+	if initializeInventory {
+		if _, err := store.EnsureSeckillMaterialCatalog(); err != nil {
+			slog.Error("migrate seckill material catalog failed", "error", err)
+			panic(err)
+		}
+	} else if err := store.ValidateSeckillMaterialCatalog(); err != nil {
+		slog.Error("seckill material catalog requires offline initialization", "error", err)
 		panic(err)
-	} else if migrated {
-		slog.Info("seckill material catalog migration completed")
 	}
 	// 详情读实验使用独立材料表、组成关系与交易/评分事实；业务目录只保留星髓，
 	// 组成材料仍作为 JOIN 数据存在，但不会作为可查询、购买或抢购的商品出现在页面。
@@ -205,7 +218,16 @@ func initInfrastructure() *database.Store {
 
 	mq.InitRocketLog()
 
-	initInventoryMetrics(store)
+	if initializeInventory {
+		if err := store.InitGiftInventory(); err != nil {
+			slog.Error("initialize gift inventory failed", "error", err)
+			panic(err)
+		}
+	}
+	if err := initInventoryMetrics(store); err != nil {
+		slog.Error("inventory startup check failed; stop all Apps and run -init-inventory", "error", err)
+		panic(err)
+	}
 	slog.Info("application infrastructure initialized")
 	return store
 }
@@ -239,24 +261,16 @@ func initHTTP(store *database.Store) (*gin.Engine, *service.OrderService, *servi
 	return engine, orderService, purchaseLabService
 }
 
-// initInventoryMetrics 初始化 Redis 库存并建立指标基线。
-// baseTotal 是 MySQL 配置的活动初始库存，redisTotal 是扣除已完成订单后的 Redis 当前可用库存。
-// 这两个值不能混用，否则重启后页面会把剩余库存误当初始库存，导致超卖判断不准。
-func initInventoryMetrics(store *database.Store) {
-	if err := store.InitGiftInventory(); err != nil {
-		slog.Error("init gift inventory failed", "error", err)
-		return
-	}
-
+// initInventoryMetrics 只读现有库存建立本机指标基线，绝不从旧快照回写库存。
+// 缺失/损坏必须阻止 HTTP 和 Worker 启动；真实的零库存则是正常售罄。
+func initInventoryMetrics(store *database.Store) error {
 	baseGifts, err := store.GetAllGiftsWithError()
 	if err != nil {
-		slog.Error("load base inventory metrics failed", "error", err)
-		return
+		return fmt.Errorf("load base inventory metrics: %w", err)
 	}
-	gifts, err := database.GetAllGiftInventoryWithError()
+	redisTotal, err := database.ValidateGiftInventory(baseGifts)
 	if err != nil {
-		slog.Error("load gift inventory metrics failed", "error", err)
-		return
+		return fmt.Errorf("validate gift inventory: %w", err)
 	}
 
 	var baseTotal int64
@@ -265,18 +279,12 @@ func initInventoryMetrics(store *database.Store) {
 			baseTotal += int64(gift.Count)
 		}
 	}
-	var redisTotal int64
-	for _, gift := range gifts {
-		if gift.Count > 0 {
-			redisTotal += int64(gift.Count)
-		}
-	}
 	runID, runErr := database.CurrentSeckillRun()
 	if runErr != nil {
-		slog.Error("initialize seckill run failed", "error", runErr)
-		return
+		return fmt.Errorf("initialize seckill run: %w", runErr)
 	}
 	metrics.SetSeckillRunID(runID)
 	metrics.InitInventory(baseTotal, redisTotal)
-	slog.Info("inventory metrics initialized", "gift_count", len(gifts), "base_stock", baseTotal, "redis_stock", redisTotal)
+	slog.Info("inventory metrics initialized", "gift_count", len(baseGifts), "base_stock", baseTotal, "redis_stock", redisTotal)
+	return nil
 }

@@ -24,12 +24,20 @@ Silas 是一个 Go 高并发实验项目。它不按“章节”顺序解锁功�
 
 ### 完整 Docker Compose
 
-推荐使用完整 Compose，它会同时启动应用、受控压测 Runner 和全部依赖：
+推荐使用完整 Compose。首次使用空数据卷时，先显式初始化秒杀库存，再启动应用：
 
 ```bash
+docker compose up -d --wait mysql redis
+docker compose build app
+docker compose run --rm --no-deps app /app/lottery -init-inventory
 docker compose up -d --build
 docker compose ps
 ```
+
+已有完整库存时，重启直接执行 `docker compose up -d --build`，不要重复运行初始化命令。
+普通 App 启动只校验秒杀目录、Redis 注册表和库存；缺失或损坏会退出，库存为 0 则正常启动。
+初始化命令会按现有账本重建库存，旧目录迁移还会清理旧秒杀订单；恢复前必须停掉所有 App，且只运行一个初始化进程。
+本机使用相同连接配置执行 `go run . -init-inventory`，命令完成后退出，不启动 HTTP 或 MQ Worker。
 
 打开：
 
